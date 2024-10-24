@@ -8,37 +8,37 @@
 #define PCX_LBDINLINE [[gnu::always_inline, clang::always_inline]]
 namespace pcx::simd {
 
-template<typename T, uZ Size>
-PCX_AINLINE auto add(vec<T, Size> lhs, vec<T, Size> rhs) {
-    return detail_::vec_traits<T, Size>::add(lhs.value, rhs.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto add(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::add(lhs.value, rhs.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto sub(vec<T, Size> lhs, vec<T, Size> rhs) {
-    return detail_::vec_traits<T, Size>::sub(lhs.value, rhs.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto sub(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::sub(lhs.value, rhs.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto mul(vec<T, Size> lhs, vec<T, Size> rhs) {
-    return detail_::vec_traits<T, Size>::mul(lhs.value, rhs.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto mul(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto div(vec<T, Size> lhs, vec<T, Size> rhs) {
-    return detail_::vec_traits<T, Size>::div(lhs.value, rhs.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto div(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::div(lhs.value, rhs.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto fmadd(vec<T, Size> a, vec<T, Size> b, vec<T, Size> c) {
-    return detail_::vec_traits<T, Size>::fmadd(a.value, b.value, c.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto fmadd(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::fmadd(a.value, b.value, c.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto fnmadd(vec<T, Size> a, vec<T, Size> b, vec<T, Size> c) {
-    return detail_::vec_traits<T, Size>::fnmadd(a.value, b.value, c.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto fnmadd(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::fnmadd(a.value, b.value, c.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto fmsub(vec<T, Size> a, vec<T, Size> b, vec<T, Size> c) {
-    return detail_::vec_traits<T, Size>::fmsub(a.value, b.value, c.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto fmsub(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::fmsub(a.value, b.value, c.value);
 }
-template<typename T, uZ Size>
-PCX_AINLINE auto fnmsub(vec<T, Size> a, vec<T, Size> b, vec<T, Size> c) {
-    return detail_::vec_traits<T, Size>::fnmsub(a.value, b.value, c.value);
+template<typename T, uZ Width>
+PCX_AINLINE auto fnmsub(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+    return detail_::vec_traits<T, Width>::fnmsub(a.value, b.value, c.value);
 }
 
 
@@ -210,7 +210,7 @@ template<tight_cx_vec... Lhs, tight_cx_vec... Rhs>
             imag = fnmadd(lhs.imag(), rhs.real(), res1.imag());
         }
 
-        auto rhs_abs = fmadd(rhs.imag(), rhs.imag, rhs_re_sq);
+        auto rhs_abs = fmadd(rhs.imag(), rhs.imag(), rhs_re_sq);
 
         constexpr bool neg_real = Res::neg_real() && imreim_neg_real;
         constexpr bool neg_imag = Res::neg_imag() && imreim_neg_imag;
@@ -235,7 +235,7 @@ template<tight_cx_vec... Lhs, tight_cx_vec... Rhs>
 
     return [step3]<uZ... Is> PCX_LBDINLINE(auto res2, std::index_sequence<Is...>) {
         return std::make_tuple(step3(std::get<Is>(res2))...);
-    }(res1, lhs, rhs, std::index_sequence_for<Lhs...>{});
+    }(res2, std::index_sequence_for<Lhs...>{});
 };
 
 template<tight_cx_vec Lhs, tight_cx_vec Rhs>
