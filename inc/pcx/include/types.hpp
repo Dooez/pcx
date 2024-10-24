@@ -69,14 +69,18 @@ struct vec {
  * @tparam T	    
  * @tparam NReal    Negate the real part of a complex vector.
  * @tparam NImag    Negate the imaginary part of a complex vector.
- * @tparam Size	    Simd vector size.
+ * @tparam Width    Simd vector width.
  * @tparam PackSize Pack size inside simd vector.
  */
 template<typename T, bool NReal, bool NImag, uZ Width = max_width<T>, uZ PackSize = Width>
-    requires power_of_two<PackSize> && power_of_two<Width> && (Width <= max_width<T>)
+    requires power_of_two<Width> && power_of_two<PackSize> && (Width <= max_width<T>) && (PackSize <= Width)
 struct cx_vec {
     using real_type = T;
     using vec_t     = vec<T, Width>;
+
+    template<uZ NewPackSize>
+        requires(NewPackSize <= Width)
+    using repacked_vec = cx_vec<T, NReal, NImag, Width, NewPackSize>;
 
     vec_t m_real;
     vec_t m_imag;
@@ -101,9 +105,9 @@ struct cx_vec {
         return NImag;
     }
 
-    template<uZ Rot>
+    template<uZ Rot = 1>
         requires(Rot < 4)
-    PCX_AINLINE friend auto rotate(cx_vec vec) {
+    PCX_AINLINE friend auto mul_by_j(cx_vec vec) {
         if constexpr (Rot == 0) {
             return vec;
         } else if (Rot == 1) {

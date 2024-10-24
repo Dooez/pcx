@@ -48,6 +48,32 @@ PCX_AINLINE auto cxstore(typename V::real_type* dest, V data) {
     store(dest, data.real());
     store(dest + store_offset, data.imag());
 }
+template<uZ PackSize, cx_vec_c V>
+    requires power_of_two<PackSize> && (PackSize <= V::width())
+PCX_AINLINE auto repack(V vec) {
+    using repacked_vec =
+        cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), V::pack_size()>;
+    using traits = detail_::vec_traits<typename V::real_type, V::width()>;
+    using repack = traits::template repack<PackSize, V::pack_size()>;
+    return repacked_vec(repack::permute(vec.real(), vec.imag()));
+}
+template<tight_cx_vec V>
+PCX_AINLINE auto evaluate(V vec) {
+    using real_t    = V::real_type;
+    using eval_vec  = cx_vec<real_t, false, false, V::width()>;
+    using vec_t     = V::vec_t;
+    using traits    = detail_::vec_traits<real_t, V::width()>;
+    const auto zero = traits::zero();
+    if constexpr (V::neg_real() && V::neg_imag()) {
+        return eval_vec{sub(zero, vec.real()), sub(zero, vec.imag())};
+    } else if constexpr (V::neg_real()) {
+        return eval_vec{sub(zero, vec.real()), vec.imag()};
+    } else if constexpr (V::neg_imag()) {
+        return eval_vec{vec.real(), sub(zero, vec.imag())};
+    } else {
+        return vec;
+    }
+};
 
 }    // namespace pcx::simd
 
