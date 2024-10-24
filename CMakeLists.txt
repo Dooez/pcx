@@ -14,10 +14,15 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft tests/test_fft.cpp)
+    add_executable(test_simd tests/test_simd.cpp)
 
     target_link_libraries(test_fft PUBLIC pcx)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(test_fft PRIVATE -save-temps -march=native)
+
+    target_link_libraries(test_simd PUBLIC pcx)
+    set_target_properties(test_simd PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
+    target_compile_options(test_simd PRIVATE -save-temps -march=native)
     ENABLE_TESTING()
 
     add_test(NAME test_fft COMMAND test_fft)

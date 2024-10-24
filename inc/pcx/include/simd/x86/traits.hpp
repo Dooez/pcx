@@ -1,21 +1,28 @@
 #ifndef PCX_SIMD_TRAITS_HPP
 #define PCX_SIMD_TRAITS_HPP
-#include "pcx/types.hpp"
 
 #include <immintrin.h>
+namespace pcx {
+using uZ  = std::size_t;
+using f32 = float;
+using f64 = double;
+}    // namespace pcx
 
 #define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
 namespace pcx::simd::detail_ {
 
+template<typename T>
+struct max_vec_width;
+template<typename T, uZ Width>
+struct vec_traits;
 
 #ifdef PCX_AVX512
-
 template<>
-struct default_vec_size<f32> {
+struct max_vec_width<f32> {
     static constexpr uZ value = 16;
 };
 template<>
-struct default_vec_size<f64> {
+struct max_vec_width<f64> {
     static constexpr uZ value = 8;
 };
 
@@ -104,11 +111,11 @@ struct vec_traits<f64, 8> {
 #else
 
 template<>
-struct default_vec_size<f32> {
+struct max_vec_width<f32> {
     static constexpr uZ value = 8;
 };
 template<>
-struct default_vec_size<f64> {
+struct max_vec_width<f64> {
     static constexpr uZ value = 4;
 };
 

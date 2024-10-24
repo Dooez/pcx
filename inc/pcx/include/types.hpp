@@ -1,11 +1,8 @@
-
 #ifndef PCX_TYPES_HPP
 #define PCX_TYPES_HPP
 
-#include <algorithm>
-#include <complex>
+#include <concepts>
 #include <cstdint>
-#include <ranges>
 #include <type_traits>
 
 #define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
@@ -37,25 +34,28 @@ concept packed_floating_point = floating_point<T> && power_of_two<PackSize>;
 
 namespace simd {
 
-
 namespace detail_ {
 template<typename T>
-struct default_vec_size;
+struct max_vec_width;
 template<typename T, uZ Width>
 struct vec_traits;
-
 }    // namespace detail_
+template<typename T>
+constexpr uZ max_width = detail_::max_vec_width<T>::value;
 
 /**
  * @brief Simd vector abstraction.
  */
-template<typename T, uZ Width = detail_::default_vec_size<T>::value>
+template<typename T, uZ Width = detail_::max_vec_width<T>::value>
+    requires(Width <= detail_::max_vec_width<T>::value)
 struct vec {
     using value_type = T;
     using vec_type   = typename detail_::vec_traits<T, Width>::type;
 
     vec_type value;
-    vec(vec_type v)    //NOLINT(*explicit*)
+
+    PCX_AINLINE vec() = default;
+    PCX_AINLINE vec(vec_type v)    //NOLINT(*explicit*)
     : value(v) {};
 };
 
@@ -72,8 +72,8 @@ struct vec {
  * @tparam Size	    Simd vector size.
  * @tparam PackSize Pack size inside simd vector.
  */
-template<typename T, bool NReal, bool NImag, uZ Width = 8, uZ PackSize = Width>
-    requires power_of_two<Width> && power_of_two<PackSize>
+template<typename T, bool NReal, bool NImag, uZ Width = max_width<T>, uZ PackSize = Width>
+    requires power_of_two<PackSize> && power_of_two<Width> && (Width <= max_width<T>)
 struct cx_vec {
     using real_type = T;
     using vec_t     = vec<T, Width>;
@@ -88,7 +88,7 @@ struct cx_vec {
         return m_imag;
     }
 
-    static consteval auto size() -> uZ {
+    static consteval auto width() -> uZ {
         return Width;
     }
     static consteval auto pack_size() -> uZ {
@@ -103,24 +103,24 @@ struct cx_vec {
 
     template<uZ Rot>
         requires(Rot < 4)
-    PCX_AINLINE auto rotate() const {
+    PCX_AINLINE friend auto rotate(cx_vec vec) {
         if constexpr (Rot == 0) {
-            return *this;
+            return vec;
         } else if (Rot == 1) {
             using new_cx_vec = cx_vec<T, !NImag, NReal, Width, PackSize>;
-            return new_cx_vec{.m_real = m_imag, .m_imag = m_real};
+            return new_cx_vec{.m_real = vec.m_imag, .m_imag = vec.m_real};
         } else if (Rot == 2) {
             using new_cx_vec = cx_vec<T, !NReal, !NImag, Width, PackSize>;
-            return new_cx_vec{.m_real = m_real, .m_imag = m_imag};
+            return new_cx_vec{.m_real = vec.m_real, .m_imag = vec.m_imag};
         } else if (Rot == 3) {
             using new_cx_vec = cx_vec<T, NImag, !NReal, Width, PackSize>;
-            return new_cx_vec{.m_real = m_imag, .m_imag = m_real};
+            return new_cx_vec{.m_real = vec.m_imag, .m_imag = vec.m_real};
         }
     }
 
-    PCX_AINLINE auto conj() const {
+    PCX_AINLINE friend auto conj(cx_vec vec) {
         using new_cx_vec = cx_vec<T, NReal, !NImag, Width, PackSize>;
-        return new_cx_vec{.m_real = m_real, .m_imag = m_imag};
+        return new_cx_vec{.m_real = vec.m_real, .m_imag = vec.m_imag};
     }
 };
 
@@ -135,17 +135,22 @@ template<typename T>
 concept cx_vec_c = detail_::is_cx_vec<T>::value;
 
 template<typename T>
-concept tight_cx_vec = cx_vec_c<T> && (T::size() == T::pack_size());
+concept tight_cx_vec = cx_vec_c<T> && (T::width() == T::pack_size());
+
+template<typename T>
+concept eval_cx_vec = cx_vec_c<T> && (!T::neg_real() && !T::neg_imag());
 
 template<typename T, typename U>
-concept compatible = (cx_vec_c<T> &&                                                     //
-                      cx_vec_c<U> &&                                                     //
-                      std::same_as<typename T::value_type, typename U::value_type> &&    //
-                      T::size() == U::size() &&                                          //
-                      T::pack_size() == U::pack_size());
+concept compatible_cx_vec = (cx_vec_c<T> &&                                                   //
+                             cx_vec_c<U> &&                                                   //
+                             std::same_as<typename T::real_type, typename U::real_type> &&    //
+                             T::width() == U::width() &&                                      //
+                             T::pack_size() == U::pack_size());
 
 }    // namespace simd
 }    // namespace pcx
-//
 #undef PCX_AINLINE
+
+#include "pcx/include/simd/x86/traits.hpp"
+
 #endif
