@@ -2,9 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(pcx VERSION 0.3.0 LANGUAGES CXX)
 add_library(pcx INTERFACE)
 target_include_directories(pcx INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc/simd
     )
 set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 target_compile_definitions(pcx INTERFACE -DPCX_AVX512)

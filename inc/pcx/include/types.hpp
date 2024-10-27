@@ -50,12 +50,12 @@ template<typename T, uZ Width = detail_::max_vec_width<T>::value>
     requires(Width <= detail_::max_vec_width<T>::value)
 struct vec {
     using value_type = T;
-    using vec_type   = typename detail_::vec_traits<T, Width>::type;
+    using native_vec = typename detail_::vec_traits<T, Width>::native;
 
-    vec_type value;
+    native_vec value;
 
     PCX_AINLINE vec() = default;
-    PCX_AINLINE vec(vec_type v)    //NOLINT(*explicit*)
+    PCX_AINLINE vec(native_vec v)    //NOLINT(*explicit*)
     : value(v) {};
 };
 
@@ -136,17 +136,17 @@ struct is_cx_vec<cx_vec<T, NReal, NImag, Width, PackSize>> : std::true_type {};
 }    // namespace detail_
 
 template<typename T>
-concept cx_vec_c = detail_::is_cx_vec<T>::value;
+concept any_cx_vec = detail_::is_cx_vec<T>::value;
 
 template<typename T>
-concept tight_cx_vec = cx_vec_c<T> && (T::width() == T::pack_size());
+concept tight_cx_vec = any_cx_vec<T> && (T::width() == T::pack_size());
 
 template<typename T>
-concept eval_cx_vec = cx_vec_c<T> && (!T::neg_real() && !T::neg_imag());
+concept eval_cx_vec = any_cx_vec<T> && (!T::neg_real() && !T::neg_imag());
 
 template<typename T, typename U>
-concept compatible_cx_vec = (cx_vec_c<T> &&                                                   //
-                             cx_vec_c<U> &&                                                   //
+concept compatible_cx_vec = (any_cx_vec<T> &&                                                 //
+                             any_cx_vec<U> &&                                                 //
                              std::same_as<typename T::real_type, typename U::real_type> &&    //
                              T::width() == U::width() &&                                      //
                              T::pack_size() == U::pack_size());

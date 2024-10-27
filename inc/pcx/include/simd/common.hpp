@@ -48,7 +48,7 @@ PCX_AINLINE auto cxstore(typename V::real_type* dest, V data) {
     store(dest, data.real());
     store(dest + store_offset, data.imag());
 }
-template<uZ PackSize, cx_vec_c V>
+template<uZ PackSize, any_cx_vec V>
     requires power_of_two<PackSize> && (PackSize <= V::width())
 PCX_AINLINE auto repack(V vec) {
     using repacked_vec =
