@@ -1,7 +1,9 @@
 #ifndef PCX_SIMD_TRAITS_HPP
 #define PCX_SIMD_TRAITS_HPP
 
+#include <concepts>
 #include <immintrin.h>
+#include <tuple>
 
 namespace pcx {
 using uZ  = std::size_t;
@@ -250,6 +252,59 @@ struct vec_traits<f32, 16> {
             b      = y;
         }
     };
+
+    using tup16 = std::tuple<native, native, native, native,
+                             native, native, native, native,
+                             native, native, native, native,
+                             native, native, native, native>;
+
+    PCX_AINLINE static auto bit_reverse(tup16 tup) {
+        constexpr auto unpck1lo = [](native a, native b) { return _mm512_unpacklo_ps(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) { return _mm512_unpackhi_ps(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) {
+            return _mm512_castpd_ps(_mm512_unpacklo_pd(_mm512_castps_pd(a), _mm512_castps_pd(b)));
+        };
+        constexpr auto unpck2hi = [](native a, native b) {
+            return _mm512_castpd_ps(_mm512_unpackhi_pd(_mm512_castps_pd(a), _mm512_castps_pd(b)));
+        };
+        constexpr auto unpck4lo = [](native a, native b) {
+            const auto idx = _mm512_setr_epi32(0, 1, 2, 3, 16, 17, 18, 19, 8, 9, 10, 11, 24, 25, 26, 27);
+            return _mm512_permutex2var_ps(a, idx, b);
+        };
+        constexpr auto unpck4hi = [](native a, native b) {
+            const auto idx = _mm512_setr_epi32(4, 5, 6, 7, 20, 21, 22, 23, 12, 13, 14, 15, 28, 29, 30, 31);
+            return _mm512_permutex2var_ps(a, idx, b);
+        };
+        constexpr auto unpck8lo = [](native a, native b) {
+            const auto idx = _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23);
+            return _mm512_permutex2var_ps(a, idx, b);
+        };
+        constexpr auto unpck8hi = [](native a, native b) {
+            const auto idx = _mm512_setr_epi32(8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31);
+            return _mm512_permutex2var_ps(a, idx, b);
+        };
+
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
+            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 8>(tup))...,
+                                   unpck1hi(std::get<Is>(tup), std::get<Is + 8>(tup))...);
+        }(tup, std::make_index_sequence<8>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
+            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 4>(tup))...,
+                                   unpck2hi(std::get<Is>(tup), std::get<Is + 4>(tup))...);
+        }(res1, std::index_sequence<0, 1, 2, 3, 8, 9, 10, 11>{});
+
+        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
+            return std::make_tuple(unpck4lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
+                                   unpck4hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+        }(res2, std::index_sequence<0, 1, 4, 5, 8, 9, 12, 13>{});
+
+        auto res8 = [unpck8lo, unpck8hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
+            return std::make_tuple(unpck8lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
+                                   unpck8hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+        }(res4, std::index_sequence<0, 2, 4, 6, 8, 10, 12, 14>{});
+        return res8;
+    }
     // clang-format on
 };
 template<>
