@@ -658,6 +658,43 @@ struct vec_traits<f32, 8> {
             repack<8, 4>::permute(a, b);
         }
     };
+
+    // clang-format off
+    using tup8 = std::tuple<native, native, native, native,
+                            native, native, native, native>;
+    // clang-format on
+    PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
+        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm256_unpacklo_ps(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm256_unpackhi_ps(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) {
+            return _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
+        };
+        constexpr auto unpck2hi = [](native a, native b) {
+            return _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
+        };
+        constexpr auto unpck4lo = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00100000); };
+        constexpr auto unpck4hi = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00110001); };
+
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 4>(tup))...,
+                                   unpck1hi(std::get<Is>(tup), std::get<Is + 4>(tup))...);
+        }(tup, std::make_index_sequence<4>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
+                                   unpck2hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+        }(res1, std::index_sequence<0, 1, 4, 5>{});
+
+        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck4lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
+                                   unpck4hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+        }(res2, std::index_sequence<0, 2, 4, 6>{});
+
+        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 4>(tup)...);
+        }(res4, std::index_sequence<0, 2, 1, 3>{});
+        return resort;
+    }
 };
 
 template<>
