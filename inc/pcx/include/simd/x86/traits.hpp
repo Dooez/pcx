@@ -11,7 +11,7 @@ using f32 = float;
 using f64 = double;
 }    // namespace pcx
 
-// NOLINTBEGIN(*portability*)
+// NOLINTBEGIN(*portability*, *magic-number*)
 
 #define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
 namespace pcx::simd::detail_ {
@@ -466,6 +466,46 @@ struct vec_traits<f64, 8> {
             b      = y;
         }
     };
+    // clang-format off
+    using tup8 = std::tuple<native, native, native, native,
+                            native, native, native, native>;
+    // clang-format on
+    PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
+        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm512_unpacklo_pd(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm512_unpackhi_pd(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) noexcept {
+            const auto idx = _mm512_setr_epi64(0, 1, 8, 9, 4, 5, 12, 13);
+            return _mm512_permutex2var_pd(a, idx, b);
+        };
+        constexpr auto unpck2hi = [](native a, native b) noexcept {
+            const auto idx = _mm512_setr_epi64(2, 3, 10, 11, 6, 7, 12, 13);
+            return _mm512_permutex2var_pd(a, idx, b);
+        };
+        constexpr auto unpck4lo = [](native a, native b) noexcept {
+            const auto idx = _mm512_setr_epi64(0, 1, 2, 3, 8, 9, 10, 11);
+            return _mm512_permutex2var_pd(a, idx, b);
+        };
+        constexpr auto unpck4hi = [](native a, native b) noexcept {
+            const auto idx = _mm512_setr_epi64(4, 5, 6, 7, 12, 13, 14, 15);
+            return _mm512_permutex2var_pd(a, idx, b);
+        };
+
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 4>(tup))...,
+                                   unpck1hi(std::get<Is>(tup), std::get<Is + 4>(tup))...);
+        }(tup, std::make_index_sequence<4>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
+                                   unpck2hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+        }(res1, std::index_sequence<0, 1, 4, 5>{});
+
+        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck4lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
+                                   unpck4hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+        }(res2, std::index_sequence<0, 2, 4, 6>{});
+        return res4;
+    }
 };
 
 #else
@@ -619,6 +659,7 @@ struct vec_traits<f32, 8> {
         }
     };
 };
+
 template<>
 struct vec_traits<f32, 4> {
     using native = __m128;
@@ -864,7 +905,7 @@ struct vec_traits<f64, 2> {
 };
 }    // namespace pcx::simd::detail_
 
-// NOLINTEND(*portability*)
+// NOLINTEND(*portability*, *magic-number*)
 
 #undef PCX_AINLINE
 #endif
