@@ -787,6 +787,32 @@ struct vec_traits<f32, 4> {
             repack<4, 2>::permute(a, b);
         };
     };
+
+    using tup4 = std::tuple<native, native, native, native>;
+    PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
+        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm_unpacklo_ps(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm_unpackhi_ps(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) {
+            return _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
+        };
+        constexpr auto unpck2hi = [](native a, native b) {
+            return _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
+        };
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
+                                   unpck1hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+        }(tup, std::make_index_sequence<2>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
+                                   unpck2hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+        }(res1, std::index_sequence<0, 2>{});
+
+        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 1>(tup)...);
+        }(res2, std::index_sequence<0, 2>{});
+        return resort;
+    }
 };
 
 template<>
@@ -878,6 +904,25 @@ struct vec_traits<f64, 4> {
             repack<4, 2>::permute(a, b);
         };
     };
+
+    using tup4 = std::tuple<native, native, native, native>;
+    PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
+        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm256_unpacklo_pd(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm256_unpackhi_pd(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) { return _mm256_permute2f128_pd(a, b, 0b00100000); };
+        constexpr auto unpck2hi = [](native a, native b) { return _mm256_permute2f128_pd(a, b, 0b00110001); };
+
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
+                                   unpck1hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+        }(tup, std::make_index_sequence<2>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
+                                   unpck2hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+        }(res1, std::index_sequence<0, 2>{});
+        return res2;
+    }
 };
 template<>
 struct vec_traits<f64, 2> {
@@ -939,6 +984,11 @@ struct vec_traits<f64, 2> {
             repack<1, 2>::permute(a, b);
         };
     };
+    using tup2 = std::tuple<native, native>;
+    PCX_AINLINE static auto bit_reverse(tup2 tup) noexcept {
+        return std::make_tuple(_mm_unpacklo_pd(std::get<0>(tup), std::get<1>(tup)),
+                               _mm_unpackhi_pd(std::get<0>(tup), std::get<1>(tup)));
+    }
 };
 }    // namespace pcx::simd::detail_
 
