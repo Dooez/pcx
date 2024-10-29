@@ -304,8 +304,8 @@ struct vec_traits<f32, 16> {
                                    unpck8hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
         }(res4, std::index_sequence<0, 2, 4, 6, 8, 10, 12, 14>{});
         auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 2>(tup)...);
-        }(res8, std::index_sequence<0, 8, 4, 12, 1, 9, 5, 13>{});
+            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 8>(tup)...);
+        }(res8, std::index_sequence<0, 2, 1, 3, 4, 6, 5, 7>{});
         return resort;
     }
     // clang-format on
