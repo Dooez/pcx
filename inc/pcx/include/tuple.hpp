@@ -1,5 +1,7 @@
 #include "pcx/include/types.hpp"
 
+#include <tuple>
+
 #define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
 
 namespace pcx::h {
@@ -110,5 +112,29 @@ PCX_AINLINE auto make_ituple(Args&&... args) {
     return ituple_t(static_cast<Args&&>(args)...);
 }
 
-#undef PCX_AINLINE
 }    // namespace pcx::h
+
+namespace pcx::i {
+template<typename... Ts>
+using tuple = std::tuple<Ts...>;
+template<typename... Args>
+PCX_AINLINE auto make_tuple(Args&&... args) {
+    return std::make_tuple(std::forward<Args>(args)...);
+}
+template<typename... Ts>
+PCX_AINLINE auto tuple_cat(Ts&&... tuples) {
+    return std::tuple_cat(std::forward<Ts>(tuples)...);
+}
+template<uZ I, typename T>
+PCX_AINLINE auto get(T&& tuple) {
+    return std::get<I>(std::forward<T>(tuple));
+}
+
+template<uZ N>
+struct multi_stage_op {
+    static constexpr uZ stage_count = N;
+};
+
+
+}    // namespace pcx::i
+#undef PCX_AINLINE

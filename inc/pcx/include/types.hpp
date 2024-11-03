@@ -23,6 +23,9 @@ using i32 = int32_t;
 using i16 = int16_t;
 using i8  = int8_t;
 
+template<uZ I>
+using uZ_constant = std::integral_constant<uZ, I>;
+
 template<uZ N>
 concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 
@@ -52,11 +55,11 @@ struct vec {
     using value_type = T;
     using native_vec = typename detail_::vec_traits<T, Width>::native;
 
-    native_vec value;
+    native_vec native;
 
     PCX_AINLINE vec() = default;
     PCX_AINLINE vec(native_vec v)    //NOLINT(*explicit*)
-    : value(v) {};
+    : native(v) {};
 };
 
 /*template <typename T> using reg_t = typename reg<T>::type;*/
@@ -72,7 +75,7 @@ struct vec {
  * @tparam Width    Simd vector width.
  * @tparam PackSize Pack size inside simd vector.
  */
-template<typename T, bool NReal, bool NImag, uZ Width = max_width<T>, uZ PackSize = Width>
+template<typename T, bool NReal = false, bool NImag = false, uZ Width = max_width<T>, uZ PackSize = Width>
     requires power_of_two<Width> && power_of_two<PackSize> && (Width <= max_width<T>) && (PackSize <= Width)
 struct cx_vec {
     using real_type = T;

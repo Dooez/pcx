@@ -18,7 +18,7 @@ PCX_AINLINE auto load(const f64* src) {
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto store(T* dest, vec<T, Width> data) {
-    detail_::vec_traits<T, Width>::store(dest, data.value);
+    detail_::vec_traits<T, Width>::store(dest, data.native);
 }
 
 template<uZ SrcPackSize, uZ Width = max_width<f32>>

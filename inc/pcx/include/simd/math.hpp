@@ -1,248 +1,273 @@
 #ifndef PCX_SIMD_MATH_HPP
 #define PCX_SIMD_MATH_HPP
+#include "pcx/include/tuple.hpp"
 #include "pcx/include/types.hpp"
-
-#include <tuple>
 
 #define PCX_AINLINE   [[gnu::always_inline, clang::always_inline]] inline
 #define PCX_LBDINLINE [[gnu::always_inline, clang::always_inline]]
 namespace pcx::simd {
 
 template<typename T, uZ Width>
-PCX_AINLINE auto add(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::add(lhs.value, rhs.value);
-}
-template<typename T, uZ Width>
-PCX_AINLINE auto sub(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::sub(lhs.value, rhs.value);
-}
-template<typename T, uZ Width>
-PCX_AINLINE auto mul(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value);
-}
-template<typename T, uZ Width>
-PCX_AINLINE auto div(vec<T, Width> lhs, vec<T, Width> rhs) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::div(lhs.value, rhs.value);
-}
-template<typename T, uZ Width>
 PCX_AINLINE auto fmadd(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::fmadd(a.value, b.value, c.value);
+    return detail_::vec_traits<T, Width>::fmadd(a.native, b.native, c.native);
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto fnmadd(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::fnmadd(a.value, b.value, c.value);
+    return detail_::vec_traits<T, Width>::fnmadd(a.native, b.native, c.native);
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto fmsub(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::fmsub(a.value, b.value, c.value);
+    return detail_::vec_traits<T, Width>::fmsub(a.native, b.native, c.native);
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto fnmsub(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
-    return detail_::vec_traits<T, Width>::fnmsub(a.value, b.value, c.value);
+    return detail_::vec_traits<T, Width>::fnmsub(a.native, b.native, c.native);
 }
 
-
-template<tight_cx_vec Lhs, tight_cx_vec Rhs>
-    requires compatible_cx_vec<Lhs, Rhs>
-PCX_AINLINE auto add(Lhs lhs, Rhs rhs) {
-    using vec = Lhs::vec_t;
-    vec real;
-    vec imag;
-
-    if constexpr (Lhs::neg_real() == Rhs::neg_real()) {
-        real = add(lhs.real(), rhs.real());
-    } else if constexpr (Lhs::neg_real()) {
-        real = sub(rhs.real(), lhs.real());
-    } else {
-        real = sub(lhs.real(), rhs.real());
+constexpr struct {
+    template<typename T, uZ Width>
+    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
+        return detail_::vec_traits<T, Width>::add(lhs.native, rhs.native);
     }
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        constexpr auto width = Lhs::width();
+        using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
+        using vec            = Lhs::vec_t;
+        vec real;
+        vec imag;
 
-    if constexpr (Lhs::neg_imag() == Rhs::neg_imag()) {
-        imag = add(lhs.imag(), rhs.imag());
-    } else if constexpr (Lhs::neg_imag()) {
-        imag = sub(rhs.imag(), lhs.imag());
-    } else {
-        imag = sub(lhs.imag(), rhs.imag());
-    }
-
-    constexpr bool neg_real = Lhs::neg_real() && Rhs::neg_real();
-    constexpr bool neg_imag = Lhs::neg_imag() && Rhs::neg_imag();
-
-    using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-    return new_cx_vec{.m_real = real, .m_imag = imag};
-}
-
-template<tight_cx_vec Lhs, tight_cx_vec Rhs>
-    requires compatible_cx_vec<Lhs, Rhs>
-PCX_AINLINE auto sub(Lhs lhs, Rhs rhs) {
-    using vec = Lhs::vec_t;
-    vec real;
-    vec imag;
-
-    if constexpr (Lhs::neg_real() != Rhs::neg_real()) {
-        real = add(lhs.real(), rhs.real());
-    } else if constexpr (Lhs::neg_real()) {
-        real = sub(rhs.real(), lhs.real());
-    } else {
-        real = sub(lhs.real(), rhs.real());
-    }
-
-    if constexpr (Lhs::neg_imag() != Rhs::neg_imag()) {
-        imag = add(lhs.imag(), rhs.imag());
-    } else if constexpr (Lhs::neg_imag()) {
-        imag = sub(rhs.imag(), lhs.imag());
-    } else {
-        imag = sub(lhs.imag(), rhs.imag());
-    }
-
-    constexpr bool neg_real = Lhs::neg_real() && !Rhs::neg_real();
-    constexpr bool neg_imag = Lhs::neg_imag() && !Rhs::neg_imag();
-
-    using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-    return new_cx_vec{.m_real = real, .m_imag = imag};
-};
-
-namespace detail_ {
-template<tight_cx_vec Lhs, tight_cx_vec Rhs>
-PCX_AINLINE auto mul_step1(Lhs lhs, Rhs rhs) {
-    using vec = Lhs::vec_t;
-    vec real  = mul(lhs.real(), rhs.real());
-    vec imag  = mul(lhs.real(), rhs.real());
-
-    constexpr bool neg_real = Lhs::neg_real() != Rhs::neg_real();
-    constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();
-
-    using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-    return new_cx_vec{.m_real = real, .m_imag = imag};
-}
-template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
-PCX_AINLINE auto mul_step2(Res step1_res, Lhs lhs, Rhs rhs) {
-    using vec = Lhs::vec_t;
-    vec real;
-    vec imag;
-
-    constexpr bool imreim_neg_real = Lhs::neg_imag() != Rhs::neg_imag();
-    constexpr bool imreim_neg_imag = Lhs::neg_imag() != Rhs::neg_real();
-
-    if constexpr (Res::neg_real() == imreim_neg_real) {
-        real = fnmadd(lhs.imag(), rhs.imag(), step1_res.real());
-    } else if constexpr (Res::neg_real()) {
-        real = fnmsub(lhs.imag(), rhs.imag(), step1_res.real());
-    } else {
-        real = fmadd(lhs.imag(), rhs.imag(), step1_res.real());
-    }
-
-    if constexpr (Res::neg_imag() == imreim_neg_imag) {
-        imag = fmadd(lhs.imag(), rhs.real(), step1_res.imag());
-    } else if constexpr (Res::neg_imag()) {
-        imag = fmsub(lhs.imag(), rhs.real(), step1_res.imag());
-    } else {
-        imag = fnmadd(lhs.imag(), rhs.real(), step1_res.imag());
-    }
-
-    constexpr bool neg_real = Res::neg_real() && imreim_neg_real;
-    constexpr bool neg_imag = Res::neg_imag() && imreim_neg_imag;
-
-    using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-    return new_cx_vec{.m_real = real, .m_imag = imag};
-}
-}    // namespace detail_
-
-template<tight_cx_vec... Lhs, tight_cx_vec... Rhs>
-    requires(compatible_cx_vec<Lhs, Rhs> && ...)
-[[gnu::flatten]] PCX_AINLINE auto mul_tuples(std::tuple<Lhs...> lhs, std::tuple<Rhs...> rhs) {
-    auto res1 = []<uZ... Is> [[gnu::flatten]] PCX_LBDINLINE(auto lhs, auto rhs, std::index_sequence<Is...>) {
-        return std::make_tuple(detail_::mul_step1(std::get<Is>(lhs), std::get<Is>(rhs))...);
-    }(lhs, rhs, std::index_sequence_for<Lhs...>{});
-
-    return []<uZ... Is> [[gnu::flatten]] PCX_LBDINLINE(
-               auto res1, auto lhs, auto rhs, std::index_sequence<Is...>) {
-        return std::make_tuple(
-            detail_::mul_step2(std::get<Is>(res1), std::get<Is>(lhs), std::get<Is>(rhs))...);
-    }(res1, lhs, rhs, std::index_sequence_for<Lhs...>{});
-};
-
-template<tight_cx_vec Lhs, tight_cx_vec Rhs>
-    requires compatible_cx_vec<Lhs, Rhs>
-[[gnu::flatten]] PCX_AINLINE auto mul(Lhs lhs, Rhs rhs) {
-    return std::get<0>(mul_tuples(std::make_tuple(lhs), std::make_tuple(rhs)));
-};
-
-template<tight_cx_vec... Lhs, tight_cx_vec... Rhs>
-    requires(compatible_cx_vec<Lhs, Rhs> && ...)
-[[gnu::flatten]] PCX_AINLINE auto div_tuples(std::tuple<Lhs...> lhs, std::tuple<Rhs...> rhs) {
-    constexpr auto step1 = []<typename L, typename R> PCX_LBDINLINE(L lhs, R rhs) {
-        using vec = L::vec_t;
-        vec real  = mul(lhs.real(), rhs.real());
-        vec imag  = mul(lhs.real(), rhs.real());
-
-        constexpr bool neg_real  = L::neg_real() != R::neg_real();
-        constexpr bool neg_imag  = L::neg_real() != R::neg_imag();
-        vec            rhs_re_sq = mul(rhs.real(), rhs.real());
-
-        using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, L::width(), L::pack_size()>;
-        return std::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq);
-    };
-    constexpr auto step2 = []<typename L, typename R> PCX_LBDINLINE(auto res1_tup, L lhs, R rhs) {
-        using vec = L::vec_t;
-        vec  real;
-        vec  imag;
-        auto res1      = std::get<0>(res1_tup);
-        auto rhs_re_sq = std::get<1>(res1_tup);
-        using Res      = decltype(res1);
-
-        constexpr bool imreim_neg_real = L::neg_imag() != R::neg_imag();
-        constexpr bool imreim_neg_imag = L::neg_imag() != R::neg_real();
-
-        if constexpr (Res::neg_real() == imreim_neg_real) {
-            real = fnmadd(lhs.imag(), rhs.imag(), res1.real());
-        } else if constexpr (Res::neg_real()) {
-            real = fnmsub(lhs.imag(), rhs.imag(), res1.real());
+        if constexpr (Lhs::neg_real() == Rhs::neg_real()) {
+            real = traits::add(lhs.real().native, rhs.real().native);
+        } else if constexpr (Lhs::neg_real()) {
+            real = traits::sub(rhs.real().native, lhs.real().native);
         } else {
-            real = fmadd(lhs.imag(), rhs.imag(), res1.real());
+            real = traits::sub(lhs.real().native, rhs.real().native);
         }
 
-        if constexpr (Res::neg_imag() == imreim_neg_imag) {
-            imag = fmadd(lhs.imag(), rhs.real(), res1.imag());
-        } else if constexpr (Res::neg_imag()) {
-            imag = fmsub(lhs.imag(), rhs.real(), res1.imag());
+        if constexpr (Lhs::neg_imag() == Rhs::neg_imag()) {
+            imag = traits::add(lhs.imag().native, rhs.imag().native);
+        } else if constexpr (Lhs::neg_imag()) {
+            imag = traits::sub(rhs.imag().native, lhs.imag().native);
         } else {
-            imag = fnmadd(lhs.imag(), rhs.real(), res1.imag());
+            imag = traits::sub(lhs.imag().native, rhs.imag().native);
         }
 
-        auto rhs_abs = fmadd(rhs.imag(), rhs.imag(), rhs_re_sq);
+        constexpr bool neg_real = Lhs::neg_real() && Rhs::neg_real();
+        constexpr bool neg_imag = Lhs::neg_imag() && Rhs::neg_imag();
 
-        constexpr bool neg_real = Res::neg_real() && imreim_neg_real;
-        constexpr bool neg_imag = Res::neg_imag() && imreim_neg_imag;
+        using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
+        return new_cx_vec{.m_real = real, .m_imag = imag};
+    }
+} add;
 
-        using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, L::width(), L::pack_size()>;
-        return std::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_abs);
+constexpr struct {
+    template<typename T, uZ Width>
+    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
+        return detail_::vec_traits<T, Width>::sub(lhs.native, rhs.native);
+    }
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        constexpr auto width = Lhs::width();
+        using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
+        using vec            = Lhs::vec_t;
+        vec real;
+        vec imag;
+
+        if constexpr (Lhs::neg_real() != Rhs::neg_real()) {
+            real = traits::add(lhs.real().native, rhs.real().native);
+        } else if constexpr (Lhs::neg_real()) {
+            real = traits::sub(rhs.real().native, lhs.real().native);
+        } else {
+            real = traits::sub(lhs.real().native, rhs.real().native);
+        }
+
+        if constexpr (Lhs::neg_imag() != Rhs::neg_imag()) {
+            imag = traits::add(lhs.imag().native, rhs.imag().native);
+        } else if constexpr (Lhs::neg_imag()) {
+            imag = traits::sub(rhs.imag().native, lhs.imag().native);
+        } else {
+            imag = traits::sub(lhs.imag().native, rhs.imag().native);
+        }
+
+        constexpr bool neg_real = Lhs::neg_real() && !Rhs::neg_real();
+        constexpr bool neg_imag = Lhs::neg_imag() && !Rhs::neg_imag();
+
+        using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
+        return new_cx_vec{.m_real = real, .m_imag = imag};
+    }
+} sub;
+
+constexpr struct mul_t : pcx::i::multi_stage_op<2> {
+    template<typename T, uZ Width>
+    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
+        return detail_::vec_traits<T, Width>::mul(lhs.native, rhs.native);
+    }
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        return stage<1>(stage<0>(lhs, rhs));
     };
-    constexpr auto step3 = [] PCX_LBDINLINE(auto res2_tup) {
-        auto cx_vec    = std::get<0>(res2_tup);
-        auto rhs_abs   = std::get<1>(res2_tup);
-        using cx_vec_t = decltype(cx_vec);
 
-        return cx_vec_t{.m_real = div(cx_vec.real(), rhs_abs), .m_imag = div(cx_vec.imag(), rhs_abs)};
+private:
+    template<uZ I>
+    struct stage_t;
+
+public:
+    template<uZ I>
+    constexpr static stage_t<I> stage;
+    template<>
+    struct stage_t<0> {
+        template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+            constexpr auto width = Lhs::width();
+            using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
+            using vec            = Lhs::vec_t;
+            vec real             = traits::mul(lhs.real().native, rhs.real().native);
+            vec imag             = traits::mul(lhs.real().native, rhs.real().native);
+
+            constexpr bool neg_real = Lhs::neg_real() != Rhs::neg_real();
+            constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();
+
+            using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
+            return i::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, lhs, rhs);
+        }
     };
-    auto res1 = [step1]<uZ... Is> PCX_LBDINLINE(auto lhs, auto rhs, std::index_sequence<Is...>) {
-        return std::make_tuple(step1(std::get<Is>(lhs), std::get<Is>(rhs))...);
-    }(lhs, rhs, std::index_sequence_for<Lhs...>{});
+    template<>
+    struct stage_t<1> {
+        template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
+        PCX_AINLINE auto operator()(i::tuple<Res, Lhs, Rhs> args) const {
+            auto [res0, lhs, rhs] = args;
 
-    auto res2 = [step2]<uZ... Is> PCX_LBDINLINE(auto res1, auto lhs, auto rhs, std::index_sequence<Is...>) {
-        return std::make_tuple(step2(std::get<Is>(res1), std::get<Is>(lhs), std::get<Is>(rhs))...);
-    }(res1, lhs, rhs, std::index_sequence_for<Lhs...>{});
+            constexpr auto width = Lhs::width();
+            using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
+            using vec            = Lhs::vec_t;
+            vec real;
+            vec imag;
 
-    return [step3]<uZ... Is> PCX_LBDINLINE(auto res2, std::index_sequence<Is...>) {
-        return std::make_tuple(step3(std::get<Is>(res2))...);
-    }(res2, std::index_sequence_for<Lhs...>{});
-};
+            constexpr bool imreim_neg_real = Lhs::neg_imag() != Rhs::neg_imag();
+            constexpr bool imreim_neg_imag = Lhs::neg_imag() != Rhs::neg_real();
 
-template<tight_cx_vec Lhs, tight_cx_vec Rhs>
-    requires compatible_cx_vec<Lhs, Rhs>
-[[gnu::flatten]] PCX_AINLINE auto div(Lhs lhs, Rhs rhs) {
-    return std::get<0>(div_tuples(std::make_tuple(lhs), std::make_tuple(rhs)));
-};
+            if constexpr (Res::neg_real() == imreim_neg_real) {
+                real = traits::fnmadd(lhs.imag().native, rhs.imag().native, res0.real().native);
+            } else if constexpr (Res::neg_real()) {
+                real = traits::fnmsub(lhs.imag().native, rhs.imag().native, res0.real().native);
+            } else {
+                real = traits::fmadd(lhs.imag().native, rhs.imag().native, res0.real().native);
+            }
+
+            if constexpr (Res::neg_imag() == imreim_neg_imag) {
+                imag = traits::fmadd(lhs.imag().native, rhs.real().native, res0.imag().native);
+            } else if constexpr (Res::neg_imag()) {
+                imag = traits::fmsub(lhs.imag().native, rhs.real().native, res0.imag().native);
+            } else {
+                imag = traits::fnmadd(lhs.imag().native, rhs.real().native, res0.imag().native);
+            }
+
+            constexpr bool neg_real = Res::neg_real() && imreim_neg_real;
+            constexpr bool neg_imag = Res::neg_imag() && imreim_neg_imag;
+
+            using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
+            return new_cx_vec{.m_real = real, .m_imag = imag};
+        }
+    };
+} mul;
+
+constexpr struct div_t : i::multi_stage_op<3> {
+    template<typename T, uZ Width>
+    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
+        return detail_::vec_traits<T, Width>::div(lhs.native, rhs.native);
+    }
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        return stage<2>(stage<1>(stage<0>(lhs, rhs)));
+    };
+
+private:
+    template<uZ I>
+    struct stage_t;
+
+public:
+    template<uZ I>
+    constexpr static stage_t<I> stage;
+
+    template<>
+    struct stage_t<0> {
+        template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+            constexpr auto width = Lhs::width();
+            using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
+            using vec            = Lhs::vec_t;
+
+            vec real = traits::mul(lhs.real().native, rhs.real().native);
+            vec imag = traits::mul(lhs.real().native, rhs.real().native);
+
+            constexpr bool neg_real  = Lhs::neg_real() != Rhs::neg_real();
+            constexpr bool neg_imag  = Lhs::neg_real() != Rhs::neg_imag();
+            vec            rhs_re_sq = traits::mul(rhs.real().native, rhs.real().native);
+
+            using new_cx_vec =
+                cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
+            return i::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
+        };
+    };
+    template<>
+    struct stage_t<1> {
+        template<tight_cx_vec Res0, tight_cx_vec Lhs, tight_cx_vec Rhs>
+        PCX_AINLINE auto operator()(i::tuple<Res0, typename Res0::vec_t, Lhs, Rhs> args) const {
+            constexpr auto width = Lhs::width();
+            using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
+            using vec            = Lhs::vec_t;
+
+            auto [res0, rhs_re_sq, lhs, rhs] = args;
+            vec real;
+            vec imag;
+            vec rhs_abs;
+
+            constexpr bool im_reim_neg_real = Lhs::neg_imag() != Rhs::neg_imag();
+            constexpr bool im_reim_neg_imag = Lhs::neg_imag() != Rhs::neg_real();
+
+            if constexpr (Res0::neg_real() == im_reim_neg_real) {
+                real = traits::fnmadd(lhs.imag().native, rhs.imag().native, res0.real().native);
+            } else if constexpr (Res0::neg_real()) {
+                real = traits::fnmsub(lhs.imag().native, rhs.imag().native, res0.real().native);
+            } else {
+                real = traits::fmadd(lhs.imag().native, rhs.imag().native, res0.real().native);
+            }
+
+            if constexpr (Res0::neg_imag() == im_reim_neg_imag) {
+                imag = traits::fmadd(lhs.imag().native, rhs.real().native, res0.imag().native);
+            } else if constexpr (Res0::neg_imag()) {
+                imag = traits::fmsub(lhs.imag().native, rhs.real().native, res0.imag().native);
+            } else {
+                imag = traits::fnmadd(lhs.imag().native, rhs.real().native, res0.imag().native);
+            }
+
+            rhs_abs = traits::fmadd(rhs.imag().native, rhs.imag().native, rhs_re_sq.native);
+
+            constexpr bool neg_real = Res0::neg_real() && im_reim_neg_real;
+            constexpr bool neg_imag = Res0::neg_imag() && im_reim_neg_imag;
+
+            using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
+            return i::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_abs);
+        };
+    };
+    template<>
+    struct stage_t<2> {
+        template<tight_cx_vec Res1>
+        PCX_AINLINE auto operator()(i::tuple<Res1, typename Res1::vec_t> args) const {
+            constexpr auto width   = Res1::width();
+            using traits           = detail_::vec_traits<typename Res1::real_type, width>;
+            auto [cx_vec, rhs_abs] = args;
+            return Res1{.m_real = traits::div(cx_vec.real().native, rhs_abs.native),
+                        .m_imag = traits::div(cx_vec.imag().native, rhs_abs.native)};
+        };
+    };
+
+} div;
 
 }    // namespace pcx::simd
 #undef PCX_AINLINE
