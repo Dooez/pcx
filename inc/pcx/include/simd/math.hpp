@@ -100,7 +100,7 @@ constexpr struct {
     }
 } sub;
 
-constexpr struct mul_t : pcx::i::multi_stage_op<2> {
+constexpr struct mul_t : pcx::i::multi_stage_op_base<2> {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::mul(lhs.native, rhs.native);
@@ -175,7 +175,7 @@ public:
     };
 } mul;
 
-constexpr struct div_t : i::multi_stage_op<3> {
+constexpr struct div_t : i::multi_stage_op_base<3> {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::div(lhs.native, rhs.native);
