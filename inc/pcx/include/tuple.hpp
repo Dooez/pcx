@@ -224,7 +224,7 @@ struct has_group_invoke_result_h<0, F, Args...> {
 };
 template<typename F, typename... Args>
 struct has_group_invoke_result {
-    static constexpr bool value = has_group_invoke_result_h<(..., tuple_size_v<Args>), F, Args...>::value;
+    static constexpr bool value = has_group_invoke_result_h<(..., tuple_size_v<Args>)-1, F, Args...>::value;
 };
 
 
