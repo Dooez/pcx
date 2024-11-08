@@ -6,7 +6,7 @@ using u64 = std::uint64_t;
 template<uZ I>
 using uZ_constant = std::integral_constant<uZ, I>;
 constexpr struct s_t : pcx::i::multi_stage_op_base<2> {
-    auto operator()(int i) const {
+    [[gnu::always_inline]] auto operator()(int i) const {
         return i * 4 + 100;
     };
 
@@ -19,19 +19,19 @@ constexpr struct s_t : pcx::i::multi_stage_op_base<2> {
 
 template<>
 struct s_t::stage_t<0> {
-    auto operator()(int i) const {
+    [[gnu::always_inline]] auto operator()(int i) const {
         return i * 2;
     };
 };
 template<>
 struct s_t::stage_t<1> {
-    auto operator()(int i) const {
+    [[gnu::always_inline]] auto operator()(int i) const {
         return i + 1;
     };
 };
 
 constexpr struct s_nr_t : pcx::i::multi_stage_op_base<2> {
-    auto operator()(int i) const {
+    [[gnu::always_inline]] auto operator()(int i) const {
         std::print("{}", i * 4 + 100);
     };
 
@@ -44,16 +44,20 @@ constexpr struct s_nr_t : pcx::i::multi_stage_op_base<2> {
 
 template<>
 struct s_nr_t::stage_t<0> {
-    auto operator()(int i) const {
+    [[gnu::always_inline]] auto operator()(int i) const {
         return i * 3;
     };
 };
 template<>
 struct s_nr_t::stage_t<1> {
-    void operator()(int i) const {
+    [[gnu::always_inline]] void operator()(int i) const {
         std::print("{}\n", i + 1);
     };
 };
+
+auto foo(std::tuple<int, int, int> x) {
+    return pcx::i::group_invoke(staged, x);
+}
 
 int main() {
     using namespace pcx;
