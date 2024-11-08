@@ -1,25 +1,24 @@
 ---
 AccessModifierOffset: "-4"
 AlignAfterOpenBracket: Align
-AlignConsecutiveMacros: "true"
-AlignConsecutiveAssignments: "true"
-AlignConsecutiveDeclarations: "true"
+AlignConsecutiveMacros: true
+AlignConsecutiveDeclarations: true
 AlignEscapedNewlines: Left
 AlignOperands: Align
-AlignTrailingComments: "true"
-AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
-AllowShortCaseLabelsOnASingleLine: "false"
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: All
-AllowShortLoopsOnASingleLine: "false"
+AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterReturnType: None
-AlwaysBreakBeforeMultilineStrings: "false"
+AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
-BinPackArguments: "false"
-BinPackParameters: "false"
-BreakBeforeBinaryOperators: None
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterCaseLabel: false
@@ -27,44 +26,42 @@ BraceWrapping:
   AfterControlStatement: Never
   AfterEnum: false
   AfterFunction: false
-  AfterNamespace: "false"
+  AfterNamespace: false
   AfterStruct: false
   AfterUnion: false
   BeforeElse: false
-BreakBeforeTernaryOperators: "true"
+  BeforeCatch: false
+  BeforeLambdaBody: false
+BreakBeforeTernaryOperators: true
 BreakConstructorInitializers: BeforeComma
 BreakInheritanceList: BeforeComma
 ColumnLimit: 110
-CompactNamespaces: "false"
+CompactNamespaces: false
 ConstructorInitializerIndentWidth: "0"
-ExperimentalAutoDetectBinPacking: "false"
-FixNamespaceComments: "true"
+ExperimentalAutoDetectBinPacking: false
+FixNamespaceComments: true
 IncludeBlocks: Regroup
 IndentWidth: "4"
-IndentWrappedFunctionNames: "false"
-KeepEmptyLinesAtTheStartOfBlocks: "false"
+IndentWrappedFunctionNames: false
+KeepEmptyLinesAtTheStartOfBlocks: false
 Language: Cpp
 MaxEmptyLinesToKeep: "2"
 NamespaceIndentation: None
 PenaltyReturnTypeOnItsOwnLine: "100"
 PointerAlignment: Left
-ReflowComments: "false"
+ReflowComments: false
 SortIncludes: CaseSensitive
-SortUsingDeclarations: "true"
-SpaceAfterCStyleCast: "false"
-SpaceAfterLogicalNot: "false"
-SpaceAfterTemplateKeyword: "false"
-SpaceBeforeAssignmentOperators: "true"
-SpaceBeforeCtorInitializerColon: "true"
-SpaceBeforeInheritanceColon: "true"
-SpaceBeforeParens: ControlStatements
-SpaceInEmptyParentheses: "false"
+SortUsingDeclarations: LexicographicNumeric
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
 SpacesBeforeTrailingComments: "4"
-SpacesInAngles: "false"
-SpacesInCStyleCastParentheses: "false"
-SpacesInContainerLiterals: "false"
-SpacesInParentheses: "false"
-SpacesInSquareBrackets: "false"
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpacesInSquareBrackets: false
 Standard: Latest
 TabWidth: "4"
 UseTab: Never
@@ -74,7 +71,6 @@ BreakBeforeConceptDeclarations: Always
 SpaceBeforeSquareBrackets: false
 SpaceBeforeRangeBasedForLoopColon: false
 SpaceInEmptyBlock: false
-SpacesInConditionalStatement: false
 AlignArrayOfStructures: Left
 QualifierAlignment: Left
 ReferenceAlignment: Left
@@ -91,3 +87,9 @@ SpaceBeforeParensOptions:
   AfterRequiresInExpression: false
   BeforeNonEmptyParentheses: false
   AfterOverloadedOperator: false
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+BreakAfterAttributes: Leave
+IndentRequiresClause: true
+AttributeMacros: [PCX_LAINLINE]
