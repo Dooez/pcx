@@ -242,10 +242,6 @@ concept group_invocable_with_result = group_invocable<F, Args...>    //
 
 
 template<typename F, typename... Args>
-    requires group_invocable<F, Args...>
-constexpr void group_invoke(F&& f, Args&&... args);
-
-template<typename F, typename... Args>
     requires group_invocable_with_result<F, Args...>
 constexpr auto group_invoke(F&& f, Args&&... args) {
     if constexpr (multistage_op<std::remove_cvref_t<F>>) {
@@ -275,6 +271,38 @@ constexpr auto group_invoke(F&& f, Args&&... args) {
             return result_tuple(invoker(uZ_constant<Is>{},    //
                                         std::forward<F>(f),
                                         std::forward<Args>(args)...)...);
+        }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
+    }
+};
+
+template<typename F, typename... Args>
+    requires group_invocable<F, Args...>
+constexpr void group_invoke(F&& f, Args&&... args) {
+    if constexpr (multistage_op<std::remove_cvref_t<F>>) {
+        constexpr uZ stage_count = std::remove_cvref_t<F>::stage_count;
+        if constexpr (stage_count > 1) {
+            return []<typename T, uZ I = 1>(this auto&& invoke, const auto& f, T&& arg, uZ_constant<I> = {}) {
+                if constexpr (I == stage_count - 1) {
+                    group_invoke(f.template stage<I>, std::forward<T>(arg));
+                } else {
+                    invoke(static_cast<F&&>(f),    //
+                           group_invoke(f.template stage<I>, std::forward<T>(arg)),
+                           uZ_constant<I + 1>{});
+                }
+            }(static_cast<F&&>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
+        } else {
+            group_invoke(f.template stage<0>, std::forward<Args>(args)...);
+        };
+    } else {
+        constexpr auto group_size = (..., tuple_size_v<Args>);
+        return []<uZ... Is>(std::index_sequence<Is...>, F&& f, Args&&... args) {
+            constexpr auto invoker = []<uZ I>(uZ_constant<I>, F&& f, Args&&... args) -> decltype(auto) {
+                f(get<I>(std::forward<Args>(args))...);
+            };
+            (invoker(uZ_constant<Is>{},    //
+                     std::forward<F>(f),
+                     std::forward<Args>(args)...),
+             ...);
         }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
     }
 };
