@@ -57,6 +57,7 @@ PCX_AINLINE auto repack(V vec) {
     using repack = traits::template repack<PackSize, V::pack_size()>;
     return repacked_vec(repack::permute(vec.real(), vec.imag()));
 }
+
 template<tight_cx_vec V>
 PCX_AINLINE auto evaluate(V vec) {
     using real_t    = V::real_type;

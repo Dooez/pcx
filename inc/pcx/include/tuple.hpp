@@ -166,6 +166,7 @@ PCX_AINLINE auto make_broadcast_tuple(T&& v) {
         return make_tuple((void(Is), v)...);
     }(static_cast<T&&>(v), std::make_index_sequence<TupleSize>{});
 }
+
 namespace detail_ {
 template<typename T, uZ I>
 using broadcast_type_t = T;
@@ -180,7 +181,8 @@ struct broadcast_tuple {
     using type = broadcast_tuple_impl<T, std::make_index_sequence<TupleSize>>;
 };
 }    // namespace detail_
-
+template<uZ TupleSize, typename T>
+using boradcast_tuple_t = detail_::broadcast_tuple<TupleSize, T>;
 
 using std::tuple_element;
 using std::tuple_element_t;
