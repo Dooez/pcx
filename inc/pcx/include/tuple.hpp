@@ -1,3 +1,4 @@
+#include "pcx/include/meta.hpp"
 #include "pcx/include/types.hpp"
 
 #include <tuple>
@@ -143,8 +144,10 @@ struct std::tuple_element<I, pcx::h::ituple<Ts...>> {
 };
 
 namespace pcx::i {
+
 template<typename... Ts>
 using tuple = std::tuple<Ts...>;
+
 template<typename... Args>
 PCX_AINLINE auto make_tuple(Args&&... args) {
     return std::make_tuple(std::forward<Args>(args)...);
@@ -163,6 +166,21 @@ PCX_AINLINE auto make_broadcast_tuple(T&& v) {
         return make_tuple((void(Is), v)...);
     }(static_cast<T&&>(v), std::make_index_sequence<TupleSize>{});
 }
+namespace detail_ {
+template<typename T, uZ I>
+using broadcast_type_t = T;
+template<typename T, meta::any_index_sequence Is>
+struct broadcast_tuple_impl;
+template<typename T, uZ... Is>
+struct broadcast_tuple_impl<T, std::index_sequence<Is...>> {
+    using type = tuple<broadcast_type_t<T, Is>...>;
+};
+template<uZ TupleSize, typename T>
+struct broadcast_tuple {
+    using type = broadcast_tuple_impl<T, std::make_index_sequence<TupleSize>>;
+};
+}    // namespace detail_
+
 
 using std::tuple_element;
 using std::tuple_element_t;

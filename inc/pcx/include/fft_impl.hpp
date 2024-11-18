@@ -62,8 +62,8 @@ struct order {
 
     static constexpr auto tw = []<uZ... N>(std::index_sequence<N...>) -> std::array<uZ, sizeof...(N)> {
         if constexpr (DecInTime) {
-            return {(N > 0 ? (1U << log2i(N + 1)) - 1 +
-                                 reverse_bit_order(1 + N - (1U << log2i(N + 1)), log2i(N + 1))
+            return {(N > 0 ? (1U << log2i(N + 1)) - 1
+                                 + reverse_bit_order(1 + N - (1U << log2i(N + 1)), log2i(N + 1))
                            : 0)...};
         } else {
             return {N...};
