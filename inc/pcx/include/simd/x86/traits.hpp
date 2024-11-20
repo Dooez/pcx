@@ -1,9 +1,10 @@
 #ifndef PCX_SIMD_TRAITS_HPP
 #define PCX_SIMD_TRAITS_HPP
 
+#include "pcx/include/tuple.hpp"
+
 #include <concepts>
 #include <immintrin.h>
-#include <tuple>
 
 namespace pcx {
 using uZ  = std::size_t;
@@ -13,7 +14,6 @@ using f64 = double;
 
 // NOLINTBEGIN(*portability*, *magic-number*)
 
-#define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
 namespace pcx::simd::detail_ {
 
 template<typename T>
@@ -80,11 +80,12 @@ struct vec_traits<f32, 16> {
     };
 
     // clang-format off
-    using tup16 = std::tuple<native, native, native, native,
-                             native, native, native, native,
-                             native, native, native, native,
-                             native, native, native, native>;
+    /*using tup16 = std::tuple<native, native, native, native,*/
+    /*                         native, native, native, native,*/
+    /*                         native, native, native, native,*/
+    /*                         native, native, native, native>;*/
     // clong-format on
+    using tup16 = ii::broadcast_tuple_t<16, native>;
 
     PCX_AINLINE static auto bit_reverse(tup16 tup) {
         constexpr auto unpck1lo = [](native a, native b) { return _mm512_unpacklo_ps(a, b); };
@@ -113,26 +114,26 @@ struct vec_traits<f32, 16> {
         };
 
         auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 8>(tup))...,
-                                   unpck1hi(std::get<Is>(tup), std::get<Is + 8>(tup))...);
+            return ii::make_tuple(unpck1lo(ii::get<Is>(tup), ii::get<Is + 8>(tup))...,
+                                   unpck1hi(ii::get<Is>(tup), ii::get<Is + 8>(tup))...);
         }(tup, std::make_index_sequence<8>{});
 
         auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 4>(tup))...,
-                                   unpck2hi(std::get<Is>(tup), std::get<Is + 4>(tup))...);
+            return ii::make_tuple(unpck2lo(ii::get<Is>(tup), ii::get<Is + 4>(tup))...,
+                                   unpck2hi(ii::get<Is>(tup), ii::get<Is + 4>(tup))...);
         }(res1, std::index_sequence<0, 1, 2, 3, 8, 9, 10, 11>{});
 
         auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return std::make_tuple(unpck4lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
-                                   unpck4hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+            return ii::make_tuple(unpck4lo(ii::get<Is>(tup), ii::get<Is + 2>(tup))...,
+                                   unpck4hi(ii::get<Is>(tup), ii::get<Is + 2>(tup))...);
         }(res2, std::index_sequence<0, 1, 4, 5, 8, 9, 12, 13>{});
 
         auto res8 = [unpck8lo, unpck8hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return std::make_tuple(unpck8lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
-                                   unpck8hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+            return ii::make_tuple(unpck8lo(ii::get<Is>(tup), ii::get<Is + 1>(tup))...,
+                                   unpck8hi(ii::get<Is>(tup), ii::get<Is + 1>(tup))...);
         }(res4, std::index_sequence<0, 2, 4, 6, 8, 10, 12, 14>{});
         auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 8>(tup)...);
+            return ii::make_tuple(ii::get<Is>(tup)..., ii::get<Is + 8>(tup)...);
         }(res8, std::index_sequence<0, 2, 1, 3, 4, 6, 5, 7>{});
         return resort;
     }
@@ -361,9 +362,10 @@ struct vec_traits<f64, 8> {
         PCX_AINLINE static void permute(native& a, native& b) {}
     };
     // clang-format off
-    using tup8 = std::tuple<native, native, native, native,
-                            native, native, native, native>;
+    /*using tup8 = std::tuple<native, native, native, native,*/
+    /*                        native, native, native, native>;*/
     // clang-format on
+    using tup8 = ii::broadcast_tuple_t<8, native>;
     PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
         constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm512_unpacklo_pd(a, b); };
         constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm512_unpackhi_pd(a, b); };
@@ -385,18 +387,18 @@ struct vec_traits<f64, 8> {
         };
 
         auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 4>(tup))...,
-                                   unpck1hi(std::get<Is>(tup), std::get<Is + 4>(tup))...);
+            return ii::make_tuple(unpck1lo(ii::get<Is>(tup), ii::get<Is + 4>(tup))...,
+                                  unpck1hi(ii::get<Is>(tup), ii::get<Is + 4>(tup))...);
         }(tup, std::make_index_sequence<4>{});
 
         auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
-                                   unpck2hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+            return ii::make_tuple(unpck2lo(ii::get<Is>(tup), ii::get<Is + 2>(tup))...,
+                                  unpck2hi(ii::get<Is>(tup), ii::get<Is + 2>(tup))...);
         }(res1, std::index_sequence<0, 1, 4, 5>{});
 
         auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck4lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
-                                   unpck4hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+            return ii::make_tuple(unpck4lo(ii::get<Is>(tup), ii::get<Is + 1>(tup))...,
+                                  unpck4hi(ii::get<Is>(tup), ii::get<Is + 1>(tup))...);
         }(res2, std::index_sequence<0, 2, 4, 6>{});
         return res4;
     }
@@ -573,9 +575,10 @@ struct vec_traits<f32, 8> {
     };
 
     // clang-format off
-    using tup8 = std::tuple<native, native, native, native,
-                            native, native, native, native>;
+    /*using tup8 = std::tuple<native, native, native, native,*/
+    /*                        native, native, native, native>;*/
     // clang-format on
+    using tup8 = ii::broadcast_tuple_t<8, native>;
     PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
         constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm256_unpacklo_ps(a, b); };
         constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm256_unpackhi_ps(a, b); };
@@ -589,22 +592,22 @@ struct vec_traits<f32, 8> {
         constexpr auto unpck4hi = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00110001); };
 
         auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 4>(tup))...,
-                                   unpck1hi(std::get<Is>(tup), std::get<Is + 4>(tup))...);
+            return ii::make_tuple(unpck1lo(ii::get<Is>(tup), ii::get<Is + 4>(tup))...,
+                                  unpck1hi(ii::get<Is>(tup), ii::get<Is + 4>(tup))...);
         }(tup, std::make_index_sequence<4>{});
 
         auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
-                                   unpck2hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+            return ii::make_tuple(unpck2lo(ii::get<Is>(tup), ii::get<Is + 2>(tup))...,
+                                  unpck2hi(ii::get<Is>(tup), ii::get<Is + 2>(tup))...);
         }(res1, std::index_sequence<0, 1, 4, 5>{});
 
         auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck4lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
-                                   unpck4hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+            return ii::make_tuple(unpck4lo(ii::get<Is>(tup), ii::get<Is + 1>(tup))...,
+                                  unpck4hi(ii::get<Is>(tup), ii::get<Is + 1>(tup))...);
         }(res2, std::index_sequence<0, 2, 4, 6>{});
 
         auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 4>(tup)...);
+            return ii::make_tuple(ii::get<Is>(tup)..., ii::get<Is + 4>(tup)...);
         }(res4, std::index_sequence<0, 2, 1, 3>{});
         return resort;
     }
@@ -748,7 +751,7 @@ struct vec_traits<f32, 4> {
         PCX_AINLINE static void permute(native& a, native& b) {};
     };
 
-    using tup4 = std::tuple<native, native, native, native>;
+    using tup4 = ii::broadcast_tuple_t<4, native>;
     PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
         constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm_unpacklo_ps(a, b); };
         constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm_unpackhi_ps(a, b); };
@@ -759,17 +762,17 @@ struct vec_traits<f32, 4> {
             return _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
         };
         auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
-                                   unpck1hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+            return ii::make_tuple(unpck1lo(ii::get<Is>(tup), ii::get<Is + 2>(tup))...,
+                                  unpck1hi(ii::get<Is>(tup), ii::get<Is + 2>(tup))...);
         }(tup, std::make_index_sequence<2>{});
 
         auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
-                                   unpck2hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+            return ii::make_tuple(unpck2lo(ii::get<Is>(tup), ii::get<Is + 1>(tup))...,
+                                  unpck2hi(ii::get<Is>(tup), ii::get<Is + 1>(tup))...);
         }(res1, std::index_sequence<0, 2>{});
 
         auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(std::get<Is>(tup)..., std::get<Is + 1>(tup)...);
+            return ii::make_tuple(ii::get<Is>(tup)..., ii::get<Is + 1>(tup)...);
         }(res2, std::index_sequence<0, 2>{});
         return resort;
     }
@@ -866,7 +869,7 @@ struct vec_traits<f64, 4> {
         PCX_AINLINE static void permute(native& a, native& b) {};
     };
 
-    using tup4 = std::tuple<native, native, native, native>;
+    using tup4 = ii::broadcast_tuple_t<4, native>;
     PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
         constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm256_unpacklo_pd(a, b); };
         constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm256_unpackhi_pd(a, b); };
@@ -874,13 +877,13 @@ struct vec_traits<f64, 4> {
         constexpr auto unpck2hi = [](native a, native b) { return _mm256_permute2f128_pd(a, b, 0b00110001); };
 
         auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck1lo(std::get<Is>(tup), std::get<Is + 2>(tup))...,
-                                   unpck1hi(std::get<Is>(tup), std::get<Is + 2>(tup))...);
+            return ii::make_tuple(unpck1lo(ii::get<Is>(tup), ii::get<Is + 2>(tup))...,
+                                  unpck1hi(ii::get<Is>(tup), ii::get<Is + 2>(tup))...);
         }(tup, std::make_index_sequence<2>{});
 
         auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return std::make_tuple(unpck2lo(std::get<Is>(tup), std::get<Is + 1>(tup))...,
-                                   unpck2hi(std::get<Is>(tup), std::get<Is + 1>(tup))...);
+            return ii::make_tuple(unpck2lo(ii::get<Is>(tup), ii::get<Is + 1>(tup))...,
+                                  unpck2hi(ii::get<Is>(tup), ii::get<Is + 1>(tup))...);
         }(res1, std::index_sequence<0, 2>{});
         return res2;
     }
@@ -977,10 +980,10 @@ struct vec_traits<f64, 2> {
     struct repack<P, P> {
         PCX_AINLINE static void permute(native& a, native& b) {};
     };
-    using tup2 = std::tuple<native, native>;
+    using tup2 = ii::tuple<native, native>;
     PCX_AINLINE static auto bit_reverse(tup2 tup) noexcept {
-        return std::make_tuple(_mm_unpacklo_pd(std::get<0>(tup), std::get<1>(tup)),
-                               _mm_unpackhi_pd(std::get<0>(tup), std::get<1>(tup)));
+        return ii::make_tuple(_mm_unpacklo_pd(ii::get<0>(tup), ii::get<1>(tup)),
+                              _mm_unpackhi_pd(ii::get<0>(tup), ii::get<1>(tup)));
     }
 };
 template<>
@@ -1001,6 +1004,4 @@ struct vec_traits<f64, 2>::repack<2, 1> {
 }    // namespace pcx::simd::detail_
 
 // NOLINTEND(*portability*, *magic-number*)
-
-#undef PCX_AINLINE
 #endif

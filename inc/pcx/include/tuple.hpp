@@ -1,12 +1,8 @@
+#pragma once
 #include "pcx/include/meta.hpp"
-#include "pcx/include/types.hpp"
 
 #include <tuple>
 #include <type_traits>
-
-#define PCX_AINLINE  [[gnu::always_inline, clang::always_inline]] inline
-#define PCX_LAINLINE [[gnu::always_inline, clang::always_inline]]
-
 
 namespace pcx::h {
 namespace detail_ {
@@ -143,7 +139,7 @@ struct std::tuple_element<I, pcx::h::ituple<Ts...>> {
     using type = pcx::h::detail_::index_into_types<I, Ts...>::type;
 };
 
-namespace pcx::i {
+namespace pcx::ii {
 
 template<typename... Ts>
 using tuple = std::tuple<Ts...>;
@@ -178,11 +174,11 @@ struct broadcast_tuple_impl<T, std::index_sequence<Is...>> {
 };
 template<uZ TupleSize, typename T>
 struct broadcast_tuple {
-    using type = broadcast_tuple_impl<T, std::make_index_sequence<TupleSize>>;
+    using type = broadcast_tuple_impl<T, std::make_index_sequence<TupleSize>>::type;
 };
 }    // namespace detail_
 template<uZ TupleSize, typename T>
-using boradcast_tuple_t = detail_::broadcast_tuple<TupleSize, T>;
+using broadcast_tuple_t = detail_::broadcast_tuple<TupleSize, T>::type;
 
 using std::tuple_element;
 using std::tuple_element_t;
@@ -370,6 +366,4 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
     }
 };
 
-}    // namespace pcx::i
-
-#undef PCX_AINLINE
+}    // namespace pcx::ii

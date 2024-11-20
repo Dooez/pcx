@@ -1,11 +1,10 @@
 #ifndef PCX_SIMD_COMMON_HPP
 #define PCX_SIMD_COMMON_HPP
-#include "pcx/include/types.hpp"
+
+#include "pcx/include/simd/traits.hpp"
 
 #include <algorithm>
 
-#define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
-// #define PCX_LBDINLINE [[gnu::always_inline, clang::always_inline]]
 namespace pcx::simd {
 
 template<uZ Width = max_width<f32>>
@@ -77,6 +76,4 @@ PCX_AINLINE auto evaluate(V vec) {
 };
 
 }    // namespace pcx::simd
-
-#undef PCX_ANILINE
 #endif

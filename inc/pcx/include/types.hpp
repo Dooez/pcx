@@ -5,7 +5,14 @@
 #include <cstdint>
 #include <type_traits>
 
-#define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
+#if defined(__clang__)
+#define PCX_AINLINE  [[clang::always_inline]] inline
+#define PCX_LAINLINE [[clang::always_inline]]
+#elif defined(__GNUC__) || defined(__GNUG__)
+#define PCX_AINLINE  [[gnu::always_inline]] inline
+#define PCX_LAINLINE [[gnu::always_inline]]
+#endif
+
 
 namespace pcx {
 using f32 = float;
@@ -156,8 +163,5 @@ concept compatible_cx_vec = (any_cx_vec<T> &&                                   
 
 }    // namespace simd
 }    // namespace pcx
-#undef PCX_AINLINE
-
-#include "pcx/include/simd/x86/traits.hpp"
 
 #endif

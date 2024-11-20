@@ -1,20 +1,14 @@
 #pragma once
+#include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
-#include "simd/common.hpp"
-#include "types.hpp"
-
-#define PCX_AINLINE [[gnu::always_inline, clang::always_inline]] inline
 
 namespace pcx::simd {
-// PCX_AINLINE auto btfly(any_cx_vec auto a, any_cx_vec auto b) {
-//     return std::make_tuple(add(a, b), sub(a, b));
-// }
 
 constexpr struct btfly_t {
     PCX_AINLINE static auto operator()(any_cx_vec auto a, any_cx_vec auto b) {
-        return i::make_tuple(a, b);
+        return ii::make_tuple(a, b);
     }
-} btfly;
+} btfly{};
 }    // namespace pcx::simd
 
 namespace pcx::detail_ {
@@ -150,7 +144,7 @@ private:
     static auto load(const std::array<U*, NodeSize>& data) {
         return []<uZ... Is>(std::index_sequence<Is...>, const auto& data) {
             constexpr auto& data_idx = order<NodeSize, Settings.dit>::data;
-            return i::make_tuple(simd::cxload<Settings.pack_src, Width>(data[data_idx[Is]])...);
+            return ii::make_tuple(simd::cxload<Settings.pack_src, Width>(data[data_idx[Is]])...);
         }(std::make_index_sequence<NodeSize>{}, data);
     }
 
@@ -158,12 +152,12 @@ private:
     static void store(const std::array<T*, NodeSize>& dest, const auto& data) {
         []<uZ... Is>(std::index_sequence<Is...>, const auto& dest, const auto& data) {
             constexpr auto& data_idx = order<NodeSize, Settings.dit>::data;
-            (simd::cxstore<Settings.pack_dest>(dest[data_idx[Is]], i::get<Is>(data)), ...);
+            (simd::cxstore<Settings.pack_dest>(dest[data_idx[Is]], ii::get<Is>(data)), ...);
         }(std::make_index_sequence<NodeSize>{}, dest, data);
     }
 
     template<uZ Level, bool Top, typename... Ts>
-    static auto get_half(const i::tuple<Ts...>& data) {
+    static auto get_half(const ii::tuple<Ts...>& data) {
         constexpr uZ size   = sizeof...(Ts);
         constexpr uZ stride = size / powi(2, Level);
         constexpr uZ start  = Top ? 0 : stride / 2;
@@ -172,11 +166,11 @@ private:
             constexpr auto iterate = []<uZ... Iters, uZ Offset>(std::index_sequence<Iters...>,
                                                                 uZ_constant<Offset>,
                                                                 const auto& data) {
-                return i::make_tuple(i::get<start + Offset + Iters>(data)...);
+                return ii::make_tuple(ii::get<start + Offset + Iters>(data)...);
             };
-            return i::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
-                                        uZ_constant<Grp * stride>{},
-                                        data)...);
+            return ii::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
+                                         uZ_constant<Grp * stride>{},
+                                         data)...);
         }(std::make_index_sequence<size / stride>{}, data);
     }
     template<uZ Level>
@@ -195,22 +189,22 @@ private:
         auto tws = []<uZ... Itw>(std::index_sequence<Itw...>, const auto& tw) {
             // constexpr auto make_rep =
             //     []<uZ... Reps, uZ I>(std::index_sequence<Reps...>, uZ_constant<I>, auto tw) {
-            //         return i::make_tuple(((void)Reps, tw[powi(2UL, Level) - 1 + I])...);
+            //         return ii::make_tuple(((void)Reps, tw[powi(2UL, Level) - 1 + I])...);
             //     };
-            // return i::tuple_cat(make_rep(std::make_index_sequence<NodeSize / 2 / sizeof...(Itw)>{},    //
+            // return ii::tuple_cat(make_rep(std::make_index_sequence<NodeSize / 2 / sizeof...(Itw)>{},    //
             //                              uZ_constant<Itw>{},
             //                              tw)...);
             //
             constexpr auto repeats = NodeSize / 2 / sizeof...(Itw);
             constexpr auto start   = powi(2UZ, Level) - 1;
-            return i::tuple_cat(i::make_broadcast_tuple<repeats>(tw[start + Itw])...);
+            return ii::tuple_cat(ii::make_broadcast_tuple<repeats>(tw[start + Itw])...);
         }(std::make_index_sequence<powi(2UZ, Level)>{}, tw);
 
-        auto bottom_tw = i::group_invoke(simd::mul, bottom, tws);
+        auto bottom_tw = ii::group_invoke(simd::mul, bottom, tws);
         auto top       = get_hi<Level>(data);
 
         return []<uZ... Is>(const auto& a, const auto& b, std::index_sequence<Is...>) {
-            return i::tuple_cat(simd::btfly(i::get<Is>(a), i::get<Is>(b))...);
+            return ii::tuple_cat(simd::btfly(i::get<Is>(a), ii::get<Is>(b))...);
         }(top, bottom_tw, std::make_index_sequence<powi(2UL, Level)>{});
     };
 
@@ -361,8 +355,4 @@ private:
     };
 };
 
-
 }    // namespace pcx::detail_
-
-
-#undef PCX_AINLINE
