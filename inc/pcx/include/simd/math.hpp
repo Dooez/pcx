@@ -115,13 +115,13 @@ struct mul_stage<0> {
         constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return ii::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, lhs, rhs);
+        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, lhs, rhs);
     }
 };
 template<>
 struct mul_stage<1> {
     template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
-    PCX_AINLINE auto operator()(ii::tuple<Res, Lhs, Rhs> args) const {
+    PCX_AINLINE auto operator()(tupi::tuple<Res, Lhs, Rhs> args) const {
         auto [res0, lhs, rhs] = args;
 
         constexpr auto width = Lhs::width();
@@ -158,7 +158,7 @@ struct mul_stage<1> {
 };
 }    // namespace detail_
 
-inline constexpr struct mul_t : pcx::ii::multi_stage_op_base<2> {
+inline constexpr struct mul_t : pcx::tupi::multi_stage_op_base<2> {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::mul(lhs.native, rhs.native);
@@ -195,13 +195,13 @@ struct div_stage<0> {
 
         using new_cx_vec =
             cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-        return ii::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
+        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
     };
 };
 template<>
 struct div_stage<1> {
     template<tight_cx_vec Res0, tight_cx_vec Lhs, tight_cx_vec Rhs>
-    PCX_AINLINE auto operator()(ii::tuple<Res0, typename Res0::vec_t, Lhs, Rhs> args) const {
+    PCX_AINLINE auto operator()(tupi::tuple<Res0, typename Res0::vec_t, Lhs, Rhs> args) const {
         constexpr auto width = Lhs::width();
         using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
         using vec            = Lhs::vec_t;
@@ -236,13 +236,13 @@ struct div_stage<1> {
         constexpr bool neg_imag = Res0::neg_imag() && im_reim_neg_imag;
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return ii::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_abs);
+        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_abs);
     };
 };
 template<>
 struct div_stage<2> {
     template<tight_cx_vec Res1>
-    PCX_AINLINE auto operator()(ii::tuple<Res1, typename Res1::vec_t> args) const {
+    PCX_AINLINE auto operator()(tupi::tuple<Res1, typename Res1::vec_t> args) const {
         constexpr auto width   = Res1::width();
         using traits           = detail_::vec_traits<typename Res1::real_type, width>;
         auto [cx_vec, rhs_abs] = args;
@@ -251,7 +251,7 @@ struct div_stage<2> {
     };
 };
 }    // namespace detail_
-inline constexpr struct div_t : ii::multi_stage_op_base<3> {
+inline constexpr struct div_t : tupi::multi_stage_op_base<3> {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::div(lhs.native, rhs.native);

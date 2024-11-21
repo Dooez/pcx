@@ -139,7 +139,8 @@ struct std::tuple_element<I, pcx::h::ituple<Ts...>> {
     using type = pcx::h::detail_::index_into_types<I, Ts...>::type;
 };
 
-namespace pcx::ii {
+// Tuple interface
+namespace pcx::tupi {
 
 template<typename... Ts>
 using tuple = std::tuple<Ts...>;
@@ -153,8 +154,8 @@ PCX_AINLINE auto tuple_cat(Ts&&... tuples) {
     return std::tuple_cat(std::forward<Ts>(tuples)...);
 }
 template<uZ I, typename T>
-PCX_AINLINE auto get(T&& tuple) {
-    return std::get<I>(std::forward<T>(tuple));
+PCX_AINLINE auto get(T&& v) {
+    return std::get<I>(std::forward<T>(v));
 }
 template<uZ TupleSize, typename T>
 PCX_AINLINE auto make_broadcast_tuple(T&& v) {
@@ -162,6 +163,7 @@ PCX_AINLINE auto make_broadcast_tuple(T&& v) {
         return make_tuple((void(Is), v)...);
     }(static_cast<T&&>(v), std::make_index_sequence<TupleSize>{});
 }
+
 
 namespace detail_ {
 template<typename T, uZ I>
@@ -172,13 +174,13 @@ template<typename T, uZ... Is>
 struct broadcast_tuple_impl<T, std::index_sequence<Is...>> {
     using type = tuple<broadcast_type_t<T, Is>...>;
 };
-template<uZ TupleSize, typename T>
+template<typename T, uZ TupleSize>
 struct broadcast_tuple {
     using type = broadcast_tuple_impl<T, std::make_index_sequence<TupleSize>>::type;
 };
 }    // namespace detail_
-template<uZ TupleSize, typename T>
-using broadcast_tuple_t = detail_::broadcast_tuple<TupleSize, T>::type;
+template<typename T, uZ TupleSize>
+using broadcast_tuple_t = detail_::broadcast_tuple<T, TupleSize>::type;
 
 using std::tuple_element;
 using std::tuple_element_t;
@@ -366,4 +368,19 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
     }
 };
 
-}    // namespace pcx::ii
+template<typename T>
+PCX_AINLINE auto make_flat_tuple(T&& tuple) {
+    if constexpr (any_tuple<std::remove_cvref_t<T>>) {
+        return []<uZ... Is, typename U> PCX_LAINLINE(std::index_sequence<Is...>, U&& tuple) {
+            return tuple_cat(make_flat_tuple(get<Is>(std::forward<U>(tuple)))...);
+        }(std::make_index_sequence<tuple_size_v<std::remove_cvref_t<T>>>{}, std::forward<T>(tuple));
+    } else {
+        return make_tuple(tuple);
+    }
+}
+template<typename... Ts>
+PCX_AINLINE auto make_flat_tuple(Ts&&... args) {
+    return tuple_cat(make_flat_tuple(std::forward<Ts>(args))...);
+}
+
+}    // namespace pcx::tupi
