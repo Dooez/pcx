@@ -169,7 +169,6 @@ inline constexpr struct mul_t : pcx::tupi::multi_stage_op_base<2> {
         return stage<1>(stage<0>(lhs, rhs));
     };
 
-public:
     template<uZ I>
     constexpr static detail_::mul_stage<I> stage{};
 } mul;

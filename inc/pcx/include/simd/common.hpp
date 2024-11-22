@@ -41,7 +41,7 @@ PCX_AINLINE auto cxload(const f64* src) {
     };
 }
 template<uZ DestPackSize, eval_cx_vec V>
-    requires(DestPackSize == V::width() || (tight_cx_vec<V> && DestPackSize > V::width()))
+    requires(DestPackSize == V::pack_size() || (tight_cx_vec<V> && DestPackSize > V::width()))
 PCX_AINLINE auto cxstore(typename V::real_type* dest, V data) {
     constexpr uZ store_offset = std::max(DestPackSize, V::width());
     store(dest, data.real());
@@ -50,11 +50,12 @@ PCX_AINLINE auto cxstore(typename V::real_type* dest, V data) {
 template<uZ PackSize, any_cx_vec V>
     requires power_of_two<PackSize> && (PackSize <= V::width())
 PCX_AINLINE auto repack(V vec) {
-    using repacked_vec =
-        cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), V::pack_size()>;
-    using traits = detail_::vec_traits<typename V::real_type, V::width()>;
-    using repack = traits::template repack<PackSize, V::pack_size()>;
-    return repacked_vec(repack::permute(vec.real(), vec.imag()));
+    using repacked_vec_t = cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackSize>;
+    using traits         = detail_::vec_traits<typename V::real_type, V::width()>;
+    using repack         = traits::template repack<PackSize, V::pack_size()>;
+    auto repacked        = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
+    repack::permute(repacked.real().native, vec.imag().native);
+    return repacked;
 }
 
 template<tight_cx_vec V>

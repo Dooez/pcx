@@ -143,7 +143,11 @@ private:
     PCX_AINLINE static auto load(const auto& data) {
         return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, const auto& data) {
             constexpr auto& data_idx = order<NodeSize, Settings.dit>::data;
-            return tupi::make_tuple(simd::cxload<Settings.pack_src, Width>(tupi::get<data_idx[Is]>(data))...);
+            return tupi::make_tuple(                           //
+                simd::repack<Width>(                           //
+                    simd::cxload<Settings.pack_src, Width>(    //
+                        tupi::get<data_idx[Is]>(data)))        //
+                ...);
         }(std::make_index_sequence<NodeSize>{}, data);
     }
 
@@ -151,7 +155,9 @@ private:
     PCX_AINLINE static void store(const dest_t& dest, const auto& data) {
         []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, const auto& dest, const auto& data) {
             constexpr auto& data_idx = order<NodeSize, Settings.dit>::data;
-            (simd::cxstore<Settings.pack_dest>(tupi::get<data_idx[Is]>(dest), tupi::get<Is>(data)), ...);
+            (simd::cxstore<Settings.pack_dest>(tupi::get<data_idx[Is]>(dest),
+                                               simd::repack<Settings.pack_dest>(tupi::get<Is>(data))),
+             ...);
         }(std::make_index_sequence<NodeSize>{}, dest, data);
     }
 

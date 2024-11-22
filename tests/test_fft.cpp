@@ -1,30 +1,13 @@
 // #define PCX_AVX512
 #include "pcx/include/fft_impl.hpp"
 
+#include <complex>
 #include <print>
 #include <ranges>
 namespace stdv = std::views;
 
 
 using namespace pcx;
-void foo(f32* dest, const f32* tw) {
-    using node_t    = detail_::btfly_node<4, float, 16>;
-    auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
-        return pcx::tupi::make_tuple((dest + 16 * Is)...);
-    }(dest, std::make_index_sequence<4>());
-    auto tw_tuple = []<uZ... Is>(auto* tw, std::index_sequence<Is...>) {
-        return tupi::make_tuple(simd::cxload<16>(tw + 16 * Is)...);
-    }(tw, std::make_index_sequence<3>{});
-
-    constexpr auto settings = node_t::settings{
-        .pack_dest = 16,
-        .pack_src  = 16,
-        .conj_tw   = false,
-        .dit       = false,
-    };
-    node_t::perform<settings>(dest_tuple, tw_tuple);
-};
-
 auto direct_btfly_0(auto dest, auto tw) {
     auto a0 = *get<0>(dest);
     auto a1 = *get<1>(dest);
@@ -74,7 +57,7 @@ auto direct_btfly_1(auto dest, auto tw) {
     b0 *= get<0>(tw);
     b1 *= get<0>(tw);
     b2 *= get<1>(tw);
-    b3 *= get<2>(tw);
+    b3 *= get<1>(tw);
 
     auto bf0 = a0 + b0;
     auto bf1 = a1 + b1;
@@ -141,41 +124,37 @@ void foo(f32* dest, const f32* tw) {
     }(tw, std::make_index_sequence<3>{});
 
     constexpr auto settings = node_t::settings{
-        .pack_dest = 16,
-        .pack_src  = 16,
+        .pack_dest = 1,
+        .pack_src  = 1,
         .conj_tw   = false,
         .dit       = false,
     };
     node_t::perform<settings>(dest_tuple, tw_tuple);
 };
 
-void bar(f32* dest, const f32* tw) {
-    using node_t    = detail_::btfly_node<4, float, 16>;
-    auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
-        return pcx::tupi::make_tuple((dest + 16 * Is)...);
-    }(dest, std::make_index_sequence<4>());
-    auto tw_tuple = []<uZ... Is>(auto* tw, std::index_sequence<Is...>) {
-        return tupi::make_tuple(simd::cxload<16>(tw + 16 * Is)...);
-    }(tw, std::make_index_sequence<3>{});
-
-    constexpr auto settings = node_t::settings{
-        .pack_dest = 16,
-        .pack_src  = 16,
-        .conj_tw   = false,
-        .dit       = false,
-    };
-    node_t::perform<settings>(dest_tuple, tw_tuple);
+void bar(std::complex<f32>* dest, const f32* tw) {
+    auto tw0 = tupi::make_tuple(tw[0]);
+    auto tw1 = tupi::make_tuple(tw[1], tw[2]);
+    auto tw2 = tupi::make_tuple(tw[3], tw[4], tw[5], tw[6]);
+    for (auto i: stdv::iota(16)) {
+        auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
+            return pcx::tupi::make_tuple((dest + 16 * Is)...);
+        }(dest + i, std::make_index_sequence<8>());
+        direct_btfly_0(dest_tuple, tw0);
+        direct_btfly_1(dest_tuple, tw1);
+        direct_btfly_2(dest_tuple, tw2);
+    }
 };
-
 
 int main() {
-    auto data = []<uZ... Is>(std::index_sequence<Is...>) {
+    auto data0 = []<uZ... Is>(std::index_sequence<Is...>) {
         return std::array{f32{Is}...};
     }(std::make_index_sequence<16 * 8 * 2>{});
-    auto tw = std::array<float, 16 * 8 * 2>{};
+    auto data1 = data0;
+    auto tw    = std::array<float, 16 * 8 * 2>{};
     tw.fill(1);
-    foo(data.data(), tw.data());
-    for (auto v: data) {
+    foo(data0.data(), tw.data());
+    for (auto v: data0) {
         std::print("{} ", v);
     }
     std::println();
