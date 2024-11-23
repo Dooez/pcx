@@ -8,111 +8,37 @@ namespace stdv = std::views;
 
 
 using namespace pcx;
-auto direct_btfly_0(auto dest, auto tw) {
-    auto a0 = *get<0>(dest);
-    auto a1 = *get<1>(dest);
-    auto a2 = *get<2>(dest);
-    auto a3 = *get<3>(dest);
 
-    auto b0 = *get<4>(dest);
-    auto b1 = *get<5>(dest);
-    auto b2 = *get<6>(dest);
-    auto b3 = *get<7>(dest);
+namespace pcxt {
 
-    b0 *= get<0>(tw);
-    b1 *= get<0>(tw);
-    b2 *= get<0>(tw);
-    b3 *= get<0>(tw);
+template<typename T>
+auto cmul(std::complex<T> a, std::complex<T> b) {
+    auto* ca    = reinterpret_cast<T*>(&a);
+    auto* cb    = reinterpret_cast<T*>(&b);
+    auto  va    = simd::cxbroadcast<1>(ca);
+    auto  vb    = simd::cxbroadcast<1>(cb);
+    using vec_t = decltype(va);
 
-    auto bf0 = a0 + b0;
-    auto bf1 = a1 + b1;
-    auto bf2 = a2 + b2;
-    auto bf3 = a3 + b3;
+    auto rva = simd::repack<vec_t::width()>(va);
+    auto rvb = simd::repack<vec_t::width()>(vb);
 
-    auto bf4 = a0 - b0;
-    auto bf5 = a1 - b1;
-    auto bf6 = a2 - b2;
-    auto bf7 = a3 - b3;
+    using resarr = std::array<std::complex<T>, vec_t::width()>;
+    auto res     = resarr{};
+    auto resptr  = reinterpret_cast<T*>(res.data());
 
-    *get<0>(dest) = bf0;
-    *get<1>(dest) = bf1;
-    *get<2>(dest) = bf2;
-    *get<3>(dest) = bf3;
-    *get<4>(dest) = bf4;
-    *get<5>(dest) = bf5;
-    *get<6>(dest) = bf6;
-    *get<7>(dest) = bf7;
+    auto vres = simd::repack<1>(simd::mul(rva, rvb));
+    simd::cxstore<1>(resptr, vres);
 }
-auto direct_btfly_1(auto dest, auto tw) {
-    auto a0 = *get<0>(dest);
-    auto a1 = *get<1>(dest);
-    auto a2 = *get<4>(dest);
-    auto a3 = *get<5>(dest);
-
-    auto b0 = *get<2>(dest);
-    auto b1 = *get<3>(dest);
-    auto b2 = *get<6>(dest);
-    auto b3 = *get<7>(dest);
-
-    b0 *= get<0>(tw);
-    b1 *= get<0>(tw);
-    b2 *= get<1>(tw);
-    b3 *= get<1>(tw);
-
-    auto bf0 = a0 + b0;
-    auto bf1 = a1 + b1;
-    auto bf2 = a0 - b0;
-    auto bf3 = a1 - b1;
-
-    auto bf4 = a2 + b2;
-    auto bf5 = a3 + b3;
-    auto bf6 = a2 - b2;
-    auto bf7 = a3 - b3;
-
-    *get<0>(dest) = bf0;
-    *get<1>(dest) = bf1;
-    *get<2>(dest) = bf2;
-    *get<3>(dest) = bf3;
-    *get<4>(dest) = bf4;
-    *get<5>(dest) = bf5;
-    *get<6>(dest) = bf6;
-    *get<7>(dest) = bf7;
+template<typename T>
+void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
+    auto b_tw = cmul(*b, tw);
+    auto a_c  = *a;
+    *a        = a_c + b_tw;
+    *b        = a_c - b_tw;
 }
-auto direct_btfly_2(auto dest, auto tw) {
-    auto a0 = *get<0>(dest);
-    auto a1 = *get<2>(dest);
-    auto a2 = *get<4>(dest);
-    auto a3 = *get<6>(dest);
 
-    auto b0 = *get<1>(dest);
-    auto b1 = *get<3>(dest);
-    auto b2 = *get<5>(dest);
-    auto b3 = *get<7>(dest);
 
-    b0 *= get<0>(tw);
-    b1 *= get<1>(tw);
-    b2 *= get<2>(tw);
-    b3 *= get<3>(tw);
-
-    auto bf0 = a0 + b0;
-    auto bf1 = a0 - b0;
-    auto bf2 = a1 + b1;
-    auto bf3 = a1 - b1;
-
-    auto bf4 = a2 + b2;
-    auto bf5 = a2 - b2;
-    auto bf6 = a3 + b3;
-    auto bf7 = a3 - b3;
-
-    *get<0>(dest) = bf0;
-    *get<1>(dest) = bf1;
-    *get<2>(dest) = bf2;
-    *get<3>(dest) = bf3;
-    *get<4>(dest) = bf4;
-    *get<5>(dest) = bf5;
-    *get<6>(dest) = bf6;
-    *get<7>(dest) = bf7;
-}
+};    // namespace pcxt
 
 void foo(f32* dest, const f32* tw) {
     using node_t    = detail_::btfly_node<4, float, 16>;
@@ -132,17 +58,25 @@ void foo(f32* dest, const f32* tw) {
     node_t::perform<settings>(dest_tuple, tw_tuple);
 };
 
-void bar(std::complex<f32>* dest, const f32* tw) {
-    auto tw0 = tupi::make_tuple(tw[0]);
-    auto tw1 = tupi::make_tuple(tw[1], tw[2]);
-    auto tw2 = tupi::make_tuple(tw[3], tw[4], tw[5], tw[6]);
-    for (auto i: stdv::iota(16)) {
-        auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
-            return pcx::tupi::make_tuple((dest + 16 * Is)...);
-        }(dest + i, std::make_index_sequence<8>());
-        direct_btfly_0(dest_tuple, tw0);
-        direct_btfly_1(dest_tuple, tw1);
-        direct_btfly_2(dest_tuple, tw2);
+template<uZ VecSize>
+void bar8(std::complex<f32>* dest, const std::complex<f32>* tw) {
+    for (auto i: stdv::iota(VecSize)) {
+        auto* start = dest + i;
+
+        pcxt::btfly(start + 0 * VecSize, start + 4 * VecSize, tw[0]);
+        pcxt::btfly(start + 1 * VecSize, start + 5 * VecSize, tw[0]);
+        pcxt::btfly(start + 2 * VecSize, start + 6 * VecSize, tw[0]);
+        pcxt::btfly(start + 3 * VecSize, start + 7 * VecSize, tw[0]);
+
+        pcxt::btfly(start + 0 * VecSize, start + 2 * VecSize, tw[1]);
+        pcxt::btfly(start + 1 * VecSize, start + 3 * VecSize, tw[1]);
+        pcxt::btfly(start + 4 * VecSize, start + 6 * VecSize, tw[2]);
+        pcxt::btfly(start + 5 * VecSize, start + 7 * VecSize, tw[2]);
+
+        pcxt::btfly(start + 0 * VecSize, start + 1 * VecSize, tw[3]);
+        pcxt::btfly(start + 2 * VecSize, start + 3 * VecSize, tw[4]);
+        pcxt::btfly(start + 4 * VecSize, start + 5 * VecSize, tw[5]);
+        pcxt::btfly(start + 6 * VecSize, start + 7 * VecSize, tw[6]);
     }
 };
 

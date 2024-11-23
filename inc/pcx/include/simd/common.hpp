@@ -8,6 +8,14 @@
 namespace pcx::simd {
 
 template<uZ Width = max_width<f32>>
+PCX_AINLINE auto broadcast(const f32* src) {
+    return detail_::vec_traits<f32, Width>::set1(src);
+}
+template<uZ Width = max_width<f64>>
+PCX_AINLINE auto broadcast(const f64* src) {
+    return detail_::vec_traits<f64, Width>::set1(src);
+}
+template<uZ Width = max_width<f32>>
 PCX_AINLINE auto load(const f32* src) {
     return detail_::vec_traits<f32, Width>::load(src);
 }
@@ -19,7 +27,24 @@ template<typename T, uZ Width>
 PCX_AINLINE auto store(T* dest, vec<T, Width> data) {
     detail_::vec_traits<T, Width>::store(dest, data.native);
 }
-
+template<uZ SrcPackSize, uZ Width = max_width<f32>>
+PCX_AINLINE auto cxbroadcast(const f32* src) {
+    constexpr uZ load_offset = std::max(SrcPackSize, Width);
+    using cx_vec_t           = cx_vec<f32, false, false, Width>;
+    return cx_vec_t{
+        .m_real = broadcast<Width>(src),
+        .m_imag = broadcast<Width>(src + load_offset),    //NOLINT(*pointer*)
+    };
+}
+template<uZ SrcPackSize, uZ Width = max_width<f64>>
+PCX_AINLINE auto cxbroadcast(const f64* src) {
+    constexpr uZ load_offset = std::max(SrcPackSize, Width);
+    using cx_vec_t           = cx_vec<f64, false, false, Width>;
+    return cx_vec_t{
+        .m_real = broadcast<Width>(src),
+        .m_imag = broadcast<Width>(src + load_offset),    //NOLINT(*pointer*)
+    };
+}
 template<uZ SrcPackSize, uZ Width = max_width<f32>>
 PCX_AINLINE auto cxload(const f32* src) {
     constexpr uZ pack_size   = std::min(SrcPackSize, Width);
