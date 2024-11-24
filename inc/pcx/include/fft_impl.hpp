@@ -2,13 +2,15 @@
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
 #include "pcx/include/tuple.hpp"
+#include "pcx/include/types.hpp"
 
 #include <array>
 namespace pcx::simd {
 
 constexpr struct btfly_t {
     PCX_AINLINE static auto operator()(any_cx_vec auto a, any_cx_vec auto b) {
-        return std::make_tuple(add(a, b), sub(a, b));
+        // return std::make_tuple(add(a, b), sub(a, b));
+        return std::make_tuple(a, b);
     }
 } btfly{};
 }    // namespace pcx::simd
@@ -98,25 +100,25 @@ struct btfly_node {
         auto data_tup = load<Settings>(dest);
     };
 
-    template<settings Settings>
-    PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const full_tw_t& tw) {
-        auto data_tup = load<Settings>(src);
-        // TODO(Timofey): inverse / conj
-
-        auto p1 = data_tup;
-
-        auto res = []<uZ L = 0>(this auto&& f, const auto& data, const auto& tw, uZ_constant<L> = {}) {
-            if constexpr (powi(2, L + 1) == NodeSize) {
-                return btfly<L>(data, tw);
-            } else {
-                auto tmp = btfly<L>(data, tw);
-                return f(tmp, tw, uZ_constant<L + 1>{});
-            }
-        }(p1, tw);
-
-        // TODO(Timofey): inverse / conj
-        store<Settings>(dest, res);
-    }
+    // template<settings Settings>
+    // PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const full_tw_t& tw) {
+    //     auto data_tup = load<Settings>(src);
+    //     // TODO(Timofey): inverse / conj
+    //
+    //     auto p1 = data_tup;
+    //
+    //     auto res = []<uZ L = 0>(this auto&& f, const auto& data, const auto& tw, uZ_constant<L> = {}) {
+    //         if constexpr (powi(2, L + 1) == NodeSize) {
+    //             return btfly<L>(data, tw);
+    //         } else {
+    //             auto tmp = btfly<L>(data, tw);
+    //             return f(tmp, tw, uZ_constant<L + 1>{});
+    //         }
+    //     }(p1, tw);
+    //
+    //     // TODO(Timofey): inverse / conj
+    //     store<Settings>(dest, res);
+    // }
 
     template<settings Settings>
     PCX_AINLINE static void perform(const dest_t& dest, const full_tw_t& tw) {
@@ -127,7 +129,8 @@ struct btfly_node {
                                              const auto& data,
                                              const auto& tw,
                                              uZ_constant<L> = {}) {
-            if constexpr (powi(2, L + 1) == NodeSize) {
+            // if constexpr (powi(2, L + 1) == NodeSize ) {
+            if constexpr (L == 0) {
                 return btfly<L>(data, tw);
             } else {
                 auto tmp = btfly<L>(data, tw);
