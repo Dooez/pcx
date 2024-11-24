@@ -109,7 +109,7 @@ struct mul_stage<0> {
         using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
         using vec            = Lhs::vec_t;
         vec real             = traits::mul(lhs.real().native, rhs.real().native);
-        vec imag             = traits::mul(lhs.real().native, rhs.real().native);
+        vec imag             = traits::mul(lhs.real().native, rhs.imag().native);
 
         constexpr bool neg_real = Lhs::neg_real() != Rhs::neg_real();
         constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();

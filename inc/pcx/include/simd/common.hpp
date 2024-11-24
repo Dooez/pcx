@@ -4,16 +4,17 @@
 #include "pcx/include/simd/traits.hpp"
 
 #include <algorithm>
+#include <complex>
 
 namespace pcx::simd {
 
 template<uZ Width = max_width<f32>>
 PCX_AINLINE auto broadcast(const f32* src) {
-    return detail_::vec_traits<f32, Width>::set1(src);
+    return detail_::vec_traits<f32, Width>::set1(*src);
 }
 template<uZ Width = max_width<f64>>
 PCX_AINLINE auto broadcast(const f64* src) {
-    return detail_::vec_traits<f64, Width>::set1(src);
+    return detail_::vec_traits<f64, Width>::set1(*src);
 }
 template<uZ Width = max_width<f32>>
 PCX_AINLINE auto load(const f32* src) {
@@ -27,13 +28,21 @@ template<typename T, uZ Width>
 PCX_AINLINE auto store(T* dest, vec<T, Width> data) {
     detail_::vec_traits<T, Width>::store(dest, data.native);
 }
+// template<uZ SrcPackSize, uZ Width = max_width<f32>>
+// PCX_AINLINE auto cxbroadcast(const std::complex<f32>* src) {
+//     constexpr uZ load_offset = std::max(SrcPackSize, Width);
+//     using cx_vec_t           = cx_vec<f32, false, false, Width>;
+//     return cx_vec_t{
+//         .m_real = broadcast<Width>(src),
+//         .m_imag = broadcast<Width>(src + load_offset),    //NOLINT(*pointer*)
+//     };
+// }
 template<uZ SrcPackSize, uZ Width = max_width<f32>>
 PCX_AINLINE auto cxbroadcast(const f32* src) {
-    constexpr uZ load_offset = std::max(SrcPackSize, Width);
-    using cx_vec_t           = cx_vec<f32, false, false, Width>;
+    using cx_vec_t = cx_vec<f32, false, false, Width>;
     return cx_vec_t{
         .m_real = broadcast<Width>(src),
-        .m_imag = broadcast<Width>(src + load_offset),    //NOLINT(*pointer*)
+        .m_imag = broadcast<Width>(src + SrcPackSize),    //NOLINT(*pointer*)
     };
 }
 template<uZ SrcPackSize, uZ Width = max_width<f64>>
@@ -79,7 +88,7 @@ PCX_AINLINE auto repack(V vec) {
     using traits         = detail_::vec_traits<typename V::real_type, V::width()>;
     using repack         = traits::template repack<PackSize, V::pack_size()>;
     auto repacked        = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
-    repack::permute(repacked.real().native, vec.imag().native);
+    repack::permute(repacked.real().native, repacked.imag().native);
     return repacked;
 }
 
