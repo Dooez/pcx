@@ -1,6 +1,7 @@
 #ifndef PCX_SIMD_COMMON_HPP
 #define PCX_SIMD_COMMON_HPP
 
+#include "pcx/include/simd/math.hpp"
 #include "pcx/include/simd/traits.hpp"
 
 #include <algorithm>
@@ -98,7 +99,7 @@ PCX_AINLINE auto evaluate(V vec) {
     using eval_vec  = cx_vec<real_t, false, false, V::width()>;
     using vec_t     = V::vec_t;
     using traits    = detail_::vec_traits<real_t, V::width()>;
-    const auto zero = traits::zero();
+    const auto zero = vec_t(traits::zero());
     if constexpr (V::neg_real() && V::neg_imag()) {
         return eval_vec{sub(zero, vec.real()), sub(zero, vec.imag())};
     } else if constexpr (V::neg_real()) {

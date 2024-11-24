@@ -146,19 +146,19 @@ template<typename... Ts>
 using tuple = std::tuple<Ts...>;
 
 template<typename... Args>
-PCX_AINLINE auto make_tuple(Args&&... args) {
+PCX_AINLINE constexpr auto make_tuple(Args&&... args) {
     return std::make_tuple(std::forward<Args>(args)...);
 }
 template<typename... Ts>
-PCX_AINLINE auto tuple_cat(Ts&&... tuples) {
+PCX_AINLINE constexpr auto tuple_cat(Ts&&... tuples) {
     return std::tuple_cat(std::forward<Ts>(tuples)...);
 }
 template<uZ I, typename T>
-PCX_AINLINE auto get(T&& v) {
+PCX_AINLINE constexpr auto get(T&& v) {
     return std::get<I>(std::forward<T>(v));
 }
 template<uZ TupleSize, typename T>
-PCX_AINLINE auto make_broadcast_tuple(T&& v) {
+PCX_AINLINE constexpr auto make_broadcast_tuple(T&& v) {
     return []<uZ... Is> PCX_LAINLINE(auto&& v, std::index_sequence<Is...>) {
         return make_tuple((void(Is), v)...);
     }(static_cast<T&&>(v), std::make_index_sequence<TupleSize>{});

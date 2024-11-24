@@ -186,10 +186,10 @@ struct div_stage<0> {
         using vec            = Lhs::vec_t;
 
         vec real = traits::mul(lhs.real().native, rhs.real().native);
-        vec imag = traits::mul(lhs.real().native, rhs.real().native);
+        vec imag = traits::mul(lhs.real().native, rhs.imag().native);
 
         constexpr bool neg_real  = Lhs::neg_real() != Rhs::neg_real();
-        constexpr bool neg_imag  = Lhs::neg_real() != Rhs::neg_imag();
+        constexpr bool neg_imag  = Lhs::neg_real() == Rhs::neg_imag();
         vec            rhs_re_sq = traits::mul(rhs.real().native, rhs.real().native);
 
         using new_cx_vec =
@@ -210,7 +210,7 @@ struct div_stage<1> {
         vec imag;
         vec rhs_abs;
 
-        constexpr bool im_reim_neg_real = Lhs::neg_imag() != Rhs::neg_imag();
+        constexpr bool im_reim_neg_real = Lhs::neg_imag() == Rhs::neg_imag();
         constexpr bool im_reim_neg_imag = Lhs::neg_imag() != Rhs::neg_real();
 
         if constexpr (Res0::neg_real() == im_reim_neg_real) {
