@@ -10,7 +10,7 @@ namespace pcx::simd {
 constexpr struct btfly_t {
     PCX_AINLINE static auto operator()(any_cx_vec auto a, any_cx_vec auto b) {
         // return std::make_tuple(add(a, b), sub(a, b));
-        return std::make_tuple(a, b);
+        return std::make_tuple(b, a);
     }
 } btfly{};
 }    // namespace pcx::simd
@@ -163,33 +163,70 @@ private:
              ...);
         }(std::make_index_sequence<NodeSize>{}, dest, data);
     }
-
-    template<uZ Level, bool Top, simd::any_cx_vec... Ts>
-    PCX_AINLINE static auto get_half(const tupi::tuple<Ts...>& data) {
-        constexpr uZ size   = sizeof...(Ts);
-        constexpr uZ stride = size / powi(2, Level);
-        constexpr uZ start  = Top ? 0 : stride / 2;
-
-        return []<uZ... Grp> PCX_LAINLINE(std::index_sequence<Grp...>, const auto& data) {
-            constexpr auto iterate = []<uZ... Iters, uZ Offset> PCX_LAINLINE(std::index_sequence<Iters...>,
-                                                                             uZ_constant<Offset>,
-                                                                             const auto& data) {
-                return tupi::make_tuple(tupi::get<start + Offset + Iters>(data)...);
+    template<uZ Stride, simd::any_cx_vec... Ts>
+    PCX_AINLINE static auto extract_halves(const tupi::tuple<Ts...>& data) {
+        constexpr uZ   size     = sizeof...(Ts);
+        constexpr auto get_half = []<uZ... Grp, uZ Start> PCX_LAINLINE(auto data,
+                                                                       std::index_sequence<Grp...>,
+                                                                       uZ_constant<Start>) {
+            constexpr auto iterate = []<uZ... Iters, uZ Offset> PCX_LAINLINE(auto data,
+                                                                             std::index_sequence<Iters...>,
+                                                                             uZ_constant<Offset>) {
+                return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
-            return tupi::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
-                                           uZ_constant<Grp * stride>{},
-                                           data)...);
-        }(std::make_index_sequence<size / stride>{}, data);
-    }
-    template<uZ Level>
-    PCX_AINLINE static auto get_hi(const auto& data) {
-        return get_half<Level, true>(data);
-    }
-    template<uZ Level>
-    PCX_AINLINE static auto get_lo(const auto& data) {
-        return get_half<Level, false>(data);
+            return tupi::tuple_cat(iterate(data,
+                                           std::make_index_sequence<Stride / 2>{},
+                                           uZ_constant<Start + Grp * Stride>{})...);
+        };
+        return tupi::make_tuple(
+            get_half(data, std::make_index_sequence<size / Stride>{}, uZ_constant<0>{}),
+            get_half(data, std::make_index_sequence<size / Stride>{}, uZ_constant<Stride / 2>{}));
     }
 
+    template<uZ Stride, simd::any_cx_vec... Tsl, simd::any_cx_vec... Tsh>
+        requires(sizeof...(Tsl) == sizeof...(Tsh))
+    PCX_AINLINE static auto combine_halves(const tupi::tuple<Tsl...>& lo, const tupi::tuple<Tsh...>& hi) {
+        constexpr uZ size = sizeof...(Tsl) * 2;
+        return []<uZ... Grp>(auto lo, auto hi, std::index_sequence<Grp...>) {
+            constexpr auto iterate = []<uZ... Iters, uZ Offset>(auto lo,
+                                                                auto hi,
+                                                                std::index_sequence<Iters...>,
+                                                                uZ_constant<Offset>) {
+                return tupi::make_tuple(tupi::get<Offset + Iters>(lo)..., tupi::get<Offset + Iters>(hi)...);
+            };
+            return tupi::tuple_cat(iterate(lo,    //
+                                           hi,
+                                           std::make_index_sequence<Stride / 2>{},
+                                           uZ_constant<Grp * Stride / 2>{})...);
+        }(lo, hi, std::make_index_sequence<size / Stride>{});
+    }
+
+    // template<uZ Level, bool Top, simd::any_cx_vec... Ts>
+    // PCX_AINLINE static auto get_half(const tupi::tuple<Ts...>& data) {
+    //     constexpr uZ size   = sizeof...(Ts);
+    //     constexpr uZ stride = size / powi(2, Level);
+    //     constexpr uZ start  = Top ? 0 : stride / 2;
+    //
+    //     return []<uZ... Grp> PCX_LAINLINE(std::index_sequence<Grp...>, const auto& data) {
+    //         constexpr auto iterate = []<uZ... Iters, uZ Offset> PCX_LAINLINE(std::index_sequence<Iters...>,
+    //                                                                          uZ_constant<Offset>,
+    //                                                                          const auto& data) {
+    //             return tupi::make_tuple(tupi::get<start + Offset + Iters>(data)...);
+    //         };
+    //         return tupi::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
+    //                                        uZ_constant<Grp * stride>{},
+    //                                        data)...);
+    //     }(std::make_index_sequence<size / stride>{}, data);
+    // }
+    // template<uZ Level>
+    // PCX_AINLINE static auto get_hi(const auto& data) {
+    //     return get_half<Level, true>(data);
+    // }
+    // template<uZ Level>
+    // PCX_AINLINE static auto get_lo(const auto& data) {
+    //     return get_half<Level, false>(data);
+    // }
+    //
     template<uZ Level>
     PCX_AINLINE static auto btfly(const auto& data, const auto& tw) {
         auto tws = []<uZ... Itw>(std::index_sequence<Itw...>, const auto& tw) {
@@ -197,11 +234,16 @@ private:
             constexpr auto start   = powi(2UZ, Level) - 1;
             return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
         }(std::make_index_sequence<powi(2UZ, Level)>{}, tw);
-        auto lo        = get_lo<Level>(data);
-        auto hi        = get_hi<Level>(data);
-        auto lo_tw     = tupi::group_invoke(simd::mul, lo, tws);
-        auto btfly_res = tupi::group_invoke(simd::btfly, hi, lo_tw);
-        return tupi::make_flat_tuple(btfly_res);
+
+        constexpr auto stride = NodeSize / powi(2, Level);
+        auto [lo, hi]         = extract_halves<stride>(data);
+        auto hi_tw            = tupi::group_invoke(simd::mul, hi, tws);
+        auto btfly_res        = tupi::group_invoke(simd::btfly, lo, hi_tw);
+
+        auto new_lo = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
+        auto new_hi = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+        return tupi::make_flat_tuple(new_lo, new_hi);
+        // return combine_halves<stride>(new_lo, new_hi);
     };
 
     static constexpr auto next_pow_2(u64 v) {

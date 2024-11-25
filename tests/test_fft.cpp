@@ -37,7 +37,9 @@ void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
     auto a_c  = *a;
     // *a        = a_c + b_tw;
     // *b        = a_c - b_tw;
-    *b = b_tw;
+    *a = b_tw;
+    *b = a_c;
+    // *b        = b_tw;
 }
 
 
@@ -60,7 +62,7 @@ void foo(std::complex<f32>* dest, auto&& tw) {
         .pack_dest = 1,
         .pack_src  = 1,
         .conj_tw   = false,
-        .dit       = true,
+        .dit       = false,
     };
     node_t::perform<settings>(dest_tuple, tw_tuple);
 };
