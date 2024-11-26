@@ -35,11 +35,8 @@ template<typename T>
 void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
     auto b_tw = cmul(*b, tw);
     auto a_c  = *a;
-    // *a        = a_c + b_tw;
-    // *b        = a_c - b_tw;
-    *a = b_tw;
-    *b = a_c;
-    // *b        = b_tw;
+    *a        = a_c + b_tw;
+    *b        = a_c - b_tw;
 }
 
 
@@ -49,7 +46,7 @@ void foo(std::complex<f32>* dest, auto&& tw) {
     auto dest_r     = reinterpret_cast<f32*>(dest);
     using node_t    = detail_::btfly_node<8, float, 16>;
     auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
-        return pcx::tupi::make_tuple((dest + 16 * Is)...);
+        return pcx::tupi::make_tuple((dest + 16 * 2 * Is)...);
     }(dest_r, std::make_index_sequence<8>());
     auto tw_tuple = []<uZ... Is>(auto&& tw, std::index_sequence<Is...>) {
         return tupi::make_tuple(         //
@@ -77,15 +74,15 @@ void bar8(std::complex<f32>* dest, auto&& tw) {
         pcxt::btfly(start + 2 * VecSize, start + 6 * VecSize, tw[0]);
         pcxt::btfly(start + 3 * VecSize, start + 7 * VecSize, tw[0]);
 
-        // pcxt::btfly(start + 0 * VecSize, start + 2 * VecSize, tw[1]);
-        // pcxt::btfly(start + 1 * VecSize, start + 3 * VecSize, tw[1]);
-        // pcxt::btfly(start + 4 * VecSize, start + 6 * VecSize, tw[2]);
-        // pcxt::btfly(start + 5 * VecSize, start + 7 * VecSize, tw[2]);
+        pcxt::btfly(start + 0 * VecSize, start + 2 * VecSize, tw[1]);
+        pcxt::btfly(start + 1 * VecSize, start + 3 * VecSize, tw[1]);
+        pcxt::btfly(start + 4 * VecSize, start + 6 * VecSize, tw[2]);
+        pcxt::btfly(start + 5 * VecSize, start + 7 * VecSize, tw[2]);
         //
-        // pcxt::btfly(start + 0 * VecSize, start + 1 * VecSize, tw[3]);
-        // pcxt::btfly(start + 2 * VecSize, start + 3 * VecSize, tw[4]);
-        // pcxt::btfly(start + 4 * VecSize, start + 5 * VecSize, tw[5]);
-        // pcxt::btfly(start + 6 * VecSize, start + 7 * VecSize, tw[6]);
+        pcxt::btfly(start + 0 * VecSize, start + 1 * VecSize, tw[3]);
+        pcxt::btfly(start + 2 * VecSize, start + 3 * VecSize, tw[4]);
+        pcxt::btfly(start + 4 * VecSize, start + 5 * VecSize, tw[5]);
+        pcxt::btfly(start + 6 * VecSize, start + 7 * VecSize, tw[6]);
     }
 };
 
