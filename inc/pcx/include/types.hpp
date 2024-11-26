@@ -91,10 +91,6 @@ struct cx_vec {
     using real_type = T;
     using vec_t     = vec<T, Width>;
 
-    template<uZ NewPackSize>
-        requires(NewPackSize <= Width)
-    using repacked_vec = cx_vec<T, NReal, NImag, Width, NewPackSize>;
-
     vec_t m_real;
     vec_t m_imag;
 

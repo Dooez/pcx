@@ -222,12 +222,12 @@ private:
         }(std::make_index_sequence<Size>{}, tw);
 
         constexpr auto stride = NodeSize / Size;
-        auto [lo, hi]         = extract_halves<stride>(data);
-        auto hi_tw            = tupi::group_invoke(simd::mul, hi, tws);
-        auto btfly_res        = tupi::group_invoke(simd::btfly, lo, hi_tw);
 
-        auto new_lo = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
-        auto new_hi = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+        auto [lo, hi]  = extract_halves<stride>(data);
+        auto hi_tw     = tupi::group_invoke(simd::mul, hi, tws);
+        auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
+        auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
+        auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
         return combine_halves<stride>(new_lo, new_hi);
     };
 
@@ -256,14 +256,54 @@ private:
      */
     // template<uZ ITw>
     // struct const_btfly_impl {
-    // template<uZ Offset, uZ... Is>
-    // static auto step0(const auto& /*top*/,
-    //                   const auto& bottom,    //
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     auto tw = simd::broadcast(&const_tw<T, ITw>::value);
-    //     return std::make_tuple(simd::detail_::mul_real_rhs(std::get<Offset + Is>(bottom), tw)...);
-    // }
+    //     template<uZ Offset, uZ... Is>
+    //     static auto step0(const auto& /*top*/,
+    //                       const auto& bottom,    //
+    //                       uZ_constant<Offset>,
+    //                       std::index_sequence<Is...>) {
+    //         auto tw = simd::broadcast(&const_tw<T, ITw>::value);
+    //         return std::make_tuple(simd::detail_::mul_real_rhs(std::get<Offset + Is>(bottom), tw)...);
+    //     }
+    // };
+
+    template<uZ Size>
+    struct const_btfly_t;
+    template<>
+    struct const_btfly_t<2> {
+        template<simd::any_cx_vec... Ts>
+        PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
+            constexpr auto size   = 2;
+            constexpr auto stride = NodeSize / size;
+
+            auto [lo, hi]  = extract_halves<stride>(data);
+            auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi);
+            auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
+            auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+            return combine_halves<stride>(new_lo, new_hi);
+        };
+    };
+    template<>
+    struct const_btfly_t<4> {
+        template<simd::any_cx_vec... Ts>
+        PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
+            constexpr auto count  = sizeof...(Ts);
+            constexpr auto size   = 4;
+            constexpr auto stride = NodeSize / size;
+
+            auto rot = tupi::tuple_cat(tupi::make_broadcast_tuple<count / 2>(uZ_constant<0>{}),
+                                       tupi::make_broadcast_tuple<count / 2>(uZ_constant<1>{}));
+
+            auto [lo, hi] = extract_halves<stride>(data);
+            auto hi_tw = tupi::group_invoke([]<uZ I>(auto v, uZ_constant<I>) { return mul_by_j<I>(v); },    //
+                                            hi,
+                                            rot);
+            auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
+            auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
+            auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+            return combine_halves<stride>(new_lo, new_hi);
+        };
+    };
+
     // template<uZ Offset, uZ... Is>
     // static auto step1(const auto& /*top*/,    //
     //                   const auto& bottom,
