@@ -266,6 +266,9 @@ private:
     //     }
     // };
 
+    template<uZ Count>
+    struct const_tw {};
+
     template<uZ Size>
     struct const_btfly_t;
     template<>
@@ -303,6 +306,39 @@ private:
             return combine_halves<stride>(new_lo, new_hi);
         };
     };
+    template<uZ Size>
+    struct const_btfly_t {
+        template<simd::any_cx_vec... Ts>
+        PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
+            constexpr auto count  = sizeof...(Ts);
+            constexpr auto stride = NodeSize / Size;
+
+
+            auto rot = tupi::tuple_cat(tupi::make_broadcast_tuple<count / 2>(uZ_constant<0>{}),
+                                       tupi::make_broadcast_tuple<count / 2>(uZ_constant<1>{}));
+
+            auto [lo, hi] = extract_halves<stride>(data);
+            auto hi_tw = tupi::group_invoke([]<uZ I>(auto v, uZ_constant<I>) { return mul_by_j<I>(v); },    //
+                                            hi,
+                                            rot);
+            auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
+            auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
+            auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+            return combine_halves<stride>(new_lo, new_hi);
+        };
+    };
+
+    static constexpr struct const_mul_t {
+        constexpr static auto tw = std::array<std::complex<T>, NodeSize / 2>{};
+
+        template<uZ I>
+        PCX_AINLINE auto operator()(simd::any_cx_vec auto v, const_tw<I>) const {
+            if constexpr (I == 0 || I == 1) {
+                return mul_by_j<I>(v);
+            } else {
+            }
+        }
+    } const_mul;
 
     // template<uZ Offset, uZ... Is>
     // static auto step1(const auto& /*top*/,    //
