@@ -117,18 +117,18 @@ struct cx_vec {
         return NImag;
     }
 
-    template<uZ Rot = 1>
-        requires(Rot < 4)
+    template<iZ Count = 1>
     PCX_AINLINE friend auto mul_by_j(cx_vec vec) {
-        if constexpr (Rot == 0) {
+        constexpr auto rot = (Count % 4 + 4) % 4;
+        if constexpr (rot == 0) {
             return vec;
-        } else if constexpr (Rot == 1) {
+        } else if constexpr (rot == 1) {
             using new_cx_vec = cx_vec<T, !NImag, NReal, Width, PackSize>;
             return new_cx_vec{.m_real = vec.m_imag, .m_imag = vec.m_real};
-        } else if constexpr (Rot == 2) {
+        } else if constexpr (rot == 2) {
             using new_cx_vec = cx_vec<T, !NReal, !NImag, Width, PackSize>;
             return new_cx_vec{.m_real = vec.m_real, .m_imag = vec.m_imag};
-        } else if constexpr (Rot == 3) {
+        } else if constexpr (rot == 3) {
             using new_cx_vec = cx_vec<T, NImag, !NReal, Width, PackSize>;
             return new_cx_vec{.m_real = vec.m_imag, .m_imag = vec.m_real};
         }

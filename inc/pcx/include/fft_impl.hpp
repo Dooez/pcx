@@ -16,6 +16,16 @@ constexpr struct btfly_t {
 }    // namespace pcx::simd
 
 namespace pcx::detail_ {
+
+template<typename T>
+inline auto wnk(uZ n, uZ k) -> std::complex<T> {
+    constexpr double pi = 3.14159265358979323846;
+    if (n == k * 4)
+        return {0, -1};
+    if (n == k * 2)
+        return {-1, 0};
+    return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
+}
 consteval auto log2i(u64 num) -> uZ {
     u64 order = 0;
     for (u8 shift = 32; shift > 0; shift /= 2) {
@@ -243,214 +253,55 @@ private:
         return v;
     }
 
-    /**
-     * @brief Provides butterfly operations for a compile time constant indexes.
-     * Indexes are bit-reversed, and thus independent on the actual transform size e.g.
-     * if twiddle is defined as tw = exp(-2 * pi * i * k / N)
-     * `ITw == 0` => k == 0
-     * `ITw == 1` => k == N/2
-     * `ITw == 2` => k == N/4
-     * `ITw == 3` => k == 3N/4
-     * ...
-     * Low index butterflies are optimized. 
-     */
-    // template<uZ ITw>
-    // struct const_btfly_impl {
-    //     template<uZ Offset, uZ... Is>
-    //     static auto step0(const auto& /*top*/,
-    //                       const auto& bottom,    //
-    //                       uZ_constant<Offset>,
-    //                       std::index_sequence<Is...>) {
-    //         auto tw = simd::broadcast(&const_tw<T, ITw>::value);
-    //         return std::make_tuple(simd::detail_::mul_real_rhs(std::get<Offset + Is>(bottom), tw)...);
-    //     }
-    // };
-
-    template<uZ Count>
-    struct const_tw {};
-
-    template<uZ Size>
-    struct const_btfly_t;
-    template<>
-    struct const_btfly_t<2> {
-        template<simd::any_cx_vec... Ts>
-        PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
-            constexpr auto size   = 2;
-            constexpr auto stride = NodeSize / size;
-
-            auto [lo, hi]  = extract_halves<stride>(data);
-            auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi);
-            auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
-            auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
-            return combine_halves<stride>(new_lo, new_hi);
-        };
-    };
-    template<>
-    struct const_btfly_t<4> {
-        template<simd::any_cx_vec... Ts>
-        PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
-            constexpr auto count  = sizeof...(Ts);
-            constexpr auto size   = 4;
-            constexpr auto stride = NodeSize / size;
-
-            auto rot = tupi::tuple_cat(tupi::make_broadcast_tuple<count / 2>(uZ_constant<0>{}),
-                                       tupi::make_broadcast_tuple<count / 2>(uZ_constant<1>{}));
-
-            auto [lo, hi] = extract_halves<stride>(data);
-            auto hi_tw = tupi::group_invoke([]<uZ I>(auto v, uZ_constant<I>) { return mul_by_j<I>(v); },    //
-                                            hi,
-                                            rot);
-            auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
-            auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
-            auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
-            return combine_halves<stride>(new_lo, new_hi);
-        };
-    };
     template<uZ Size>
     struct const_btfly_t {
+        /** Indexes are bit-reversed, and thus independent on the actual transform size e.g.
+         * if twiddle is defined as tw = exp(-2 * pi * i * k / N)
+         * `ITw == 0` => k == 0
+         * `ITw == 1` => k == N/4
+         * `ITw == 2` => k == N/8
+         * `ITw == 3` => k == 3N/8
+         * ...
+         */
+        static inline auto const_tw = []<uZ... Is>(std::index_sequence<Is...>) {
+            constexpr auto get_tw = []<uZ I>(uZ_constant<I>) {
+                if constexpr (I < 2) {
+                    return imag_unit<I>;
+                } else {
+                    constexpr auto N = next_pow_2(I + 1) * 2;
+                    constexpr auto K = (I - N / 4) * 2 + 1;
+                    return wnk<T>(N, K);
+                }
+            };
+            return tupi::make_broadcast_tuple<Size / 2>(imag_unit<0>);
+        }(std::make_index_sequence<Size / 2>{});
+
+        template<uZ I>
+        PCX_AINLINE constexpr static auto tw() {
+            if constexpr (I < 2) {
+                return imag_unit<I>;
+            } else {
+                return simd::cxbroadcast<1, Width>(&tupi::get<I>(const_tw));
+            }
+        }
+
         template<simd::any_cx_vec... Ts>
         PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
             constexpr auto count  = sizeof...(Ts);
             constexpr auto stride = NodeSize / Size;
 
+            auto tws = []<uZ... Is>(std::index_sequence<Is...>) {
+                return tupi::tuple_cat(tupi::make_broadcast_tuple<count / Size>(tw<Is>())...);
+            }(std::make_index_sequence<Size>{});
 
-            auto rot = tupi::tuple_cat(tupi::make_broadcast_tuple<count / 2>(uZ_constant<0>{}),
-                                       tupi::make_broadcast_tuple<count / 2>(uZ_constant<1>{}));
-
-            auto [lo, hi] = extract_halves<stride>(data);
-            auto hi_tw = tupi::group_invoke([]<uZ I>(auto v, uZ_constant<I>) { return mul_by_j<I>(v); },    //
-                                            hi,
-                                            rot);
+            auto [lo, hi]  = extract_halves<stride>(data);
+            auto hi_tw     = tupi::group_invoke(simd::mul, hi, tws);
             auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
             auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
             auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
             return combine_halves<stride>(new_lo, new_hi);
         };
     };
-
-    static constexpr struct const_mul_t {
-        constexpr static auto tw = std::array<std::complex<T>, NodeSize / 2>{};
-
-        template<uZ I>
-        PCX_AINLINE auto operator()(simd::any_cx_vec auto v, const_tw<I>) const {
-            if constexpr (I == 0 || I == 1) {
-                return mul_by_j<I>(v);
-            } else {
-            }
-        }
-    } const_mul;
-
-    // template<uZ Offset, uZ... Is>
-    // static auto step1(const auto& /*top*/,    //
-    //                   const auto& bottom,
-    //                   const auto& res0,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     auto tw = simd::broadcast(&const_tw<T, ITw>::value);
-    //     return std::make_tuple(simd::detail_::mul_imag_rhs(std::get<Offset + Is>(res0),    //
-    //                                                        std::get<Offset + Is>(bottom),
-    //                                                        tw)...);
-    // }
-    // template<uZ Offset, uZ... Is>
-    // static auto step2(const auto& top,    //
-    //                   const auto& /*bottom*/,
-    //                   const auto& res1,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     std::make_tuple(simd::btfly(std::get<Offset + Is>(top),    //
-    //                                 std::get<Offset + Is>(res1))...);
-    // }
-    // };
-    // template<>
-    // struct const_btfly_impl<0> {
-    // template<uZ Offset, uZ... Is>
-    // static auto step0(const auto& /*top*/,    //
-    //                   const auto& /*bottom*/,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     return [] {};
-    // }
-    // template<uZ Offset, uZ... Is>
-    // static auto step1(const auto& /*top*/,    //
-    //                   const auto& /*bottom*/,
-    //                   const auto& /*res0*/,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     return [] {};
-    // }
-    // template<uZ Offset, uZ... Is>
-    // static auto step2(const auto& top,    //
-    //                   const auto& bottom,
-    //                   const auto& /*res1*/,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     std::make_tuple(simd::btfly(std::get<Offset + Is>(top),    //
-    //                                 std::get<Offset + Is>(bottom))...);
-    //     // }
-    // };
-
-    // template<>
-
-    // static auto step0(const auto& /*top*/,    //
-    //                   const auto& /*bottom*/,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     return [] {};
-    // }
-    // template<uZ Offset, uZ... Is>
-    // static auto step1(const auto& /*top*/,    //
-    //                   const auto& /*bottom*/,
-    //                   const auto& /*res0*/,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     return [] {};
-    // }
-    // template<uZ Offset, uZ... Is>
-    // static auto step2(const auto& top,    //
-    //                   const auto& bottom,
-    //                   const auto& /*res1*/,
-    //                   uZ_constant<Offset>,
-    //                   std::index_sequence<Is...>) {
-    //     std::make_tuple(simd::btfly_t<3>{}(std::get<Offset + Is>(top),    //
-    //                                        std::get<Offset + Is>(bottom))...);
-    // }
-    // };
-    // template<uZ Level>
-    // static auto const_btfly(const auto& data) {
-    // constexpr uZ stride = NodeSize / powi(2, Level);
-    //
-    // constexpr auto idxs = std::make_index_sequence<stride / 2>{};
-    //
-    // constexpr auto step0 = []<uZ... Is>(const auto& top, const auto& bottom, std::index_sequence<Is...>) {
-    //     return detail_::make_flat_tuple(const_btfly_impl<Is>::step0(top,    //
-    //                                                                 bottom,
-    //                                                                 idxs,
-    //                                                                 Is * stride)...);
-    // };
-    // constexpr auto step1 =
-    //     []<uZ... Is>(const auto& top, const auto& bottom, const auto& res0, std::index_sequence<Is...>) {
-    //         return detail_::make_flat_tuple(const_btfly_impl<Is>::step1(top,    //
-    //                                                                     bottom,
-    //                                                                     res0,
-    //                                                                     idxs,
-    //                                                                     Is * stride)...);
-    //     };
-    // constexpr auto step2 =
-    //     []<uZ... Is>(const auto& top, const auto& bottom, const auto& res1, std::index_sequence<Is...>) {
-    //         return detail_::make_flat_tuple(const_btfly_impl<Is>::step2(top,    //
-    //                                                                     bottom,
-    //                                                                     res1,
-    //                                                                     idxs,
-    //                                                                     Is * stride)...);
-    //     };
-    // constexpr auto twidxs = std::make_index_sequence<powi(2, Level)>{};
-    //
-    // auto top    = get_top_half<Level>(data);
-    // auto bottom = get_bot_half<Level>(data);
-    // auto res0   = step0(top, bottom, twidxs);
-    // auto res1   = step1(top, bottom, res0, twidxs);
-    // return step2(top, bottom, res1, twidxs);
-    // };
 };
 
 }    // namespace pcx::detail_

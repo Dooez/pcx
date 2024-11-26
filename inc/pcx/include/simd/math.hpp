@@ -121,7 +121,7 @@ template<>
 struct mul_stage<0> {
     template<iZ Lrot, iZ Rrot>
     PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) {
-        return imag_unit_t<Lrot + Rrot>{};
+        return imag_unit_t<(Lrot + Rrot) % 4>{};
     }
     template<iZ Rot>
     PCX_AINLINE auto operator()(imag_unit_t<Rot>, tight_cx_vec auto Rhs) {
@@ -227,6 +227,18 @@ struct div_stage;
 
 template<>
 struct div_stage<0> {
+    template<iZ Lrot, iZ Rrot>
+    PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) {
+        return imag_unit_t<(Lrot - Rrot) % 4>{};
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(imag_unit_t<Rot>, tight_cx_vec auto Rhs) {
+        return mul_by_j<-Rot>(Rhs);
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(tight_cx_vec auto Lhs, imag_unit_t<Rot>) {
+        return mul_by_j<-Rot>(Lhs);
+    }
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
@@ -247,6 +259,13 @@ struct div_stage<0> {
 };
 template<>
 struct div_stage<1> {
+    PCX_AINLINE auto operator()(tight_cx_vec auto v) {
+        return v;
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(imag_unit_t<Rot> v) {
+        return v;
+    };
     template<tight_cx_vec Res0, tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(tupi::tuple<Res0, typename Res0::vec_t, Lhs, Rhs> args) const {
         constexpr auto width = Lhs::width();
@@ -288,6 +307,13 @@ struct div_stage<1> {
 };
 template<>
 struct div_stage<2> {
+    PCX_AINLINE auto operator()(tight_cx_vec auto v) {
+        return v;
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(imag_unit_t<Rot> v) {
+        return v;
+    };
     template<tight_cx_vec Res1>
     PCX_AINLINE auto operator()(tupi::tuple<Res1, typename Res1::vec_t> args) const {
         constexpr auto width   = Res1::width();
