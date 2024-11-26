@@ -43,7 +43,10 @@ concept floating_point = std::same_as<T, float> || std::same_as<T, double>;
 template<typename T, uZ PackSize>
 concept packed_floating_point = floating_point<T> && power_of_two<PackSize>;
 
-inline constexpr uZ max_width = std::numeric_limits<uZ>::max();
+template<uZ Power = 1>
+struct imag_unit_t {};
+template<iZ Power = 1>
+inline constexpr auto imag_unit = imag_unit_t<Power>{};
 
 namespace simd {
 

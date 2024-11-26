@@ -119,6 +119,19 @@ template<uZ>
 struct mul_stage;
 template<>
 struct mul_stage<0> {
+    template<iZ Lrot, iZ Rrot>
+    PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) {
+        return imag_unit_t<Lrot + Rrot>{};
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(imag_unit_t<Rot>, tight_cx_vec auto Rhs) {
+        return mul_by_j<Rot>(Rhs);
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(tight_cx_vec auto Lhs, imag_unit_t<Rot>) {
+        return mul_by_j<Rot>(Lhs);
+    }
+
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
@@ -136,6 +149,13 @@ struct mul_stage<0> {
 };
 template<>
 struct mul_stage<1> {
+    PCX_AINLINE auto operator()(tight_cx_vec auto v) {
+        return v;
+    }
+    template<iZ Rot>
+    PCX_AINLINE auto operator()(imag_unit_t<Rot> v) {
+        return v;
+    };
     template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(tupi::tuple<Res, Lhs, Rhs> args) const {
         auto [res0, lhs, rhs] = args;
@@ -184,6 +204,18 @@ inline constexpr struct mul_t : pcx::tupi::multi_stage_op_base<2> {
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
         return stage<1>(stage<0>(lhs, rhs));
     };
+    template<uZ Power>
+    PCX_AINLINE auto operator()(tight_cx_vec auto lhs, imag_unit_t<Power> rhs) {
+        return stage<1>(stage<0>(lhs, rhs));
+    }
+    template<uZ Power>
+    PCX_AINLINE auto operator()(imag_unit_t<Power> lhs, tight_cx_vec auto rhs) {
+        return stage<1>(stage<0>(lhs, rhs));
+    }
+    template<uZ Powerl, iZ Powerr>
+    PCX_AINLINE auto operator()(imag_unit_t<Powerl> lhs, imag_unit_t<Powerr> rhs) {
+        return stage<1>(stage<0>(lhs, rhs));
+    }
 
     template<uZ I>
     constexpr static detail_::mul_stage<I> stage{};
