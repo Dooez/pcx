@@ -27,6 +27,14 @@ inline constexpr struct {
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::add(lhs.native, rhs.native);
     }
+    template<typename T, uZ Width, uZ PackSize>
+    PCX_AINLINE auto operator()(cx_vec<T, false, false, Width, PackSize> lhs,
+                                cx_vec<T, false, false, Width, PackSize> rhs) const {
+        using traits = detail_::vec_traits<T, Width>;
+        auto real    = traits::add(lhs.m_real.native, rhs.m_real.native);
+        auto imag    = traits::add(lhs.m_imag.native, rhs.m_imag.native);
+        return cx_vec<T, false, false, Width, PackSize>{.m_real = real, .m_imag = imag};
+    }
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
         requires compatible_cx_vec<Lhs, Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
@@ -64,6 +72,14 @@ inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::sub(lhs.native, rhs.native);
+    }
+    template<typename T, uZ Width, uZ PackSize>
+    PCX_AINLINE auto operator()(cx_vec<T, false, false, Width, PackSize> lhs,
+                                cx_vec<T, false, false, Width, PackSize> rhs) const {
+        using traits = detail_::vec_traits<T, Width>;
+        auto real    = traits::sub(lhs.m_real.native, rhs.m_real.native);
+        auto imag    = traits::sub(lhs.m_imag.native, rhs.m_imag.native);
+        return cx_vec<T, false, false, Width, PackSize>{.m_real = real, .m_imag = imag};
     }
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
         requires compatible_cx_vec<Lhs, Rhs>

@@ -8,108 +8,166 @@
 #include <complex>
 
 namespace pcx::simd {
-
-template<uZ Width = max_width<f32>>
-PCX_AINLINE auto broadcast(const f32* src) {
-    return detail_::vec_traits<f32, Width>::set1(*src);
-}
-template<uZ Width = max_width<f64>>
-PCX_AINLINE auto broadcast(const f64* src) {
-    return detail_::vec_traits<f64, Width>::set1(*src);
-}
-template<uZ Width = max_width<f32>>
-PCX_AINLINE auto load(const f32* src) {
-    return detail_::vec_traits<f32, Width>::load(src);
-}
-template<uZ Width = max_width<f64>>
-PCX_AINLINE auto load(const f64* src) {
-    return detail_::vec_traits<f64, Width>::load(src);
-}
-template<typename T, uZ Width>
-PCX_AINLINE auto store(T* dest, vec<T, Width> data) {
-    detail_::vec_traits<T, Width>::store(dest, data.native);
-}
-// template<uZ SrcPackSize, uZ Width = max_width<f32>>
-// PCX_AINLINE auto cxbroadcast(const std::complex<f32>* src) {
-//     constexpr uZ load_offset = std::max(SrcPackSize, Width);
-//     using cx_vec_t           = cx_vec<f32, false, false, Width>;
-//     return cx_vec_t{
-//         .m_real = broadcast<Width>(src),
-//         .m_imag = broadcast<Width>(src + load_offset),    //NOLINT(*pointer*)
-//     };
-// }
-template<uZ SrcPackSize, uZ Width = max_width<f32>>
-PCX_AINLINE auto cxbroadcast(const f32* src) {
-    using cx_vec_t = cx_vec<f32, false, false, Width>;
-    return cx_vec_t{
-        .m_real = broadcast<Width>(src),
-        .m_imag = broadcast<Width>(src + SrcPackSize),    //NOLINT(*pointer*)
-    };
-}
-template<uZ SrcPackSize, uZ Width = max_width<f64>>
-PCX_AINLINE auto cxbroadcast(const f64* src) {
-    constexpr uZ load_offset = std::max(SrcPackSize, Width);
-    using cx_vec_t           = cx_vec<f64, false, false, Width>;
-    return cx_vec_t{
-        .m_real = broadcast<Width>(src),
-        .m_imag = broadcast<Width>(src + load_offset),    //NOLINT(*pointer*)
-    };
-}
-template<uZ SrcPackSize, uZ Width = max_width<f32>>
-PCX_AINLINE auto cxload(const f32* src) {
-    constexpr uZ pack_size   = std::min(SrcPackSize, Width);
-    constexpr uZ load_offset = std::max(SrcPackSize, Width);
-    using cx_vec_t           = cx_vec<f32, false, false, Width, pack_size>;
-    return cx_vec_t{
-        .m_real = load<Width>(src),
-        .m_imag = load<Width>(src + load_offset),    //NOLINT(*pointer*)
-    };
-}
-template<uZ SrcPackSize, uZ Width = max_width<f64>>
-PCX_AINLINE auto cxload(const f64* src) {
-    constexpr uZ pack_size   = std::min(SrcPackSize, Width);
-    constexpr uZ load_offset = std::max(SrcPackSize, Width);
-    using cx_vec_t           = cx_vec<f64, false, false, Width, pack_size>;
-    return cx_vec_t{
-        .m_real = load<Width>(src),
-        .m_imag = load<Width>(src + load_offset),    //NOLINT(*pointer*)
-    };
-}
-template<uZ DestPackSize, eval_cx_vec V>
-    requires(DestPackSize == V::pack_size() || (tight_cx_vec<V> && DestPackSize > V::width()))
-PCX_AINLINE auto cxstore(typename V::real_type* dest, V data) {
-    constexpr uZ store_offset = std::max(DestPackSize, V::width());
-    store(dest, data.real());
-    store(dest + store_offset, data.imag());
-}
-template<uZ PackSize, any_cx_vec V>
-    requires power_of_two<PackSize> && (PackSize <= V::width())
-PCX_AINLINE auto repack(V vec) {
-    using repacked_vec_t = cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackSize>;
-    using traits         = detail_::vec_traits<typename V::real_type, V::width()>;
-    using repack         = traits::template repack<PackSize, V::pack_size()>;
-    auto repacked        = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
-    repack::permute(repacked.real().native, repacked.imag().native);
-    return repacked;
-}
-
-template<tight_cx_vec V>
-PCX_AINLINE auto evaluate(V vec) {
-    using real_t    = V::real_type;
-    using eval_vec  = cx_vec<real_t, false, false, V::width()>;
-    using vec_t     = V::vec_t;
-    using traits    = detail_::vec_traits<real_t, V::width()>;
-    const auto zero = vec_t(traits::zero());
-    if constexpr (V::neg_real() && V::neg_imag()) {
-        return eval_vec{sub(zero, vec.real()), sub(zero, vec.imag())};
-    } else if constexpr (V::neg_real()) {
-        return eval_vec{sub(zero, vec.real()), vec.imag()};
-    } else if constexpr (V::neg_imag()) {
-        return eval_vec{vec.real(), sub(zero, vec.imag())};
-    } else {
-        return vec;
+namespace detail_ {
+template<uZ Width>
+    requires(Width == 0 || power_of_two<Width>)
+struct broadcast_t {
+    template<typename T>
+        requires(Width <= max_width<T>)
+    PCX_AINLINE auto operator()(const T* src) const {
+        constexpr auto real_width = Width == 0 ? max_width<T> : Width;
+        return vec<T, real_width>{vec_traits<f32, real_width>::set1(*src)};
     }
 };
+template<uZ Width>
+    requires(Width == 0 || power_of_two<Width>)
+struct load_t {
+    template<typename T>
+        requires(Width <= max_width<T>)
+    PCX_AINLINE auto operator()(const T* src) const {
+        constexpr auto real_width = Width == 0 ? max_width<T> : Width;
+        return vec<T, real_width>{vec_traits<f32, real_width>::load(src)};
+    }
+};
+}    // namespace detail_
+template<uZ Width = 0>
+    requires(Width == 0 || power_of_two<Width>)
+inline constexpr auto broadcast = detail_::broadcast_t<Width>{};
+
+template<uZ Width = 0>
+    requires(Width == 0 || power_of_two<Width>)
+inline constexpr auto load = detail_::load_t<Width>{};
+
+inline constexpr struct {
+    template<typename T, uZ Width>
+    PCX_AINLINE void operator()(T* dest, vec<T, Width> data) const {
+        detail_::vec_traits<T, Width>::store(dest, data.native);
+    }
+} store{};
+
+namespace detail_ {
+template<uZ SrcPackSize, uZ Width>
+    requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
+struct cxbroadcast_t {
+    PCX_AINLINE auto operator()(const f32* src) const
+        requires(Width <= max_width<f32>)
+    {
+        constexpr auto real_width = Width == 0 ? max_width<f32> : Width;
+        using cx_vec_t            = cx_vec<f32, false, false, real_width>;
+        return cx_vec_t{
+            .m_real = broadcast<real_width>(src),
+            .m_imag = broadcast<real_width>(src + SrcPackSize),    //NOLINT(*pointer*)
+        };
+    }
+    PCX_AINLINE auto operator()(const f64* src) const
+        requires(Width <= max_width<f64>)
+    {
+        constexpr auto real_width = Width == 0 ? max_width<f64> : Width;
+        using cx_vec_t            = cx_vec<f64, false, false, real_width>;
+        return cx_vec_t{
+            .m_real = broadcast<real_width>(src),
+            .m_imag = broadcast<real_width>(src + SrcPackSize),    //NOLINT(*pointer*)
+        };
+    }
+};
+
+template<uZ SrcPackSize, uZ Width>
+    requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
+struct cxload_t {
+    PCX_AINLINE auto operator()(const f32* src) const
+        requires(Width <= max_width<f32>)
+    {
+        constexpr uZ real_width  = Width == 0 ? max_width<f32> : Width;
+        constexpr uZ pack_size   = std::min(SrcPackSize, real_width);
+        constexpr uZ load_offset = std::max(SrcPackSize, real_width);
+        using cx_vec_t           = cx_vec<f32, false, false, real_width, pack_size>;
+        return cx_vec_t{
+            .m_real = load<real_width>(src),
+            .m_imag = load<real_width>(src + load_offset),    //NOLINT(*pointer*)
+        };
+    }
+    PCX_AINLINE auto operator()(const f64* src) const
+        requires(Width <= max_width<f64>)
+    {
+        constexpr uZ real_width  = Width == 0 ? max_width<f64> : Width;
+        constexpr uZ pack_size   = std::min(SrcPackSize, real_width);
+        constexpr uZ load_offset = std::max(SrcPackSize, real_width);
+        using cx_vec_t           = cx_vec<f64, false, false, real_width, pack_size>;
+        return cx_vec_t{
+            .m_real = load<real_width>(src),
+            .m_imag = load<real_width>(src + load_offset),    //NOLINT(*pointer*)
+        };
+    }
+};
+
+template<uZ DestPackSize>
+    requires power_of_two<DestPackSize>
+struct cxstore_t {
+    template<eval_cx_vec V>
+        requires(DestPackSize == V::pack_size() || (tight_cx_vec<V> && DestPackSize > V::width()))
+    PCX_AINLINE void operator()(typename V::real_type* dest, V data) const {
+        constexpr uZ store_offset = std::max(DestPackSize, V::width());
+        store(dest, data.real());
+        store(dest + store_offset, data.imag());
+    }
+};
+
+template<uZ PackSize>
+    requires power_of_two<PackSize>
+struct repack_t {
+    template<eval_cx_vec V>
+        requires(PackSize <= V::width())
+    PCX_AINLINE auto operator()(V vec) const {
+        using repacked_vec_t =
+            cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackSize>;
+        using traits  = detail_::vec_traits<typename V::real_type, V::width()>;
+        using repack  = traits::template repack<PackSize, V::pack_size()>;
+        auto repacked = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
+        repack::permute(repacked.real().native, repacked.imag().native);
+        return repacked;
+    }
+};
+}    // namespace detail_
+
+template<uZ SrcPackSize, uZ Width = 0>
+    requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
+inline constexpr auto cxbroadcast = detail_::cxbroadcast_t<SrcPackSize, Width>{};
+
+template<uZ SrcPackSize, uZ Width = 0>
+    requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
+inline constexpr auto cxload = detail_::cxload_t<SrcPackSize, Width>{};
+
+template<uZ DestPackSize>
+    requires power_of_two<DestPackSize>
+inline constexpr auto cxstore = detail_::cxstore_t<DestPackSize>{};
+
+template<uZ PackSize>
+    requires power_of_two<PackSize>
+inline constexpr auto repack = detail_::repack_t<PackSize>{};
+
+inline constexpr struct {
+    template<tight_cx_vec V>
+    PCX_AINLINE auto operator()(V vec) const {
+        using real_t    = V::real_type;
+        using eval_vec  = cx_vec<real_t, false, false, V::width()>;
+        using vec_t     = V::vec_t;
+        using traits    = detail_::vec_traits<real_t, V::width()>;
+        const auto zero = vec_t(traits::zero());
+        if constexpr (V::neg_real() && V::neg_imag()) {
+            return eval_vec{sub(zero, vec.real()), sub(zero, vec.imag())};
+        } else if constexpr (V::neg_real()) {
+            return eval_vec{sub(zero, vec.real()), vec.imag()};
+        } else if constexpr (V::neg_imag()) {
+            return eval_vec{vec.real(), sub(zero, vec.imag())};
+        } else {
+            return vec;
+        }
+    }
+    template<typename T, uZ Width, uZ PackSize>
+    PCX_AINLINE auto operator()(cx_vec<T, false, false, Width, PackSize> vec) const {
+        return vec;
+    }
+} evaluate;
 
 }    // namespace pcx::simd
 #endif

@@ -355,7 +355,7 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
             group_invoke(f.template stage<0>, std::forward<Args>(args)...);
         };
     } else {
-        constexpr auto group_size = (..., tuple_size_v<Args>);
+        constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
         return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
             constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
                 f(get<I>(std::forward<Args>(args))...);

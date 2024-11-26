@@ -3,6 +3,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #if defined(__clang__)
@@ -41,6 +42,8 @@ concept floating_point = std::same_as<T, float> || std::same_as<T, double>;
 
 template<typename T, uZ PackSize>
 concept packed_floating_point = floating_point<T> && power_of_two<PackSize>;
+
+inline constexpr uZ max_width = std::numeric_limits<uZ>::max();
 
 namespace simd {
 
