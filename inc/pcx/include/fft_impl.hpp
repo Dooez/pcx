@@ -59,112 +59,73 @@ constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
     //NOLINTEND(*magic-numbers*)
     return num >> (64 - depth);
 }
-
-template<uZ Size, bool DecInTime>
-struct order {
-    static constexpr auto data = [] {
-        std::array<uZ, Size> order;
-        for (uZ i = 0; i < Size; ++i) {
-            if constexpr (DecInTime) {
-                order[i] = reverse_bit_order(i, log2i(Size));
-            } else {
-                order[i] = i;
-            }
-        }
-        return order;
-    }();
-
-    static constexpr auto tw = []<uZ... N>(std::index_sequence<N...>) -> std::array<uZ, sizeof...(N)> {
-        if constexpr (DecInTime) {
-            return {(N > 0 ? (1U << log2i(N + 1)) - 1
-                                 + reverse_bit_order(1 + N - (1U << log2i(N + 1)), log2i(N + 1))
-                           : 0)...};
-        } else {
-            return {N...};
-        }
-    }
-    (std::make_index_sequence<Size - 1>{});
-};
-
+constexpr auto next_pow_2(u64 v) {
+    v--;
+    v |= v >> 1U;
+    v |= v >> 2U;
+    v |= v >> 4U;
+    v |= v >> 8U;
+    v |= v >> 16U;
+    v |= v >> 32U;
+    v++;
+    return v;
+}
 
 template<uZ NodeSize, typename T, uZ Width>
-struct btfly_node {
+struct btfly_node_dit {
     using cx_vec = simd::cx_vec<T, false, false, Width>;
 
     struct settings {
         uZ   pack_dest;
         uZ   pack_src;
         bool conj_tw;
-        bool dit;
     };
 
-    using pruned_tw_t = std::conditional_t<(NodeSize > 4),    //
-                                           std::array<cx_vec, NodeSize / 4 - 1>,
-                                           decltype([] {})>;
-    using dest_t      = tupi::broadcast_tuple_t<T*, NodeSize>;
-    using src_t       = tupi::broadcast_tuple_t<const T*, NodeSize>;
-    using full_tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize - 1>;
+    using dest_t = tupi::broadcast_tuple_t<T*, NodeSize>;
+    using src_t  = tupi::broadcast_tuple_t<const T*, NodeSize>;
+    using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize - 1>;
 
     template<settings Settings>
-    PCX_AINLINE static void perform(const dest_t& dest, const pruned_tw_t& tw) {
-        auto data_tup = load<Settings>(dest);
-    };
-
-    // template<settings Settings>
-    // PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const full_tw_t& tw) {
-    //     auto data_tup = load<Settings>(src);
-    //     // TODO(Timofey): inverse / conj
-    //
-    //     auto p1 = data_tup;
-    //
-    //     auto res = []<uZ L = 0>(this auto&& f, const auto& data, const auto& tw, uZ_constant<L> = {}) {
-    //         if constexpr (powi(2, L + 1) == NodeSize) {
-    //             return btfly<L>(data, tw);
-    //         } else {
-    //             auto tmp = btfly<L>(data, tw);
-    //             return f(tmp, tw, uZ_constant<L + 1>{});
-    //         }
-    //     }(p1, tw);
-    //
-    //     // TODO(Timofey): inverse / conj
-    //     store<Settings>(dest, res);
-    // }
-
+    PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const tw_t& tw) {
+        perform_impl<Settings>(dest, src, tw_getter(tw));
+    }
     template<settings Settings>
-    PCX_AINLINE static void perform(const dest_t& dest, const full_tw_t& tw) {
-        auto data     = tupi::group_invoke(simd::cxload<Settings.pack_src, Width>, dest);
-        data          = reorder<Settings.dit>(data);
+    PCX_AINLINE static void perform(const dest_t& dest, const tw_t& tw) {
+        perform_impl<Settings>(dest, dest, tw_getter(tw));
+    }
+    template<settings Settings>
+    PCX_AINLINE static void perform_lo_k(const dest_t& dest, const src_t& src) {
+        perform_lok_impl<Settings>(dest, src, const_tw_getter);
+    }
+    template<settings Settings>
+    PCX_AINLINE static void perform_lo_k(const dest_t& dest) {
+        perform_lok_impl<Settings>(dest, dest, const_tw_getter);
+    }
+
+private:
+    template<settings Settings>
+    PCX_AINLINE static void perform_impl(const dest_t& dest, auto src, auto get_tw) {
+        auto data     = tupi::group_invoke(simd::cxload<Settings.pack_src, Width>, src);
         auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
         // conj/inverse
 
         auto res = []<uZ Size = 1> PCX_LAINLINE(this auto f,    //
                                                 auto      data,
-                                                auto      tw,
+                                                auto      get_tw,
                                                 uZ_constant<Size> = {}) {
             if constexpr (Size == NodeSize / 2) {
-                return btfly<Size>(data, tw);
+                return btfly<Size>(data, get_tw(uZ_constant<Size>{}));
             } else {
-                auto tmp = btfly<Size>(data, tw);
-                return f(tmp, tw, uZ_constant<Size * 2>{});
+                auto tmp = btfly<Size>(data, get_tw(uZ_constant<Size>{}));
+                return f(tmp, get_tw, uZ_constant<Size * 2>{});
             }
-        }(data_rep, tw);
+        }(data_rep, get_tw);
 
         // conj/inverse
-        res           = reorder<Settings.dit>(res);
         auto res_eval = tupi::group_invoke(simd::evaluate, res);
         auto res_rep  = tupi::group_invoke(simd::repack<Settings.pack_dest>, res_eval);
         tupi::group_invoke(simd::cxstore<Settings.pack_dest>, dest, res_rep);
     }
-
-private:
-    template<bool Dit>
-    PCX_AINLINE static auto reorder(auto data) {
-        return []<uZ... Is> PCX_LAINLINE(auto data, std::index_sequence<Is...>) {
-            constexpr auto& data_idx = order<NodeSize, Dit>::data;
-            return tupi::make_tuple(tupi::get<data_idx[Is]>(data)...);
-        }(data, std::make_index_sequence<NodeSize>{});
-    }
-
     /**
      * @brief Extracts two halves of the tuple.
      *
@@ -217,20 +178,8 @@ private:
                                            uZ_constant<Grp * Stride / 2>{})...);
         }(lo, hi, std::make_index_sequence<size / Stride>{});
     }
-
-    /**
-     * @brief Performs a single level of butterfly operation.
-     *
-     * @tparam Level 
-     */
     template<uZ Size, simd::any_cx_vec... Ts>
-    PCX_AINLINE static auto btfly(tupi::tuple<Ts...> data, full_tw_t tw) {
-        auto tws = []<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>, auto tw) {
-            constexpr auto repeats = NodeSize / 2 / sizeof...(Itw);
-            constexpr auto start   = Size - 1;
-            return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
-        }(std::make_index_sequence<Size>{}, tw);
-
+    PCX_AINLINE static auto btfly(tupi::tuple<Ts...> data, auto tws) {
         constexpr auto stride = NodeSize / Size;
 
         auto [lo, hi]  = extract_halves<stride>(data);
@@ -241,20 +190,18 @@ private:
         return combine_halves<stride>(new_lo, new_hi);
     };
 
-    static constexpr auto next_pow_2(u64 v) {
-        v--;
-        v |= v >> 1U;
-        v |= v >> 2U;
-        v |= v >> 4U;
-        v |= v >> 8U;
-        v |= v >> 16U;
-        v |= v >> 32U;
-        v++;
-        return v;
-    }
 
-    template<uZ Size>
-    struct const_btfly_t {
+    PCX_AINLINE static auto tw_getter(tw_t tw) {
+        return [tw]<uZ Size> PCX_LAINLINE(uZ_constant<Size>) {
+            return []<uZ... Itw> PCX_LAINLINE(auto tw, std::index_sequence<Itw...>) {
+                constexpr auto repeats = NodeSize / 2 / Size;
+                constexpr auto start   = Size - 1;
+                return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
+            }(tw, std::make_index_sequence<Size>{});
+            //
+        };
+    }
+    static constexpr struct const_tw {
         /** Indexes are bit-reversed, and thus independent on the actual transform size e.g.
          * if twiddle is defined as tw = exp(-2 * pi * i * k / N)
          * `ITw == 0` => k == 0
@@ -263,8 +210,8 @@ private:
          * `ITw == 3` => k == 3N/8
          * ...
          */
-        static inline auto const_tw = []<uZ... Is>(std::index_sequence<Is...>) {
-            constexpr auto get_tw = []<uZ I>(uZ_constant<I>) {
+        static inline auto values = []<uZ... Is>(std::index_sequence<Is...>) {
+            constexpr auto calc_tw = []<uZ I>(uZ_constant<I>) {
                 if constexpr (I < 2) {
                     return imag_unit<I>;
                 } else {
@@ -273,35 +220,26 @@ private:
                     return wnk<T>(N, K);
                 }
             };
-            return tupi::make_broadcast_tuple<Size / 2>(imag_unit<0>);
-        }(std::make_index_sequence<Size / 2>{});
+            return tupi::make_tuple(calc_tw(uZ_constant<Is>{})...);
+        }(std::make_index_sequence<NodeSize / 2>{});
 
         template<uZ I>
-        PCX_AINLINE constexpr static auto tw() {
+        PCX_AINLINE constexpr static auto get() {
             if constexpr (I < 2) {
                 return imag_unit<I>;
             } else {
-                return simd::cxbroadcast<1, Width>(&tupi::get<I>(const_tw));
+                return simd::cxbroadcast<1, Width>(&tupi::get<I>(values));
             }
         }
 
-        template<simd::any_cx_vec... Ts>
-        PCX_AINLINE auto operator()(tupi::tuple<Ts...> data) const {
-            constexpr auto count  = sizeof...(Ts);
-            constexpr auto stride = NodeSize / Size;
-
-            auto tws = []<uZ... Is>(std::index_sequence<Is...>) {
-                return tupi::tuple_cat(tupi::make_broadcast_tuple<count / Size>(tw<Is>())...);
+        template<uZ Size>
+        PCX_AINLINE auto operator()(uZ_constant<Size>) const {
+            return []<uZ... Is>(std::index_sequence<Is...>) {
+                constexpr auto repeats = NodeSize / 2 / Size;
+                return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(get<Is>())...);
             }(std::make_index_sequence<Size>{});
-
-            auto [lo, hi]  = extract_halves<stride>(data);
-            auto hi_tw     = tupi::group_invoke(simd::mul, hi, tws);
-            auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
-            auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
-            auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
-            return combine_halves<stride>(new_lo, new_hi);
         };
-    };
+    } const_tw_getter;
 };
 
 }    // namespace pcx::detail_

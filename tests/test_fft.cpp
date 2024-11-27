@@ -44,7 +44,7 @@ void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
 
 void foo(std::complex<f32>* dest, auto&& tw) {
     auto dest_r     = reinterpret_cast<f32*>(dest);
-    using node_t    = detail_::btfly_node<8, float, 16>;
+    using node_t    = detail_::btfly_node_dit<8, float, 16>;
     auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
         return pcx::tupi::make_tuple((dest + 16 * 2 * Is)...);
     }(dest_r, std::make_index_sequence<8>());
@@ -59,7 +59,6 @@ void foo(std::complex<f32>* dest, auto&& tw) {
         .pack_dest = 1,
         .pack_src  = 1,
         .conj_tw   = false,
-        .dit       = false,
     };
     node_t::perform<settings>(dest_tuple, tw_tuple);
 };
