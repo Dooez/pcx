@@ -86,25 +86,41 @@ struct btfly_node_dit {
 
     template<settings Settings>
     PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const tw_t& tw) {
-        perform_impl<Settings>(dest, src, make_tw_getter(tw));
+        if constexpr (Settings.reverse) {
+            perform_reverse_impl<Settings.pack_dest, Settings.pack_src>(dest, src, make_tw_getter(tw));
+        } else {
+            perform_impl<Settings.pack_dest, Settings.pack_src>(dest, src, make_tw_getter(tw));
+        }
     }
     template<settings Settings>
     PCX_AINLINE static void perform(const dest_t& dest, const tw_t& tw) {
-        perform_impl<Settings>(dest, dest, make_tw_getter(tw));
+        if constexpr (Settings.reverse) {
+            perform_reverse_impl<Settings.pack_dest, Settings.pack_src>(dest, dest, make_tw_getter(tw));
+        } else {
+            perform_impl<Settings.pack_dest, Settings.pack_src>(dest, dest, make_tw_getter(tw));
+        }
     }
     template<settings Settings>
     PCX_AINLINE static void perform_lo_k(const dest_t& dest, const src_t& src) {
-        perform_impl<Settings>(dest, src, const_tw_getter);
+        if constexpr (Settings.reverse) {
+            perform_reverse_impl<Settings.pack_dest, Settings.pack_src>(dest, src, const_tw_getter);
+        } else {
+            perform_impl<Settings.pack_dest, Settings.pack_src>(dest, src, const_tw_getter);
+        }
     }
     template<settings Settings>
     PCX_AINLINE static void perform_lo_k(const dest_t& dest) {
-        perform_impl<Settings>(dest, dest, const_tw_getter);
+        if constexpr (Settings.reverse) {
+            perform_reverse_impl<Settings.pack_dest, Settings.pack_src>(dest, dest, const_tw_getter);
+        } else {
+            perform_impl<Settings.pack_dest, Settings.pack_src>(dest, dest, const_tw_getter);
+        }
     }
 
 private:
-    template<settings Settings>
+    template<uZ DestPackSize, uZ SrcPackSize>
     PCX_AINLINE static void perform_impl(const dest_t& dest, auto src, auto get_tw) {
-        auto data     = tupi::group_invoke(simd::cxload<Settings.pack_src, Width>, src);
+        auto data     = tupi::group_invoke(simd::cxload<SrcPackSize, Width>, src);
         auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
         auto res      = []<uZ Size = 2> PCX_LAINLINE(this auto f,    //
                                                 auto      data,
@@ -118,12 +134,12 @@ private:
             }
         }(data_rep, get_tw);
         auto res_eval = tupi::group_invoke(simd::evaluate, res);
-        auto res_rep  = tupi::group_invoke(simd::repack<Settings.pack_dest>, res_eval);
-        tupi::group_invoke(simd::cxstore<Settings.pack_dest>, dest, res_rep);
+        auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
+        tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
     }
-    template<settings Settings>
+    template<uZ DestPackSize, uZ SrcPackSize>
     PCX_AINLINE static void perform_reverse_impl(const dest_t& dest, auto src, auto get_tw) {
-        auto data     = tupi::group_invoke(simd::cxload<Settings.pack_src, Width>, src);
+        auto data     = tupi::group_invoke(simd::cxload<SrcPackSize>, src);
         auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
         auto res      = []<uZ Size = NodeSize> PCX_LAINLINE(this auto f,    //
                                                        auto      data,
@@ -137,8 +153,8 @@ private:
             }
         }(data_rep, get_tw);
         auto res_eval = tupi::group_invoke(simd::evaluate, res);
-        auto res_rep  = tupi::group_invoke(simd::repack<Settings.pack_dest>, res_eval);
-        tupi::group_invoke(simd::cxstore<Settings.pack_dest>, dest, res_rep);
+        auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
+        tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
     }
     template<uZ Size, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto btfly_impl(tupi::tuple<Ts...> data, auto tws) {
@@ -174,7 +190,6 @@ private:
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr uZ   size     = sizeof...(Ts);
         constexpr auto get_half = []<uZ... Grp, uZ Start> PCX_LAINLINE(auto data,
                                                                        std::index_sequence<Grp...>,
                                                                        uZ_constant<Start>) {
@@ -188,10 +203,9 @@ private:
                                            uZ_constant<Start + Grp * Stride>{})...);
         };
         return tupi::make_tuple(
-            get_half(data, std::make_index_sequence<size / Stride>{}, uZ_constant<0>{}),
-            get_half(data, std::make_index_sequence<size / Stride>{}, uZ_constant<Stride / 2>{}));
+            get_half(data, std::make_index_sequence<NodeSize / Stride>{}, uZ_constant<0>{}),
+            get_half(data, std::make_index_sequence<NodeSize / Stride>{}, uZ_constant<Stride / 2>{}));
     }
-
     /**
      * @brief Combines two halves into a tuple
      *
@@ -201,7 +215,6 @@ private:
      */
     template<uZ Stride, simd::any_cx_vec... Tsl, simd::any_cx_vec... Tsh>
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr uZ size = sizeof...(Tsl) * 2;
         return []<uZ... Grp> PCX_LAINLINE(auto lo, auto hi, std::index_sequence<Grp...>) {
             constexpr auto iterate = []<uZ... Iters, uZ Offset> PCX_LAINLINE(auto lo,
                                                                              auto hi,
@@ -213,7 +226,7 @@ private:
                                            hi,
                                            std::make_index_sequence<Stride / 2>{},
                                            uZ_constant<Grp * Stride / 2>{})...);
-        }(lo, hi, std::make_index_sequence<size / Stride>{});
+        }(lo, hi, std::make_index_sequence<NodeSize / Stride>{});
     }
 
     PCX_AINLINE static auto make_tw_getter(tw_t tw) {
