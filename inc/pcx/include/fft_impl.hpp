@@ -122,17 +122,15 @@ private:
     PCX_AINLINE static void perform_impl(const dest_t& dest, auto src, auto get_tw) {
         auto data     = tupi::group_invoke(simd::cxload<SrcPackSize, Width>, src);
         auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
-        auto res      = []<uZ Size = 2> PCX_LAINLINE(this auto f,    //
-                                                auto      data,
-                                                auto      get_tw,
-                                                uZ_constant<Size> = {}) {
-            if constexpr (Size == NodeSize) {
-                return btfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
-            } else {
-                auto tmp = btfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
-                return f(tmp, get_tw, uZ_constant<Size * 2>{});
-            }
-        }(data_rep, get_tw);
+        auto res      = []<uZ Size = 2> PCX_LAINLINE    //
+            (this auto f, auto data, auto get_tw, uZ_constant<Size> = {}) {
+                if constexpr (Size == NodeSize) {
+                    return btfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
+                } else {
+                    auto tmp = btfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
+                    return f(tmp, get_tw, uZ_constant<Size * 2>{});
+                }
+            }(data_rep, get_tw);
         auto res_eval = tupi::group_invoke(simd::evaluate, res);
         auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
         tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
@@ -141,17 +139,15 @@ private:
     PCX_AINLINE static void perform_reverse_impl(const dest_t& dest, auto src, auto get_tw) {
         auto data     = tupi::group_invoke(simd::cxload<SrcPackSize>, src);
         auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
-        auto res      = []<uZ Size = NodeSize> PCX_LAINLINE(this auto f,    //
-                                                       auto      data,
-                                                       auto      get_tw,
-                                                       uZ_constant<Size> = {}) {
-            if constexpr (Size == 2) {
-                return rbtfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
-            } else {
-                auto tmp = rbtfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
-                return f(tmp, get_tw, uZ_constant<Size / 2>{});
-            }
-        }(data_rep, get_tw);
+        auto res      = []<uZ Size = NodeSize> PCX_LAINLINE    //
+            (this auto f, auto data, auto get_tw, uZ_constant<Size> = {}) {
+                if constexpr (Size == 2) {
+                    return rbtfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
+                } else {
+                    auto tmp = rbtfly_impl<Size>(data, get_tw(uZ_constant<Size>{}));
+                    return f(tmp, get_tw, uZ_constant<Size / 2>{});
+                }
+            }(data_rep, get_tw);
         auto res_eval = tupi::group_invoke(simd::evaluate, res);
         auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
         tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
@@ -179,6 +175,7 @@ private:
         auto new_hi_tw = tupi::group_invoke(simd::mul, new_hi, tws);
         return combine_halves<stride>(new_lo, new_hi_tw);
     };
+
     /**
      * @brief Extracts two halves of the tuple.
      *
