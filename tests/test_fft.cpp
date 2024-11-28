@@ -58,7 +58,7 @@ void foo(std::complex<f32>* dest, auto&& tw) {
     constexpr auto settings = node_t::settings{
         .pack_dest = 1,
         .pack_src  = 1,
-        .conj_tw   = false,
+        .reverse   = false,
     };
     node_t::perform<settings>(dest_tuple, tw_tuple);
 };
