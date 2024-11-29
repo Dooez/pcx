@@ -386,6 +386,29 @@ private:
         }
         size *= NodeSizeL;
     }
+
+    PCX_AINLINE auto single_load_lo_k(auto data_ptr, auto tw_ptr) {
+        auto data = []<uZ... Is>(auto data_ptr, std::index_sequence<Is...>) {
+            return tupi::make_tuple(simd::cxload<1, Width>(data_ptr + Width * 2 * Is)...);
+        }(data_ptr, std::make_index_sequence<NodeSize>{});
+        // quick maffs
+        //
+        // single_load(v0, v1){
+        // traits::repack<Width, Width / 2>(v0, v1);
+        // btfly
+        // traits::repack<Width, Width / 4>(v0, v1);
+        // ...
+        // traits::reapck<Width, 1>
+        // btfly
+        // traits::repack<1, Width>
+        // traits::repack<2, Width>
+        // ...
+        // traits::repack<Width / 2, Width>
+        // simd::repack<pack_dest>(v0);
+        // simd::repack<pack_dest>(v1);
+        // }
+        //
+    }
 };
 
 }    // namespace pcx::detail_
