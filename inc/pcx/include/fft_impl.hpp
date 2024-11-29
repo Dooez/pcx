@@ -93,14 +93,6 @@ struct btfly_node_dit {
         }
     }
     template<settings S>
-    PCX_AINLINE static void perform(const dest_t& dest, const tw_t& tw) {
-        if constexpr (S.reverse) {
-            rev_impl<S.pack_dest, S.pack_src>(dest, dest, make_tw_getter(tw));
-        } else {
-            fwd_impl<S.pack_dest, S.pack_src>(dest, dest, make_tw_getter(tw));
-        }
-    }
-    template<settings S>
     PCX_AINLINE static void perform_lo_k(const dest_t& dest, const src_t& src) {
         if constexpr (S.reverse) {
             rev_impl<S.pack_dest, S.pack_src>(dest, src, const_tw_getter);
@@ -109,12 +101,12 @@ struct btfly_node_dit {
         }
     }
     template<settings S>
+    PCX_AINLINE static void perform(const dest_t& dest, const tw_t& tw) {
+        perform<S>(dest, dest, tw);
+    }
+    template<settings S>
     PCX_AINLINE static void perform_lo_k(const dest_t& dest) {
-        if constexpr (S.reverse) {
-            rev_impl<S.pack_dest, S.pack_src>(dest, dest, const_tw_getter);
-        } else {
-            fwd_impl<S.pack_dest, S.pack_src>(dest, dest, const_tw_getter);
-        }
+        preform_lo_k<S>(dest, dest);
     }
 
 private:
@@ -279,5 +271,46 @@ private:
         };
     } const_tw_getter;
 };
+
+template<uZ NodeSize, typename T, uZ Width>
+struct subtransform {
+    using btfly_node = btfly_node_dit<NodeSize, T, Width>;
+    void perform(uZ size, uZ max_size, T* dest_ptr, const T* tw_ptr) {
+        constexpr auto single_load_size = NodeSize * Width;
+
+        constexpr auto settings = typename btfly_node::settings{
+            .pack_dest = simd::max_width<T>,
+            .pack_src  = simd::max_width<T>,
+            .reverse   = false,
+        };
+        if (max_size / size == single_load_size) {
+            //do single load subtransform
+            return;
+        }
+        while (max_size / size >= single_load_size * NodeSize) {
+            auto data_stride = max_size / size;
+            for (auto i: stdv::iota(0U, data_stride / single_load_size)) {
+                auto data = []<uZ... Is>(auto data_ptr, auto stride, std::index_sequence<Is...>) {
+                    return tupi::make_tuple((data_ptr + stride * Is)...);
+                }(dest_ptr, data_stride, std::make_index_sequence<NodeSize>{});
+                btfly_node::template perform_lo_k<settings>(data);
+            }
+            for (auto k_chunk: stdv::iota(1U, size / 2)) {
+                auto tw = []<uZ... Is>(auto tw_ptr, std::index_sequence<Is...>) {
+                    return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + Is * 2)...);
+                }(tw_ptr, std::make_index_sequence<NodeSize - 1>{});
+                tw_ptr += 2 * (NodeSize - 1);
+                for (auto i: stdv::iota(0U, data_stride / single_load_size)) {
+                    auto data = []<uZ... Is>(auto data_ptr, auto stride, std::index_sequence<Is...>) {
+                        return tupi::make_tuple((data_ptr + stride * Is)...);
+                    }(dest_ptr, data_stride, std::make_index_sequence<NodeSize>{});
+                    btfly_node::template perform<settings>(data, tw);
+                }
+            }
+            size *= NodeSize;
+        }
+    };
+};
+
 
 }    // namespace pcx::detail_

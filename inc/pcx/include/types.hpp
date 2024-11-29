@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cstdint>
 #include <limits>
+#include <ranges>
 #include <type_traits>
 
 #if defined(__clang__)
@@ -30,6 +31,9 @@ using i64 = int64_t;
 using i32 = int32_t;
 using i16 = int16_t;
 using i8  = int8_t;
+
+namespace stdv = std::views;
+namespace stdr = std::ranges;
 
 template<uZ I>
 using uZ_constant = std::integral_constant<uZ, I>;
