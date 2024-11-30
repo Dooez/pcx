@@ -144,7 +144,9 @@ struct mul_stage<0> {
         constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, lhs, rhs);
+        return tupi::intermediate_result(tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
+                                                          lhs,
+                                                          rhs));
     }
 };
 template<>
@@ -194,7 +196,7 @@ struct mul_stage<1> {
 };
 }    // namespace detail_
 
-inline constexpr struct mul_t : pcx::tupi::multi_stage_op_base<2> {
+inline constexpr struct mul_t : pcx::tupi::multistage_op_base {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::mul(lhs.native, rhs.native);
@@ -254,7 +256,10 @@ struct div_stage<0> {
 
         using new_cx_vec =
             cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
+        return tupi::intermediate_result(tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
+                                                          rhs_re_sq,
+                                                          lhs,
+                                                          rhs));
     };
 };
 template<>
@@ -302,7 +307,8 @@ struct div_stage<1> {
         constexpr bool neg_imag = Res0::neg_imag() && im_reim_neg_imag;
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_abs);
+        return tupi::intermediate_result(tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
+                                                          rhs_abs));
     };
 };
 template<>
@@ -324,7 +330,7 @@ struct div_stage<2> {
     };
 };
 }    // namespace detail_
-inline constexpr struct div_t : tupi::multi_stage_op_base<3> {
+inline constexpr struct div_t : tupi::multistage_op_base {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::div(lhs.native, rhs.native);

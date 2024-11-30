@@ -215,15 +215,6 @@ template<uZ I, typename T>
 using get_element_t = detail_::get_element<I, T>::type;
 }    // namespace detail_
 
-template<uZ N>
-    requires(N > 0)
-struct multi_stage_op_base {
-    static constexpr uZ stage_count = N;
-};
-template<typename T>
-concept multistage_op = requires(T op) {
-    { T::stage_count } -> std::common_with<uZ>;
-} && std::derived_from<T, multi_stage_op_base<T::stage_count>>;
 
 namespace detail_ {
 template<typename>
@@ -281,6 +272,36 @@ struct has_group_invoke_result {
 
 template<typename T>
 concept any_tuple = detail_::is_tuple_v<T>;
+
+struct multistage_op_base {};
+template<typename T>
+concept multistage_op = std::derived_from<T, multistage_op_base>;
+
+template<typename... Ts>
+struct intermediate_result : public tuple<Ts...> {};
+namespace detail_ {
+template<typename T>
+struct is_final_result : std::true_type {};
+template<typename... Ts>
+struct is_final_result<intermediate_result<Ts...>> : std::false_type {};
+template<typename T>
+inline constexpr auto is_final_result_v = is_final_result<T>::value;
+};    // namespace detail_
+template<typename T>
+concept final_result = detail_::is_final_result_v<T>;
+namespace detail_ {
+template<any_tuple T>
+struct is_final_tuple;
+template<typename... Ts>
+struct is_final_tuple<tuple<Ts...>> {
+    static constexpr bool value = (final_result<Ts> && ...);
+};
+template<any_tuple T>
+inline constexpr auto is_final_tuple_v = is_final_tuple<T>::value;
+}    // namespace detail_
+template<typename T>
+concept final_group_result = std::same_as<T, void> || any_tuple<T> && detail_::is_final_tuple_v<T>;
+
 template<typename... Ts>
 concept same_size_tuples = (any_tuple<Ts> && ...) && detail_::are_same_size_tuples_v<Ts...>;
 template<typename F, typename... Args>
@@ -290,28 +311,25 @@ template<typename F, typename... Args>
 concept group_invocable_with_result = group_invocable<F, Args...>    //
                                       && detail_::has_group_invoke_result<F, Args...>::value;
 
-
 template<typename F, typename... Args>
     requires group_invocable_with_result<F, Args...>
 PCX_LAINLINE constexpr auto group_invoke(F&& f, Args&&... args) -> decltype(auto) {
     if constexpr (multistage_op<std::remove_cvref_t<F>>) {
-        constexpr uZ stage_count = std::remove_cvref_t<F>::stage_count;
-        if constexpr (stage_count > 1) {
-            return []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke,    //
-                                                         F&&         f,
-                                                         T&&         arg,
-                                                         uZ_constant<I> = {}) {
-                if constexpr (I == stage_count - 1) {
-                    return group_invoke(f.template stage<I>, std::forward<T>(arg));
-                } else {
-                    return invoke(std::forward<F>(f),    //
-                                  group_invoke(f.template stage<I>, std::forward<T>(arg)),
-                                  uZ_constant<I + 1>{});
-                }
-            }(std::forward<F>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
-        } else {
-            return group_invoke(f.template stage<0>, std::forward<Args>(args)...);
-        };
+        return []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke,    //
+                                                     F&&         f,
+                                                     T&&         arg,
+                                                     uZ_constant<I> = {}) {
+            using stage_t = std::remove_cvref_t<decltype(f.template stage<I>)>;
+            constexpr auto final_stage =
+                final_group_result<decltype(group_invoke(f.template stage<I>, std::forward<T>(arg)))>;
+            if constexpr (final_stage) {
+                return group_invoke(f.template stage<I>, std::forward<T>(arg));
+            } else {
+                return invoke(std::forward<F>(f),    //
+                              group_invoke(f.template stage<I>, std::forward<T>(arg)),
+                              uZ_constant<I + 1>{});
+            }
+        }(std::forward<F>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
     } else {
         constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
 
@@ -337,13 +355,11 @@ template<typename F, typename... Args>
     requires group_invocable<F, Args...>
 PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
     if constexpr (multistage_op<std::remove_cvref_t<F>>) {
-        constexpr uZ stage_count = std::remove_cvref_t<F>::stage_count;
-        if constexpr (stage_count > 1) {
-            return []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke,
-                                                         F&&         f,
-                                                         T&&         arg,
-                                                         uZ_constant<I> = {}) {
-                if constexpr (I == stage_count - 1) {
+        return
+            []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke, F&& f, T&& arg, uZ_constant<I> = {}) {
+                constexpr auto final_stage =
+                    final_group_result<decltype(group_invoke(f.template stage<I>, std::forward<T>(arg)))>;
+                if constexpr (final_stage) {
                     group_invoke(f.template stage<I>, std::forward<T>(arg));
                 } else {
                     invoke(std::forward<F>(f),    //
@@ -351,9 +367,6 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
                            uZ_constant<I + 1>{});
                 }
             }(std::forward<F>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
-        } else {
-            group_invoke(f.template stage<0>, std::forward<Args>(args)...);
-        };
     } else {
         constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
         return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
