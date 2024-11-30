@@ -62,7 +62,29 @@ namespace detail_ {
 template<typename T>
 struct max_vec_width;
 template<typename T, uZ Width>
-struct vec_traits;
+struct vec_traits {
+    struct native;
+    static auto set1(T value) -> native;
+    static auto zero() -> native;
+    static auto load(const T* src);
+    static void store(T* dest, native vec);
+    static auto add(native lhs, native rhs) -> native;
+    static auto sub(native lhs, native rhs) -> native;
+    static auto mul(native lhs, native rhs) -> native;
+    static auto div(native lhs, native rhs) -> native;
+    static auto fmadd(native a, native b, native c) -> native;
+    static auto fnmadd(native a, native b, native c) -> native;
+    static auto fmsub(native a, native b, native c) -> native;
+    static auto fnmsub(native a, native b, native c) -> native;
+
+    template<uZ To, uZ From>
+    struct repack {
+        static void permute(native& a, native& b);
+    };
+
+    struct tup_width;
+    static auto bit_reverse(tup_width tup) -> tup_width;
+};
 }    // namespace detail_
 template<typename T>
 constexpr uZ max_width = detail_::max_vec_width<T>::value;
@@ -74,12 +96,13 @@ template<typename T, uZ Width = detail_::max_vec_width<T>::value>
     requires(Width <= detail_::max_vec_width<T>::value)
 struct vec {
     using value_type = T;
-    using native_vec = typename detail_::vec_traits<T, Width>::native;
+    using traits     = detail_::vec_traits<value_type, Width>;
+    using native_t   = typename traits::native;
 
-    native_vec native;
+    native_t native;
 
     PCX_AINLINE vec() = default;
-    PCX_AINLINE vec(native_vec v)    //NOLINT(*explicit*)
+    PCX_AINLINE vec(native_t v)    //NOLINT(*explicit*)
     : native(v) {};
 };
 

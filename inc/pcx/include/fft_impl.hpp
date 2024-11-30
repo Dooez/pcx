@@ -335,22 +335,21 @@ private:
                     return tupi::make_tuple((data_ptr + stride * Is)...);
                 }(data_ptr + i * data_stride * 2 * single_load_size,
                   data_stride,
-                  std::make_index_sequence<NodeSize>{});
+                  std::make_index_sequence<NodeSizeL>{});
             btfly_node::template perform_lo_k<settings>(data);
         }
-
         for (auto k: stdv::iota(1U, size / 2)) {
             auto tw = []<uZ... Is> PCX_LAINLINE(auto tw_ptr, std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + Is * 2)...);
-            }(tw_ptr, std::make_index_sequence<NodeSize - 1>{});
-            tw_ptr += 2 * (NodeSize - 1);
+            }(tw_ptr, std::make_index_sequence<NodeSizeL - 1>{});
+            tw_ptr += 2 * (NodeSizeL - 1);
             for (auto i: stdv::iota(0U, data_stride / single_load_size)) {
                 auto data =
                     []<uZ... Is> PCX_LAINLINE(auto data_ptr, auto stride, std::index_sequence<Is...>) {
                         return tupi::make_tuple((data_ptr + stride * Is)...);
                     }(data_ptr + i * data_stride * 2 * single_load_size,
                       data_stride,
-                      std::make_index_sequence<NodeSize>{});
+                      std::make_index_sequence<NodeSizeL>{});
                 btfly_node::template perform<settings>(data, tw);
             }
         }
@@ -372,15 +371,15 @@ private:
         for (auto k: stdv::iota(1U, size / 2)) {
             auto tw = []<uZ... Is> PCX_LAINLINE(auto tw_ptr, std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + Is * 2)...);
-            }(tw_ptr, std::make_index_sequence<NodeSize - 1>{});
-            tw_ptr += 2 * (NodeSize - 1);
+            }(tw_ptr, std::make_index_sequence<NodeSizeL - 1>{});
+            tw_ptr += 2 * (NodeSizeL - 1);
             for (auto i: stdv::iota(0U, data_stride / single_load_size)) {
                 auto data =
                     []<uZ... Is> PCX_LAINLINE(auto data_ptr, auto stride, std::index_sequence<Is...>) {
                         return tupi::make_tuple((data_ptr + stride * Is)...);
                     }(data_ptr + i * data_stride * 2 * single_load_size,
                       data_stride,
-                      std::make_index_sequence<NodeSize>{});
+                      std::make_index_sequence<NodeSizeL>{});
                 btfly_node::template perform<settings>(data, tw);
             }
         }
@@ -409,6 +408,20 @@ private:
         // }
         //
     }
+
+
+    template<uZ To, uZ From>
+    struct regroup_t {
+        template<simd::any_cx_vec V>
+            requires(To <= V::width()) && (From <= V::width())
+        PCX_AINLINE static auto operator()(V a, V b) -> V {
+            using traits = V::vec_t::traits;
+            traits::template repack<To, From>::permute(a.real().native, b.real().native);
+            traits::template repack<To, From>::permute(a.imag().native, b.imag().native);
+        }
+    };
+    template<uZ To, uZ From>
+    static constexpr auto regroup = regroup_t<To, From>{};
 };
 
 }    // namespace pcx::detail_
