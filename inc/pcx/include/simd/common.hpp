@@ -120,10 +120,11 @@ struct repack_t {
     PCX_AINLINE auto operator()(V vec) const {
         using repacked_vec_t =
             cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackSize>;
-        using traits  = detail_::vec_traits<typename V::real_type, V::width()>;
-        using repack  = traits::template repack<PackSize, V::pack_size()>;
+        using traits          = detail_::vec_traits<typename V::real_type, V::width()>;
+        constexpr auto repack = traits::template repack<PackSize, V::pack_size()>;
+
         auto repacked = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
-        repack::permute(repacked.real().native, repacked.imag().native);
+        repack(repacked.real().native, repacked.imag().native);
         return repacked;
     }
 };
