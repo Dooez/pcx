@@ -17,6 +17,372 @@ struct max_vec_width;
 template<typename T, uZ Width>
 struct vec_traits;
 
+template<>
+struct vec_traits<f32, 2> {
+    using native = std::array<f32, 2>;
+    PCX_AINLINE static auto set1(f32 value) -> native {
+        return {value, value};
+    }
+    PCX_AINLINE static auto zero() -> native {
+        return {0, 0};
+    }
+    PCX_AINLINE static auto load(const f32* src) -> native {
+        return {src[0], src[1]};
+    }
+    PCX_AINLINE static void store(f32* dest, native vec) {
+        dest[0] = vec[0];
+        dest[1] = vec[1];
+    }
+    PCX_AINLINE static auto add(native lhs, native rhs) -> native {
+        return {lhs[0] + rhs[0], lhs[1] + rhs[1]};
+    }
+    PCX_AINLINE static auto sub(native lhs, native rhs) -> native {
+        return {lhs[0] - rhs[0], lhs[1] - rhs[1]};
+    }
+    PCX_AINLINE static auto mul(native lhs, native rhs) -> native {
+        return {lhs[0] * rhs[0], lhs[1] * rhs[1]};
+    }
+    PCX_AINLINE static auto div(native lhs, native rhs) -> native {
+        return {lhs[0] / rhs[0], lhs[1] / rhs[1]};
+    }
+    PCX_AINLINE static auto fmadd(native a, native b, native c) -> native {
+        return {a[0] * b[0] + c[0], a[1] * b[1] + c[1]};
+    }
+    PCX_AINLINE static auto fnmadd(native a, native b, native c) -> native {
+        return {-a[0] * b[0] + c[0], -a[1] * b[1] + c[1]};
+    }
+    PCX_AINLINE static auto fmsub(native a, native b, native c) -> native {
+        return {a[0] * b[0] - c[0], a[1] * b[1] - c[1]};
+    }
+    PCX_AINLINE static auto fnmsub(native a, native b, native c) -> native {
+        return {-a[0] * b[0] - c[0], -a[1] * b[1] - c[1]};
+    }
+
+    template<uZ To, uZ From>
+    struct repack;
+    template<uZ P>
+    struct repack<P, P> {
+        PCX_AINLINE static void permute(native& a, native& b) {};
+    };
+
+    using sort_tup = tupi::broadcast_tuple_t<native, 2>;
+    PCX_AINLINE static auto bit_reverse(sort_tup tup) {
+        auto first  = tupi::get<0>(tup);
+        auto second = tupi::get<1>(tup);
+        return sort_tup{
+            {first[0], second[0]},
+            {first[1], second[1]},
+        };
+    }
+};
+template<>
+struct vec_traits<f32, 2>::repack<1, 2> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        auto x = native{a[0], b[0]};
+        auto y = native{a[1], b[1]};
+        a      = x;
+        b      = y;
+    };
+};
+template<>
+struct vec_traits<f32, 2>::repack<2, 1> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<1, 2>::permute(a, b);
+    };
+};
+template<>
+struct vec_traits<f32, 4> {
+    using native = __m128;
+    PCX_AINLINE static auto set1(f32 value) {
+        return _mm_set1_ps(value);
+    }
+    PCX_AINLINE static auto zero() {
+        return _mm_setzero_ps();
+    }
+    PCX_AINLINE static auto load(const f32* src) {
+        return _mm_loadu_ps(src);
+    }
+    PCX_AINLINE static void store(f32* dest, native vec) {
+        _mm_storeu_ps(dest, vec);
+    }
+    PCX_AINLINE static auto add(native lhs, native rhs) {
+        return _mm_add_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto sub(native lhs, native rhs) {
+        return _mm_sub_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto mul(native lhs, native rhs) {
+        return _mm_mul_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto div(native lhs, native rhs) {
+        return _mm_div_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto fmadd(native a, native b, native c) {
+        return _mm_fmadd_ps(a, b, c);
+    }
+    PCX_AINLINE static auto fnmadd(native a, native b, native c) {
+        return _mm_fnmadd_ps(a, b, c);
+    }
+    PCX_AINLINE static auto fmsub(native a, native b, native c) {
+        return _mm_fmsub_ps(a, b, c);
+    }
+    PCX_AINLINE static auto fnmsub(native a, native b, native c) {
+        return _mm_fnmsub_ps(a, b, c);
+    }
+
+    static auto upsample(vec_traits<f32, 2> vec);
+
+    template<uZ To, uZ From>
+    struct repack;
+    template<uZ P>
+    struct repack<P, P> {
+        PCX_AINLINE static void permute(native& a, native& b) {};
+    };
+
+    using tup4 = tupi::broadcast_tuple_t<native, 8>;
+    PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
+        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm_unpacklo_ps(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm_unpackhi_ps(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) {
+            return _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
+        };
+        constexpr auto unpck2hi = [](native a, native b) {
+            return _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
+        };
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
+                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
+        }(tup, std::make_index_sequence<2>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
+                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
+        }(res1, std::index_sequence<0, 2>{});
+
+        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 1>(tup)...);
+        }(res2, std::index_sequence<0, 2>{});
+        return resort;
+    }
+};
+template<>
+struct vec_traits<f32, 4>::repack<1, 4> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        auto x = _mm_unpacklo_ps(a, b);
+        auto y = _mm_unpackhi_ps(a, b);
+        a      = x;
+        b      = y;
+    };
+};
+template<>
+struct vec_traits<f32, 4>::repack<2, 4> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        auto x = _mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b));
+        auto y = _mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b));
+        a      = _mm_castpd_ps(x);
+        b      = _mm_castpd_ps(y);
+    };
+};
+template<>
+struct vec_traits<f32, 4>::repack<1, 2> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        a = _mm_permute_ps(a, 0b11011000);
+        b = _mm_permute_ps(b, 0b11011000);
+    };
+};
+template<>
+struct vec_traits<f32, 4>::repack<4, 2> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<2, 4>::permute(a, b);
+    };
+};
+template<>
+struct vec_traits<f32, 4>::repack<2, 1> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<1, 2>::permute(a, b);
+    };
+};
+template<>
+struct vec_traits<f32, 4>::repack<4, 1> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<2, 1>::permute(a, b);
+        repack<4, 2>::permute(a, b);
+    };
+};
+
+
+template<>
+struct vec_traits<f32, 8> {
+    using native = __m256;
+    PCX_AINLINE static auto set1(f32 value) {
+        return _mm256_set1_ps(value);
+    }
+    PCX_AINLINE static auto zero() {
+        return _mm256_setzero_ps();
+    }
+    PCX_AINLINE static auto load(const f32* src) {
+        return _mm256_loadu_ps(src);
+    }
+    PCX_AINLINE static void store(f32* dest, native vec) {
+        _mm256_storeu_ps(dest, vec);
+    }
+    PCX_AINLINE static auto add(native lhs, native rhs) {
+        return _mm256_add_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto sub(native lhs, native rhs) {
+        return _mm256_sub_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto mul(native lhs, native rhs) {
+        return _mm256_mul_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto div(native lhs, native rhs) {
+        return _mm256_div_ps(lhs, rhs);
+    }
+    PCX_AINLINE static auto fmadd(native a, native b, native c) {
+        return _mm256_fmadd_ps(a, b, c);
+    }
+    PCX_AINLINE static auto fnmadd(native a, native b, native c) {
+        return _mm256_fnmadd_ps(a, b, c);
+    }
+    PCX_AINLINE static auto fmsub(native a, native b, native c) {
+        return _mm256_fmsub_ps(a, b, c);
+    }
+    PCX_AINLINE static auto fnmsub(native a, native b, native c) {
+        return _mm256_fnmsub_ps(a, b, c);
+    }
+
+    template<uZ To, uZ From>
+    struct repack;
+    template<uZ P>
+    struct repack<P, P> {
+        PCX_AINLINE static void permute(native& a, native& b) {}
+    };
+
+    using tup8 = tupi::broadcast_tuple_t<native, 8>;
+    PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
+        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm256_unpacklo_ps(a, b); };
+        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm256_unpackhi_ps(a, b); };
+        constexpr auto unpck2lo = [](native a, native b) {
+            return _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
+        };
+        constexpr auto unpck2hi = [](native a, native b) {
+            return _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
+        };
+        constexpr auto unpck4lo = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00100000); };
+        constexpr auto unpck4hi = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00110001); };
+
+        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...,
+                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...);
+        }(tup, std::make_index_sequence<4>{});
+
+        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
+                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
+        }(res1, std::index_sequence<0, 1, 4, 5>{});
+
+        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(unpck4lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
+                                    unpck4hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
+        }(res2, std::index_sequence<0, 2, 4, 6>{});
+
+        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
+            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 4>(tup)...);
+        }(res4, std::index_sequence<0, 2, 1, 3>{});
+        return resort;
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<4, 8> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        auto x = _mm256_permute2f128_ps(a, b, 0b00100000);
+        auto y = _mm256_permute2f128_ps(a, b, 0b00110001);
+        a      = x;
+        b      = y;
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<1, 4> {
+    const static inline auto idx0 = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
+    PCX_AINLINE static void  permute(native& a, native& b) {
+        a = _mm256_permutevar8x32_ps(a, idx0);
+        b = _mm256_permutevar8x32_ps(b, idx0);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<2, 4> {
+    const static inline auto idx0 = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
+    PCX_AINLINE static void  permute(native& a, native& b) {
+        a = _mm256_permutevar8x32_ps(a, idx0);
+        b = _mm256_permutevar8x32_ps(b, idx0);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<1, 8> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<4, 8>::permute(a, b);
+        repack<1, 4>::permute(a, b);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<2, 8> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<4, 8>::permute(a, b);
+        repack<2, 4>::permute(a, b);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<8, 4> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        auto x = _mm256_permute2f128_ps(a, b, 0b00100000);
+        auto y = _mm256_permute2f128_ps(a, b, 0b00110001);
+        a      = x;
+        b      = y;
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<1, 2> {
+    const static inline auto idx0 = _mm256_setr_epi32(0, 2, 1, 3, 4, 6, 5, 7);
+    PCX_AINLINE static void  permute(native& a, native& b) {
+        a = _mm256_permutevar8x32_ps(a, idx0);
+        b = _mm256_permutevar8x32_ps(b, idx0);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<4, 2> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        a = _mm256_permutevar8x32_ps(a, vec_traits<f32, 8>::repack<2, 4>::idx0);
+        b = _mm256_permutevar8x32_ps(b, vec_traits<f32, 8>::repack<2, 4>::idx0);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<8, 2> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<4, 2>::permute(a, b);
+        repack<8, 4>::permute(a, b);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<2, 1> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<1, 2>::permute(a, b);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<4, 1> {
+    const static inline auto idx0 = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
+    PCX_AINLINE static void  permute(native& a, native& b) {
+        a = _mm256_permutevar8x32_ps(a, idx0);
+        b = _mm256_permutevar8x32_ps(b, idx0);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::repack<8, 1> {
+    PCX_AINLINE static void permute(native& a, native& b) {
+        repack<4, 1>::permute(a, b);
+        repack<8, 4>::permute(a, b);
+    }
+};
 #ifdef PCX_AVX512
 template<>
 struct max_vec_width<f32> {
@@ -63,6 +429,42 @@ struct vec_traits<f32, 16> {
     PCX_AINLINE static auto fnmsub(native a, native b, native c) {
         return _mm512_fnmsub_ps(a, b, c);
     }
+
+    template<uZ SrcWidth>
+        requires(SrcWidth <= 16)
+    struct upsample_t {
+        inline static const auto idx2 = _mm512_setr_epi32(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1);
+        inline static const auto idx4 = _mm512_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3);
+        inline static const auto idx8 = _mm512_setr_epi32(0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7);
+
+        PCX_AINLINE auto operator()(vec_traits<f32, 2>::native v) const -> native
+            requires(SrcWidth == 2)
+        {
+            auto v128 = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(v.data())));
+            auto vs   = _mm512_zextps128_ps512(v128);
+            return _mm512_permutevar_ps(vs, idx2);
+        }
+        PCX_AINLINE auto operator()(vec_traits<f32, 4>::native v) const -> native
+            requires(SrcWidth == 4)
+        {
+            auto vs = _mm512_zextps128_ps512(v);
+            return _mm512_permutevar_ps(vs, idx4);
+        }
+        PCX_AINLINE auto operator()(vec_traits<f32, 8>::native v) const -> native
+            requires(SrcWidth == 8)
+        {
+            auto vs = _mm512_zextps256_ps512(v);
+            return _mm512_permutevar_ps(vs, idx8);
+        }
+        PCX_AINLINE auto operator()(vec_traits<f32, 16>::native v) const -> native
+            requires(SrcWidth == 16)
+        {
+            return v;
+        }
+    };
+    template<uZ SrcWidth>
+        requires(SrcWidth <= 16)
+    static constexpr auto upsample = upsample_t<SrcWidth>{};
 
     template<uZ To, uZ From>
     struct repack;
@@ -306,298 +708,5 @@ struct max_vec_width<f32> {
     static constexpr uZ value = 8;
 };
 #endif
-
-template<>
-struct vec_traits<f32, 8> {
-    using native = __m256;
-    PCX_AINLINE static auto set1(f32 value) {
-        return _mm256_set1_ps(value);
-    }
-    PCX_AINLINE static auto zero() {
-        return _mm256_setzero_ps();
-    }
-    PCX_AINLINE static auto load(const f32* src) {
-        return _mm256_loadu_ps(src);
-    }
-    PCX_AINLINE static void store(f32* dest, native vec) {
-        _mm256_storeu_ps(dest, vec);
-    }
-    PCX_AINLINE static auto add(native lhs, native rhs) {
-        return _mm256_add_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto sub(native lhs, native rhs) {
-        return _mm256_sub_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto mul(native lhs, native rhs) {
-        return _mm256_mul_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto div(native lhs, native rhs) {
-        return _mm256_div_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto fmadd(native a, native b, native c) {
-        return _mm256_fmadd_ps(a, b, c);
-    }
-    PCX_AINLINE static auto fnmadd(native a, native b, native c) {
-        return _mm256_fnmadd_ps(a, b, c);
-    }
-    PCX_AINLINE static auto fmsub(native a, native b, native c) {
-        return _mm256_fmsub_ps(a, b, c);
-    }
-    PCX_AINLINE static auto fnmsub(native a, native b, native c) {
-        return _mm256_fnmsub_ps(a, b, c);
-    }
-
-    template<uZ To, uZ From>
-    struct repack;
-    template<uZ P>
-    struct repack<P, P> {
-        PCX_AINLINE static void permute(native& a, native& b) {}
-    };
-
-    using tup8 = tupi::broadcast_tuple_t<native, 8>;
-    PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
-        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm256_unpacklo_ps(a, b); };
-        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm256_unpackhi_ps(a, b); };
-        constexpr auto unpck2lo = [](native a, native b) {
-            return _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
-        };
-        constexpr auto unpck2hi = [](native a, native b) {
-            return _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
-        };
-        constexpr auto unpck4lo = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00100000); };
-        constexpr auto unpck4hi = [](native a, native b) { return _mm256_permute2f128_ps(a, b, 0b00110001); };
-
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...);
-        }(tup, std::make_index_sequence<4>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(res1, std::index_sequence<0, 1, 4, 5>{});
-
-        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck4lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck4hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res2, std::index_sequence<0, 2, 4, 6>{});
-
-        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 4>(tup)...);
-        }(res4, std::index_sequence<0, 2, 1, 3>{});
-        return resort;
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<4, 8> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        auto x = _mm256_permute2f128_ps(a, b, 0b00100000);
-        auto y = _mm256_permute2f128_ps(a, b, 0b00110001);
-        a      = x;
-        b      = y;
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<1, 4> {
-    const static inline auto idx0 = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
-    PCX_AINLINE static void  permute(native& a, native& b) {
-        a = _mm256_permutevar8x32_ps(a, idx0);
-        b = _mm256_permutevar8x32_ps(b, idx0);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<2, 4> {
-    const static inline auto idx0 = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
-    PCX_AINLINE static void  permute(native& a, native& b) {
-        a = _mm256_permutevar8x32_ps(a, idx0);
-        b = _mm256_permutevar8x32_ps(b, idx0);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<1, 8> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<4, 8>::permute(a, b);
-        repack<1, 4>::permute(a, b);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<2, 8> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<4, 8>::permute(a, b);
-        repack<2, 4>::permute(a, b);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<8, 4> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        auto x = _mm256_permute2f128_ps(a, b, 0b00100000);
-        auto y = _mm256_permute2f128_ps(a, b, 0b00110001);
-        a      = x;
-        b      = y;
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<1, 2> {
-    const static inline auto idx0 = _mm256_setr_epi32(0, 2, 1, 3, 4, 6, 5, 7);
-    PCX_AINLINE static void  permute(native& a, native& b) {
-        a = _mm256_permutevar8x32_ps(a, idx0);
-        b = _mm256_permutevar8x32_ps(b, idx0);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<4, 2> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        a = _mm256_permutevar8x32_ps(a, vec_traits<f32, 8>::repack<2, 4>::idx0);
-        b = _mm256_permutevar8x32_ps(b, vec_traits<f32, 8>::repack<2, 4>::idx0);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<8, 2> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<4, 2>::permute(a, b);
-        repack<8, 4>::permute(a, b);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<2, 1> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<1, 2>::permute(a, b);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<4, 1> {
-    const static inline auto idx0 = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
-    PCX_AINLINE static void  permute(native& a, native& b) {
-        a = _mm256_permutevar8x32_ps(a, idx0);
-        b = _mm256_permutevar8x32_ps(b, idx0);
-    }
-};
-template<>
-struct vec_traits<f32, 8>::repack<8, 1> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<4, 1>::permute(a, b);
-        repack<8, 4>::permute(a, b);
-    }
-};
-
-template<>
-struct vec_traits<f32, 4> {
-    using native = __m128;
-    PCX_AINLINE static auto set1(f32 value) {
-        return _mm_set1_ps(value);
-    }
-    PCX_AINLINE static auto zero() {
-        return _mm_setzero_ps();
-    }
-    PCX_AINLINE static auto load(const f32* src) {
-        return _mm_loadu_ps(src);
-    }
-    PCX_AINLINE static void store(f32* dest, native vec) {
-        _mm_storeu_ps(dest, vec);
-    }
-    PCX_AINLINE static auto add(native lhs, native rhs) {
-        return _mm_add_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto sub(native lhs, native rhs) {
-        return _mm_sub_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto mul(native lhs, native rhs) {
-        return _mm_mul_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto div(native lhs, native rhs) {
-        return _mm_div_ps(lhs, rhs);
-    }
-    PCX_AINLINE static auto fmadd(native a, native b, native c) {
-        return _mm_fmadd_ps(a, b, c);
-    }
-    PCX_AINLINE static auto fnmadd(native a, native b, native c) {
-        return _mm_fnmadd_ps(a, b, c);
-    }
-    PCX_AINLINE static auto fmsub(native a, native b, native c) {
-        return _mm_fmsub_ps(a, b, c);
-    }
-    PCX_AINLINE static auto fnmsub(native a, native b, native c) {
-        return _mm_fnmsub_ps(a, b, c);
-    }
-
-    template<uZ To, uZ From>
-    struct repack;
-    template<uZ P>
-    struct repack<P, P> {
-        PCX_AINLINE static void permute(native& a, native& b) {};
-    };
-
-    using tup4 = tupi::broadcast_tuple_t<native, 8>;
-    PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
-        constexpr auto unpck1lo = [](native a, native b) noexcept { return _mm_unpacklo_ps(a, b); };
-        constexpr auto unpck1hi = [](native a, native b) noexcept { return _mm_unpackhi_ps(a, b); };
-        constexpr auto unpck2lo = [](native a, native b) {
-            return _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
-        };
-        constexpr auto unpck2hi = [](native a, native b) {
-            return _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
-        };
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(tup, std::make_index_sequence<2>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res1, std::index_sequence<0, 2>{});
-
-        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 1>(tup)...);
-        }(res2, std::index_sequence<0, 2>{});
-        return resort;
-    }
-};
-
-template<>
-struct vec_traits<f32, 4>::repack<1, 4> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        auto x = _mm_unpacklo_ps(a, b);
-        auto y = _mm_unpackhi_ps(a, b);
-        a      = x;
-        b      = y;
-    };
-};
-template<>
-struct vec_traits<f32, 4>::repack<2, 4> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        auto x = _mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b));
-        auto y = _mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b));
-        a      = _mm_castpd_ps(x);
-        b      = _mm_castpd_ps(y);
-    };
-};
-template<>
-struct vec_traits<f32, 4>::repack<1, 2> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        a = _mm_permute_ps(a, 0b11011000);
-        b = _mm_permute_ps(b, 0b11011000);
-    };
-};
-template<>
-struct vec_traits<f32, 4>::repack<4, 2> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<2, 4>::permute(a, b);
-    };
-};
-template<>
-struct vec_traits<f32, 4>::repack<2, 1> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<1, 2>::permute(a, b);
-    };
-};
-template<>
-struct vec_traits<f32, 4>::repack<4, 1> {
-    PCX_AINLINE static void permute(native& a, native& b) {
-        repack<2, 1>::permute(a, b);
-        repack<4, 2>::permute(a, b);
-    };
-};
-
 }    // namespace pcx::simd::detail_
 // NOLINTEND(*portability*, *magic-number*)
