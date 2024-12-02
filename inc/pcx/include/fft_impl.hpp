@@ -390,6 +390,8 @@ private:
         auto data = []<uZ... Is>(auto data_ptr, std::index_sequence<Is...>) {
             return tupi::make_tuple(simd::cxload<1, Width>(data_ptr + Width * 2 * Is)...);
         }(data_ptr, std::make_index_sequence<NodeSize>{});
+
+
         // quick maffs
         //
         // single_load(v0, v1){
@@ -409,12 +411,18 @@ private:
         //
     }
 
+    template<uZ GroupSize>
+    auto foo(auto lo, auto hi, auto tw) {
+        regroup<Width, GroupSize>(lo, hi);
+        auto hi_tw   = simd::mul(hi, tw);
+        auto newlohi = simd::btfly(lo, hi_tw);
+    }
 
     template<uZ To, uZ From>
     struct regroup_t {
         template<simd::any_cx_vec V>
             requires(To <= V::width()) && (From <= V::width())
-        PCX_AINLINE static auto operator()(V a, V b) -> V {
+        PCX_AINLINE void operator()(V& a, V& b) const {
             using traits = V::vec_t::traits;
             traits::template repack<To, From>::permute(a.real().native, b.real().native);
             traits::template repack<To, From>::permute(a.imag().native, b.imag().native);

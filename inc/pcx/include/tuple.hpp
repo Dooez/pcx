@@ -145,6 +145,22 @@ namespace pcx::tupi {
 template<typename... Ts>
 using tuple = std::tuple<Ts...>;
 
+namespace detail_ {
+template<typename>
+struct is_tuple : std::false_type {};
+template<typename... Ts>
+struct is_tuple<tuple<Ts...>> : std::true_type {};
+template<typename T>
+inline constexpr auto is_tuple_v = is_tuple<T>::value;
+}    // namespace detail_
+template<typename T>
+concept any_tuple = detail_::is_tuple_v<T>;
+
+using std::tuple_element;
+using std::tuple_element_t;
+using std::tuple_size;
+using std::tuple_size_v;
+
 template<typename... Args>
 PCX_AINLINE constexpr auto make_tuple(Args&&... args) {
     return std::make_tuple(std::forward<Args>(args)...);
@@ -163,7 +179,20 @@ PCX_AINLINE constexpr auto make_broadcast_tuple(T&& v) {
         return make_tuple((void(Is), v)...);
     }(static_cast<T&&>(v), std::make_index_sequence<TupleSize>{});
 }
-
+template<typename T>
+PCX_AINLINE auto make_flat_tuple(T&& tuple) {
+    if constexpr (any_tuple<std::remove_cvref_t<T>>) {
+        return []<uZ... Is, typename U> PCX_LAINLINE(std::index_sequence<Is...>, U&& tuple) {
+            return tuple_cat(make_flat_tuple(get<Is>(std::forward<U>(tuple)))...);
+        }(std::make_index_sequence<tuple_size_v<std::remove_cvref_t<T>>>{}, std::forward<T>(tuple));
+    } else {
+        return make_tuple(tuple);
+    }
+}
+template<typename... Ts>
+PCX_AINLINE auto make_flat_tuple(Ts&&... args) {
+    return tuple_cat(make_flat_tuple(std::forward<Ts>(args))...);
+}
 
 namespace detail_ {
 template<typename T, uZ I>
@@ -181,11 +210,6 @@ struct broadcast_tuple {
 }    // namespace detail_
 template<typename T, uZ TupleSize>
 using broadcast_tuple_t = detail_::broadcast_tuple<T, TupleSize>::type;
-
-using std::tuple_element;
-using std::tuple_element_t;
-using std::tuple_size;
-using std::tuple_size_v;
 
 namespace detail_ {
 template<uZ, typename>
@@ -210,19 +234,8 @@ template<uZ I, typename... Ts>
 struct get_element<I, const tuple<Ts...>&&> {
     using type = tuple_element_t<I, const tuple<Ts...>>&&;
 };
-
 template<uZ I, typename T>
 using get_element_t = detail_::get_element<I, T>::type;
-}    // namespace detail_
-
-
-namespace detail_ {
-template<typename>
-struct is_tuple : std::false_type {};
-template<typename... Ts>
-struct is_tuple<tuple<Ts...>> : std::true_type {};
-template<typename T>
-inline constexpr auto is_tuple_v = is_tuple<T>::value;
 
 template<typename...>
 struct are_same_size_tuples : std::false_type {};
@@ -270,9 +283,6 @@ struct has_group_invoke_result {
 
 }    // namespace detail_
 
-template<typename T>
-concept any_tuple = detail_::is_tuple_v<T>;
-
 struct multistage_op_base {};
 template<typename T>
 concept multistage_op = std::derived_from<T, multistage_op_base>;
@@ -289,6 +299,7 @@ inline constexpr auto is_final_result_v = is_final_result<T>::value;
 };    // namespace detail_
 template<typename T>
 concept final_result = detail_::is_final_result_v<T>;
+
 namespace detail_ {
 template<any_tuple T>
 struct is_final_tuple;
@@ -319,9 +330,8 @@ PCX_LAINLINE constexpr auto group_invoke(F&& f, Args&&... args) -> decltype(auto
                                                      F&&         f,
                                                      T&&         arg,
                                                      uZ_constant<I> = {}) {
-            using stage_t = std::remove_cvref_t<decltype(f.template stage<I>)>;
-            constexpr auto final_stage =
-                final_group_result<decltype(group_invoke(f.template stage<I>, std::forward<T>(arg)))>;
+            constexpr auto final_stage = final_group_result<decltype(group_invoke(f.template stage<I>,    //
+                                                                                  std::forward<T>(arg)))>;
             if constexpr (final_stage) {
                 return group_invoke(f.template stage<I>, std::forward<T>(arg));
             } else {
@@ -355,18 +365,53 @@ template<typename F, typename... Args>
     requires group_invocable<F, Args...>
 PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
     if constexpr (multistage_op<std::remove_cvref_t<F>>) {
-        return
-            []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke, F&& f, T&& arg, uZ_constant<I> = {}) {
-                constexpr auto final_stage =
-                    final_group_result<decltype(group_invoke(f.template stage<I>, std::forward<T>(arg)))>;
-                if constexpr (final_stage) {
-                    group_invoke(f.template stage<I>, std::forward<T>(arg));
-                } else {
-                    invoke(std::forward<F>(f),    //
-                           group_invoke(f.template stage<I>, std::forward<T>(arg)),
-                           uZ_constant<I + 1>{});
-                }
-            }(std::forward<F>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
+        return []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke,    //
+                                                     F&&         f,
+                                                     T&&         arg,
+                                                     uZ_constant<I> = {}) {
+            constexpr auto final_stage = final_group_result<decltype(group_invoke(f.template stage<I>,    //
+                                                                                  std::forward<T>(arg)))>;
+            if constexpr (final_stage) {
+                group_invoke(f.template stage<I>, std::forward<T>(arg));
+            } else {
+                invoke(std::forward<F>(f),    //
+                       group_invoke(f.template stage<I>, std::forward<T>(arg)),
+                       uZ_constant<I + 1>{});
+            }
+        }(std::forward<F>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
+    } else {
+        constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
+        return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
+            constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
+                f(get<I>(std::forward<Args>(args))...);
+            };
+            (invoker(uZ_constant<Is>{},    //
+                     std::forward<F>(f),
+                     std::forward<Args>(args)...),
+             ...);
+        }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
+    }
+};
+template<typename F, typename... Args>
+    requires group_invocable<F, Args...>
+PCX_AINLINE constexpr void group_invoke2(F&& f, Args&&... args) {
+    if constexpr (multistage_op<std::remove_cvref_t<F>>) {
+        return []<typename... Ts, uZ I> PCX_LAINLINE(this auto&& invoke,    //
+                                                     uZ_constant<I>,
+                                                     F&& f,
+                                                     Ts&&... args) {
+            auto&&         stage = get_stage<I>(std::forward<F>(f));
+            constexpr auto final_stage =
+                final_group_result<decltype(group_invoke(f.template stage<I>,    //
+                                                         std::forward<Ts>(args)...))>;
+            if constexpr (final_stage) {
+                group_invoke(stage, std::forward<Ts>(args)...);
+            } else {
+                invoke(uZ_constant<I + 1>{},
+                       std::forward<F>(f),
+                       group_invoke(stage, std::forward<Ts>(args)...));
+            }
+        }(std::forward<F>(f), group_invoke(f.template stage<0>, std::forward<Args>(args)...));
     } else {
         constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
         return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
@@ -381,19 +426,5 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
     }
 };
 
-template<typename T>
-PCX_AINLINE auto make_flat_tuple(T&& tuple) {
-    if constexpr (any_tuple<std::remove_cvref_t<T>>) {
-        return []<uZ... Is, typename U> PCX_LAINLINE(std::index_sequence<Is...>, U&& tuple) {
-            return tuple_cat(make_flat_tuple(get<Is>(std::forward<U>(tuple)))...);
-        }(std::make_index_sequence<tuple_size_v<std::remove_cvref_t<T>>>{}, std::forward<T>(tuple));
-    } else {
-        return make_tuple(tuple);
-    }
-}
-template<typename... Ts>
-PCX_AINLINE auto make_flat_tuple(Ts&&... args) {
-    return tuple_cat(make_flat_tuple(std::forward<Ts>(args))...);
-}
 
 }    // namespace pcx::tupi
