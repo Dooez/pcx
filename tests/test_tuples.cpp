@@ -1,5 +1,6 @@
 #include "pcx/include/tuple.hpp"
 
+#include <complex>
 #include <print>
 using uZ  = std::size_t;
 using u64 = std::uint64_t;
@@ -9,12 +10,55 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
     [[gnu::always_inline]] auto operator()(int i) const {
         return i * 4 + 100;
     };
+    [[gnu::always_inline]] auto operator()(std::complex<float> i) const {
+        return i * 4.F + 100.F;
+    };
 
     template<uZ I>
     struct stage_t {
         template<typename Arg>
         auto operator()(Arg&& arg) {
             return std::forward<Arg>(arg);
+        }
+        auto operator()(float i) {
+            return i * std::sqrt(2.F);
+        }
+        auto operator()(int i) const
+            requires(I == 0)
+        {
+            std::print("Stage 0 ret, v: {}.\n", i);
+            // return 0;
+            return pcx::tupi::make_intermediate(i * 2);
+        };
+        auto operator()(pcx::tupi::tuple<int> i) const
+            requires(I == 1)
+        {
+            std::print("Stage 1 ret, v: {}.\n", get<0>(i));
+            return get<0>(i) + 1000;
+        };
+
+        auto operator()(std::complex<float> i)
+            requires(I == 0)
+        {
+            return pcx::tupi::make_intermediate(
+                i * std::exp(std::complex(0.F, std::numbers::pi_v<float> / 4.F)));
+        }
+        auto operator()(pcx::tupi::intermediate_result<std::complex<float>> cx)
+            requires(I == 1)
+        {
+            return pcx::tupi::make_intermediate(get<0>(cx) * 100.f);
+        }
+        auto operator()(pcx::tupi::intermediate_result<std::complex<float>> cx)
+            requires(I == 2)
+        {
+            return pcx::tupi::make_intermediate(get<0>(cx) * 100.f);
+        }
+        auto operator()(pcx::tupi::intermediate_result<std::complex<float>> cxt)
+            requires(I == 3)
+        {
+            auto cx = get<0>(cxt);
+            std::print("stage3 ({}, {})\n", cx.real(), cx.imag());
+            return cx;
         }
     };
 
@@ -25,22 +69,6 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
         return stage_t<I>{};
     }
 } staged;
-
-template<>
-struct s_t::stage_t<0> {
-    [[gnu::always_inline]] auto operator()(int i) const {
-        std::print("Stage 0 ret, v: {}.\n", i);
-        // return 0;
-        return pcx::tupi::make_intermediate(i * 2);
-    };
-};
-template<>
-struct s_t::stage_t<1> {
-    [[gnu::always_inline]] auto operator()(pcx::tupi::tuple<int> i) const {
-        std::print("Stage 1 ret, v: {}.\n", get<0>(i));
-        return get<0>(i) + 1000;
-    };
-};
 
 constexpr struct s_nr_t : pcx::tupi::compound_op_base {
     [[gnu::always_inline]] auto operator()(int i) const {
@@ -82,7 +110,8 @@ int main() {
 
     static_assert(tupi::final_group_result<void>);
 
-    auto [x0, x1, x2, x3] = tupi::group_invoke_t{}(staged, tupi::make_tuple(0, 1, 2, 3));
+    auto [x0, x1, x2, x3, cx0] =
+        tupi::group_invoke_t{}(staged, tupi::make_tuple(0, 1, 2, 3, std::complex<float>(1, 0)));
     tupi::group_invoke_t{}(staged_noret, tupi::make_tuple(0, 1, 2, 3));
 
     std::print("{} {} {} {}\n", x0, x1, x2, x3);
