@@ -418,22 +418,22 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
 
 
 namespace detail_ {
-template<typename... Ts>
-struct nonvoid_tuple {
-    using type = nonvoid_tuple<meta::types<>, Ts...>;
-};
-template<meta::any_types Ts, typename... Us>
-struct nonvoid_tuple<Ts, void, Us...> {
-    using type = nonvoid_tuple<Ts, Us...>::type;
-};
-template<meta::any_types Ts, typename T, typename... Us>
-struct nonvoid_tuple<Ts, T, Us...> {
-    using type = nonvoid_tuple<meta::expand_types_t<Ts, T>, Us...>::type;
-};
-template<typename... Ts>
-struct nonvoid_tuple<meta::types<Ts...>> {
-    using type = tuple<Ts...>;
-};
+// template<typename... Ts>
+// struct nonvoid_tuple {
+//     using type = nonvoid_tuple<meta::types<>, Ts...>;
+// };
+// template<meta::any_types Ts, typename... Us>
+// struct nonvoid_tuple<Ts, void, Us...> {
+//     using type = nonvoid_tuple<Ts, Us...>::type;
+// };
+// template<meta::any_types Ts, typename T, typename... Us>
+// struct nonvoid_tuple<Ts, T, Us...> {
+//     using type = nonvoid_tuple<meta::expand_types_t<Ts, T>, Us...>::type;
+// };
+// template<typename... Ts>
+// struct nonvoid_tuple<meta::types<Ts...>> {
+//     using type = tuple<Ts...>;
+// };
 
 struct void_wrapper {};
 template<meta::any_value_sequence S, uZ I, typename... Ts>
@@ -461,28 +461,17 @@ using nonvoid_index_sequence_t = nonvoid_index_sequence<Ts...>::type;
 struct group_invoke_t {
     template<typename F, typename... Args>
         requires group_invocable<F, Args...>
+    PCX_AINLINE static constexpr void operator()(F&& f, Args&&... args) {
+        group_invoke_impl(std::forward<F>(f), std::forward<Args>(args)...);
+    }
+    template<typename F, typename... Args>
+        requires group_invocable_with_result<F, Args...>
     PCX_AINLINE static constexpr auto operator()(F&& f, Args&&... args) {
         return group_invoke_impl(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
 private:
     template<typename F, typename... Args>
-        requires group_invocable<F, Args...>
-    static void group_invoke_impl(F&& f, Args&&... args) {
-        if constexpr (compound_op<std::remove_cvref_t<F>>) {
-            invoke_stage_recursive<0>(std::forward<F>(f), std::forward<Args>(args)...);
-        } else {
-            constexpr auto group_size = std::min(tuple_size_v<std::remove_cvref_t<Args>>...);
-            return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
-                constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
-                    return f(get<I>(std::forward<Args>(args))...);
-                };
-                (invoker(uZ_constant<Is>{}, std::forward<F>(f), std::forward<Args>(args)...), ...);
-            }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
-        }
-    }
-    template<typename F, typename... Args>
-        requires group_invocable_with_result<F, Args...>
     static auto group_invoke_impl(F&& f, Args&&... args) {
         if constexpr (compound_op<std::remove_cvref_t<F>>) {
             return invoke_stage_recursive<0>(std::forward<F>(f), std::forward<Args>(args)...);
@@ -490,11 +479,16 @@ private:
             constexpr auto group_size = (tuple_size_v<std::remove_cvref_t<Args>>, ...);
             return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
                 constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
-                    return f(get<I>(std::forward<Args>(args))...);
+                    if constexpr (std::same_as<decltype(f(get<I>(std::forward<Args>(args))...)), void>) {
+                        f(get<I>(std::forward<Args>(args))...);
+                        return detail_::void_wrapper{};
+                    } else {
+                        return f(get<I>(std::forward<Args>(args))...);
+                    }
                 };
-                return make_tuple(invoker(uZ_constant<Is>{},    //
-                                          std::forward<F>(f),
-                                          std::forward<Args>(args)...)...);
+                return make_nonvoid_tuple(invoker(uZ_constant<Is>{},    //
+                                                  std::forward<F>(f),
+                                                  std::forward<Args>(args)...)...);
             }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
         }
     }
@@ -540,19 +534,12 @@ private:
         return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
                                                      S&&   stage,
                                                      Arg&& arg) {
-            return make_nonvoid_tuple(wrap_void(passthrough_invoke(std::forward<S>(stage),    //
-                                                                   std::get<Is>(std::forward<Arg>(arg))))...);
+            return make_nonvoid_tuple(                        //
+                passthrough_invoke(std::forward<S>(stage),    //
+                                   std::get<Is>(std::forward<Arg>(arg)))...);
         }(std::make_index_sequence<group_size>{},
                std::forward<decltype(stage)>(stage),
                std::forward<Arg>(arg));
-    }
-
-    static constexpr auto wrap_void() {
-        return detail_::void_wrapper{};
-    }
-    template<typename T>
-    static constexpr auto wrap_void(T&& v) -> decltype(auto) {
-        return std::forward<T>(v);
     }
 
     template<typename... Args>
@@ -572,9 +559,14 @@ private:
     template<typename S, typename Arg>
     static auto passthrough_invoke(S&& stage, Arg&& arg) {
         if constexpr (compound_op<std::remove_cvref_t<S>>) {
-            return invoke_stage_recursive<0>(std::forward<S>(stage), std::forward<Arg>(arg));
+            auto x = invoke_stage_recursive<0>(std::forward<S>(stage), std::forward<Arg>(arg));
         } else {
-            return stage(std::forward<Arg>(arg));
+            if constexpr (std::same_as<decltype(stage(std::forward<Arg>(arg))), void>) {
+                stage(std::forward<Arg>(arg));
+                return detail_::void_wrapper{};
+            } else {
+                return stage(std::forward<Arg>(arg));
+            }
         }
     }
 };

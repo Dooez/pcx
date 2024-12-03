@@ -83,7 +83,7 @@ int main() {
     static_assert(tupi::final_group_result<void>);
 
     auto [x0, x1, x2, x3] = tupi::group_invoke_t{}(staged, tupi::make_tuple(0, 1, 2, 3));
-    // tupi::group_invoke_t{}(staged_noret, tupi::make_tuple(0, 1, 2, 3));
+    tupi::group_invoke_t{}(staged_noret, tupi::make_tuple(0, 1, 2, 3));
 
     std::print("{} {} {} {}\n", x0, x1, x2, x3);
     return 0;
