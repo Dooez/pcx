@@ -418,23 +418,6 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
 
 
 namespace detail_ {
-// template<typename... Ts>
-// struct nonvoid_tuple {
-//     using type = nonvoid_tuple<meta::types<>, Ts...>;
-// };
-// template<meta::any_types Ts, typename... Us>
-// struct nonvoid_tuple<Ts, void, Us...> {
-//     using type = nonvoid_tuple<Ts, Us...>::type;
-// };
-// template<meta::any_types Ts, typename T, typename... Us>
-// struct nonvoid_tuple<Ts, T, Us...> {
-//     using type = nonvoid_tuple<meta::expand_types_t<Ts, T>, Us...>::type;
-// };
-// template<typename... Ts>
-// struct nonvoid_tuple<meta::types<Ts...>> {
-//     using type = tuple<Ts...>;
-// };
-
 struct void_wrapper {};
 template<meta::any_value_sequence S, uZ I, typename... Ts>
 struct nonvoid_index_sequence_impl;

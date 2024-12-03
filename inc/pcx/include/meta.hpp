@@ -118,47 +118,4 @@ using reverse_value_sequence = typename detail_::reverse_value_seq<S>::type;
 template<any_index_sequence S>
 using reverse_index_sequence =
     value_to_index_sequence<typename detail_::reverse_value_seq<index_to_value_sequence<S>>::type>;
-
-template<typename... Ts>
-struct types {
-    static constexpr auto size = sizeof...(Ts);
-};
-namespace detail_ {
-template<typename T>
-struct is_types : std::false_type {};
-template<typename... Ts>
-struct is_types<types<Ts...>> : std::true_type {};
-template<typename... Ts>
-struct expand_types;
-template<typename Tl, typename Tr>
-struct expand_types<Tl, Tr> {
-    using type = types<Tl, Tr>;
-};
-template<typename... Ts, typename Tr>
-struct expand_types<types<Ts...>, Tr> {
-    using type = types<Ts..., Tr>;
-};
-template<typename Tl, typename... Ts>
-struct expand_types<Tl, types<Ts...>> {
-    using type = types<Tl, Ts...>;
-};
-template<typename... Tls, typename... Trs>
-struct expand_types<types<Tls...>, types<Trs...>> {
-    using type = types<Tls..., Trs...>;
-};
-template<typename Tl, typename... Ts>
-struct expand_types<Tl, Ts...> {
-    using type = typename expand_types<Tl, typename expand_types<Ts...>::type>::type;
-};
-template<>
-struct expand_types<> {
-    using type = types<>;
-};
-}    // namespace detail_
-template<typename... Ts>
-using expand_types_t = typename detail_::expand_types<Ts...>::type;
-template<typename T>
-concept any_types = detail_::is_types<T>::value;
-
-
 }    // namespace pcx::meta
