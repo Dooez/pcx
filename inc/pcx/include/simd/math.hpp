@@ -196,7 +196,7 @@ struct mul_stage<1> {
 };
 }    // namespace detail_
 
-inline constexpr struct mul_t : pcx::tupi::multistage_op_base {
+inline constexpr struct mul_t : pcx::tupi::compound_op_base {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::mul(lhs.native, rhs.native);
@@ -330,7 +330,7 @@ struct div_stage<2> {
     };
 };
 }    // namespace detail_
-inline constexpr struct div_t : tupi::multistage_op_base {
+inline constexpr struct div_t : tupi::compound_op_base {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
         return detail_::vec_traits<T, Width>::div(lhs.native, rhs.native);

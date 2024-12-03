@@ -283,12 +283,21 @@ struct has_group_invoke_result {
 
 }    // namespace detail_
 
-struct multistage_op_base {};
+struct compound_op_base {};
 template<typename T>
-concept multistage_op = std::derived_from<T, multistage_op_base>;
+concept compound_op = std::derived_from<T, compound_op_base>;
+
+template<uZ I, typename F>
+auto get_stage(F&& f) {};
 
 template<typename... Ts>
 struct intermediate_result : public tuple<Ts...> {};
+template<typename... Args>
+auto make_intermediate(Args&&... args) {
+    using res_t = intermediate_result<std::remove_cvref_t<Args>...>;
+    return res_t(std::forward<Args>(args)...);
+}
+
 namespace detail_ {
 template<typename T>
 struct is_final_result : std::true_type {};
@@ -325,7 +334,7 @@ concept group_invocable_with_result = group_invocable<F, Args...>    //
 template<typename F, typename... Args>
     requires group_invocable_with_result<F, Args...>
 PCX_LAINLINE constexpr auto group_invoke(F&& f, Args&&... args) -> decltype(auto) {
-    if constexpr (multistage_op<std::remove_cvref_t<F>>) {
+    if constexpr (compound_op<std::remove_cvref_t<F>>) {
         return []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke,    //
                                                      F&&         f,
                                                      T&&         arg,
@@ -364,7 +373,7 @@ PCX_LAINLINE constexpr auto group_invoke(F&& f, Args&&... args) -> decltype(auto
 template<typename F, typename... Args>
     requires group_invocable<F, Args...>
 PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
-    if constexpr (multistage_op<std::remove_cvref_t<F>>) {
+    if constexpr (compound_op<std::remove_cvref_t<F>>) {
         return []<typename T, uZ I = 1> PCX_LAINLINE(this auto&& invoke,    //
                                                      F&&         f,
                                                      T&&         arg,
@@ -392,10 +401,161 @@ PCX_AINLINE constexpr void group_invoke(F&& f, Args&&... args) {
         }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
     }
 };
+
+
+namespace detail_ {
+template<typename... Ts>
+struct nonvoid_tuple {
+    using type = nonvoid_tuple<meta::types<>, Ts...>;
+};
+template<meta::any_types Ts, typename... Us>
+struct nonvoid_tuple<Ts, void, Us...> {
+    using type = nonvoid_tuple<Ts, Us...>::type;
+};
+template<meta::any_types Ts, typename T, typename... Us>
+struct nonvoid_tuple<Ts, T, Us...> {
+    using type = nonvoid_tuple<meta::expand_types_t<Ts, T>, Us...>::type;
+};
+template<typename... Ts>
+struct nonvoid_tuple<meta::types<Ts...>> {
+    using type = tuple<Ts...>;
+};
+template<meta::any_value_sequence S, uZ I, typename... Ts>
+struct nonvoid_index_sequence_impl;
+template<meta::any_value_sequence S, uZ I, typename T, typename... Ts>
+struct nonvoid_index_sequence_impl<S, I, T, Ts...> {
+    using type = nonvoid_index_sequence_impl<meta::expand_value_sequence<S, I>, I + 1, Ts...>;
+};
+template<meta::any_value_sequence S, uZ I, typename... Ts>
+struct nonvoid_index_sequence_impl<S, I, void, Ts...> {
+    using type = nonvoid_index_sequence_impl<S, I + 1, Ts...>;
+};
+template<meta::any_value_sequence S, uZ I>
+struct nonvoid_index_sequence_impl<S, I> {
+    using type = meta::value_to_index_sequence<S>;
+};
+template<typename... Ts>
+struct nonvoid_index_sequence {
+    using type = nonvoid_index_sequence_impl<meta::value_sequence<>, 0, Ts...>::type;
+};
+template<typename... Ts>
+using nonvoid_index_sequence_t = nonvoid_index_sequence<Ts...>::type;
+}    // namespace detail_
+
+struct group_invoke_t {
+    template<typename F, typename... Args>
+        requires group_invocable<F, Args...>
+    PCX_AINLINE static constexpr void operator()(F&& f, Args&&... args) {
+        return group_invoke_impl(std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
+private:
+    template<typename F, typename... Args>
+        requires group_invocable<F, Args...>
+    static void group_invoke_impl(F&& f, Args&&... args) {
+        if constexpr (compound_op<std::remove_cvref_t<F>>) {
+            invoke_stage_recursive<0>(std::forward<F>(f), std::forward<Args>(args)...);
+        } else {
+            constexpr auto group_size = std::min(tuple_size_v<std::remove_cvref_t<Args>>...);
+            return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
+                constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
+                    f(get<I>(std::forward<Args>(args))...);
+                };
+                (invoker(uZ_constant<Is>{}, std::forward<F>(f), std::forward<Args>(args)...), ...);
+            }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
+        }
+    }
+    template<typename F, typename... Args>
+        requires group_invocable_with_result<F, Args...>
+    static auto group_invoke_impl(F&& f, Args&&... args) {
+        if constexpr (compound_op<std::remove_cvref_t<F>>) {
+            return invoke_stage_recursive<0>(std::forward<F>(f), std::forward<Args>(args)...);
+        } else {
+            constexpr auto group_size = std::min(tuple_size_v<std::remove_cvref_t<Args>>...);
+            return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
+                constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
+                    f(get<I>(std::forward<Args>(args))...);
+                };
+                return make_tuple(invoker(uZ_constant<Is>{},    //
+                                          std::forward<F>(f),
+                                          std::forward<Args>(args)...)...);
+            }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
+        }
+    }
+
+    template<uZ I, typename F, typename... Args>
+    static auto invoke_stage_recursive(F&& f, Args&&... args) {
+        constexpr auto final_stage = final_group_result<    //
+            decltype(invoke_stage<I>(std::forward<F>(f),    //
+                                     std::forward<Args>(args)...))>;
+        if constexpr (final_stage) {
+            return invoke_stage<I>(std::forward<F>(f), std::forward<Args>(args)...);
+        } else {
+            return invoke_stage_recursive<I + 1>(
+                std::forward<F>(f),
+                invoke_stage<I>(std::forward<F>(f), std::forward<Args>(args)...));
+        }
+    }
+
+    template<uZ I, typename F, typename... Args>
+        requires(I == 0)
+    static void invoke_stage(F&& f, Args&&... args) {
+        auto&&         stage      = get_stage<I>(std::forward<F>(f));
+        constexpr auto group_size = std::min(tuple_size_v<std::remove_cvref_t<Args>>...);
+        return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
+                                                     S&& stage,
+                                                     Args&&... args) {
+            constexpr auto invoker = []<uZ K> PCX_LAINLINE(uZ_constant<K>, S&& stage, Args&&... args) {
+                return stage(get<K>(std::forward<Args>(args))...);
+            };
+            return make_nonvoid_tuple(invoker(uZ_constant<Is>{},    //
+                                              std::forward<S>(stage),
+                                              std::forward<Args>(args))...);
+        }(std::make_index_sequence<group_size>{},
+               std::forward<decltype(stage)>(stage),
+               std::forward<Args>(args)...);
+    }
+
+    template<uZ I, typename F, typename Arg>
+        requires(I > 0)
+    static void invoke_stage(F&& f, Arg&& arg) {
+        auto&&         stage      = get_stage<I>(std::forward<F>(f));
+        constexpr auto group_size = tuple_size_v<std::remove_cvref_t<Arg>>;
+        return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
+                                                     S&&   stage,
+                                                     Arg&& arg) {
+            return make_nonvoid_tuple(passthrough_invoke(std::forward<S>(stage),    //
+                                                         std::get<Is>(std::forward<Arg>(arg)))...);
+        }(std::make_index_sequence<group_size>{},
+               std::forward<decltype(stage)>(stage),
+               std::forward<Arg>(arg));
+    }
+
+    template<typename... Args>
+    static auto make_nonvoid_tuple(Args&&... args) {
+        constexpr auto nonvoid_indexes = detail_::nonvoid_index_sequence_t<Args...>{};
+        return []<uZ... Is>(std::index_sequence<Is>..., auto&& arg_tuple) {
+            return make_tuple(get<Is>(arg_tuple)...);
+        }(nonvoid_indexes, forward_as_tuple(std::forward<Args>(args)...));
+    };
+
+    // Passes through the argument if it is not an intermediate result
+    template<typename S, typename Arg>
+        requires(final_result<std::remove_cvref_t<Arg>>)
+    static auto passthrough_invoke(S&& /*stage*/, Arg&& arg) {
+        return std::forward<Arg>(arg);
+    }
+    template<typename S, typename Arg>
+    static auto passthrough_invoke(S&& stage, Arg&& arg) {
+        return group_invoke_impl(std::forward<S>(stage), std::forward<Arg>(arg));
+    }
+};
+
+
 template<typename F, typename... Args>
     requires group_invocable<F, Args...>
 PCX_AINLINE constexpr void group_invoke2(F&& f, Args&&... args) {
-    if constexpr (multistage_op<std::remove_cvref_t<F>>) {
+    if constexpr (compound_op<std::remove_cvref_t<F>>) {
         return []<typename... Ts, uZ I> PCX_LAINLINE(this auto&& invoke,    //
                                                      uZ_constant<I>,
                                                      F&& f,
@@ -415,9 +575,6 @@ PCX_AINLINE constexpr void group_invoke2(F&& f, Args&&... args) {
     } else {
         constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
         return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
-            constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
-                f(get<I>(std::forward<Args>(args))...);
-            };
             (invoker(uZ_constant<Is>{},    //
                      std::forward<F>(f),
                      std::forward<Args>(args)...),

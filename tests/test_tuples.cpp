@@ -5,7 +5,7 @@ using uZ  = std::size_t;
 using u64 = std::uint64_t;
 template<uZ I>
 using uZ_constant = std::integral_constant<uZ, I>;
-constexpr struct s_t : pcx::tupi::multistage_op_base {
+constexpr struct s_t : pcx::tupi::compound_op_base {
     [[gnu::always_inline]] auto operator()(int i) const {
         return i * 4 + 100;
     };
@@ -35,7 +35,7 @@ struct s_t::stage_t<1> {
     };
 };
 
-constexpr struct s_nr_t : pcx::tupi::multistage_op_base {
+constexpr struct s_nr_t : pcx::tupi::compound_op_base {
     [[gnu::always_inline]] auto operator()(int i) const {
         std::print("{}", i * 4 + 100);
     };
