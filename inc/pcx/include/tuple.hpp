@@ -434,6 +434,8 @@ template<typename... Ts>
 struct nonvoid_tuple<meta::types<Ts...>> {
     using type = tuple<Ts...>;
 };
+
+struct void_wrapper {};
 template<meta::any_value_sequence S, uZ I, typename... Ts>
 struct nonvoid_index_sequence_impl;
 template<meta::any_value_sequence S, uZ I, typename T, typename... Ts>
@@ -441,7 +443,7 @@ struct nonvoid_index_sequence_impl<S, I, T, Ts...> {
     using type = nonvoid_index_sequence_impl<meta::expand_value_sequence<S, I>, I + 1, Ts...>::type;
 };
 template<meta::any_value_sequence S, uZ I, typename... Ts>
-struct nonvoid_index_sequence_impl<S, I, void, Ts...> {
+struct nonvoid_index_sequence_impl<S, I, void_wrapper, Ts...> {
     using type = nonvoid_index_sequence_impl<S, I + 1, Ts...>::type;
 };
 template<meta::any_value_sequence S, uZ I>
@@ -538,11 +540,19 @@ private:
         return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
                                                      S&&   stage,
                                                      Arg&& arg) {
-            return make_nonvoid_tuple(passthrough_invoke(std::forward<S>(stage),    //
-                                                         std::get<Is>(std::forward<Arg>(arg)))...);
+            return make_nonvoid_tuple(wrap_void(passthrough_invoke(std::forward<S>(stage),    //
+                                                                   std::get<Is>(std::forward<Arg>(arg))))...);
         }(std::make_index_sequence<group_size>{},
                std::forward<decltype(stage)>(stage),
                std::forward<Arg>(arg));
+    }
+
+    static constexpr auto wrap_void() {
+        return detail_::void_wrapper{};
+    }
+    template<typename T>
+    static constexpr auto wrap_void(T&& v) -> decltype(auto) {
+        return std::forward<T>(v);
     }
 
     template<typename... Args>
