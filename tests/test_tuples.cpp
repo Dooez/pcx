@@ -30,11 +30,11 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
             // return 0;
             return pcx::tupi::make_intermediate(i * 2);
         };
-        auto operator()(pcx::tupi::tuple<int> i) const
+        auto operator()(int i) const
             requires(I == 1)
         {
-            std::print("Stage 1 ret, v: {}.\n", get<0>(i));
-            return get<0>(i) + 1000;
+            std::print("Stage 1 ret, v: {}.\n", i);
+            return i + 1000;
         };
 
         auto operator()(std::complex<float> i)
@@ -43,20 +43,19 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
             return pcx::tupi::make_intermediate(
                 i * std::exp(std::complex(0.F, std::numbers::pi_v<float> / 4.F)));
         }
-        auto operator()(pcx::tupi::intermediate_result<std::complex<float>> cx)
+        auto operator()(std::complex<float> cx)
             requires(I == 1)
         {
-            return pcx::tupi::make_intermediate(get<0>(cx) * 100.f);
+            return pcx::tupi::make_intermediate(cx * 100.f);
         }
-        auto operator()(pcx::tupi::intermediate_result<std::complex<float>> cx)
+        auto operator()(std::complex<float> cx)
             requires(I == 2)
         {
-            return pcx::tupi::make_intermediate(get<0>(cx) * 100.f);
+            return pcx::tupi::make_intermediate(cx * 100.f);
         }
-        auto operator()(pcx::tupi::intermediate_result<std::complex<float>> cxt)
+        auto operator()(std::complex<float> cx)
             requires(I == 3)
         {
-            auto cx = get<0>(cxt);
             std::print("stage3 ({}, {})\n", cx.real(), cx.imag());
             return cx;
         }
@@ -96,8 +95,8 @@ struct s_nr_t::stage_t<0> {
 };
 template<>
 struct s_nr_t::stage_t<1> {
-    [[gnu::always_inline]] void operator()(pcx::tupi::intermediate_result<int> i) const {
-        std::print("{}\n", pcx::tupi::get<0>(i) + 1);
+    [[gnu::always_inline]] void operator()(int i) const {
+        std::print("{}\n", i + 1);
     };
 };
 

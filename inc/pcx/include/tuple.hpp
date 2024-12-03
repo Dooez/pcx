@@ -293,7 +293,8 @@ concept compound_op = std::derived_from<T, compound_op_base>;
 template<typename... Ts>
 struct intermediate_result : public tuple<Ts...> {
     static constexpr auto tuple_size = sizeof...(Ts);
-    auto                  as_tuple() const& -> decltype(auto) {
+
+    auto as_tuple() const& -> decltype(auto) {
         return static_cast<const tuple<Ts...>&>(*this);
     }
     auto as_tuple() & -> decltype(auto) {
@@ -306,6 +307,18 @@ struct intermediate_result : public tuple<Ts...> {
         return static_cast<tuple<Ts...>&&>(*this);
     }
 };
+}    // namespace pcx::tupi
+
+template<typename... Ts>
+struct std::tuple_size<pcx::tupi::intermediate_result<Ts...>>
+: std::integral_constant<std::size_t, sizeof...(Ts)> {};
+template<std::size_t I, typename... Ts>
+struct std::tuple_element<I, pcx::tupi::intermediate_result<Ts...>> {
+    using type = pcx::h::detail_::index_into_types<I, Ts...>::type;
+};
+
+namespace pcx::tupi {
+
 template<typename... Args>
 auto make_intermediate(Args&&... args) {
     using res_t = intermediate_result<std::remove_cvref_t<Args>...>;
@@ -542,13 +555,24 @@ private:
     template<typename S, typename Arg>
     static auto passthrough_invoke(S&& stage, Arg&& arg) {
         if constexpr (compound_op<std::remove_cvref_t<S>>) {
-            auto x = invoke_stage_recursive<0>(std::forward<S>(stage), std::forward<Arg>(arg));
+            return []<uZ... Is>(S&& stage, Arg&& arg, std::index_sequence<Is...>) {
+                return invoke_stage_recursive<0>(std::forward<S>(stage), get<Is>(std::forward<Arg>(arg))...);
+            }(std::forward<S>(stage), std::forward<Arg>(arg), std::make_index_sequence<Arg::tuple_size>{});
         } else {
-            if constexpr (std::same_as<decltype(stage(std::forward<Arg>(arg))), void>) {
-                stage(std::forward<Arg>(arg));
+            constexpr auto apply = []<typename F, typename Tup>(F&& stage, Tup&& arg) {
+                return []<uZ... Is>(F&& stage, Tup&& arg, std::index_sequence<Is...>) {
+                    return stage(get<Is>(std::forward<Tup>(arg))...);
+                }(std::forward<S>(stage),
+                       std::forward<Tup>(arg),
+                       std::make_index_sequence<tuple_size_v<std::remove_cvref_t<Tup>>>{});
+            };
+            if constexpr (std::same_as<decltype(apply(std::forward<S>(stage),    //
+                                                      std::forward<Arg>(arg))),
+                                       void>) {
+                apply(std::forward<S>(stage), std::forward<Arg>(arg));
                 return detail_::void_wrapper{};
             } else {
-                return stage(std::forward<Arg>(arg));
+                return apply(std::forward<S>(stage), std::forward<Arg>(arg));
             }
         }
     }
