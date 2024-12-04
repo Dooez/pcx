@@ -16,47 +16,53 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
 
     template<uZ I>
     struct stage_t {
-        template<typename Arg>
-        auto operator()(Arg&& arg) {
-            return std::forward<Arg>(arg);
-        }
-        auto operator()(float i) {
+        // template<typename Arg>
+        // auto operator()(Arg&& arg) {
+        //     std::print("Arg stage: {}\n", I);
+        //     return std::forward<Arg>(arg);
+        // }
+        auto operator()(float i) const
+            requires(I == 0)
+        {
+            std::print("float stage: {}\n", I);
             return i * std::sqrt(2.F);
         }
         auto operator()(int i) const
             requires(I == 0)
         {
-            std::print("Stage 0 ret, v: {}.\n", i);
-            // return 0;
+            std::print("int stage: {}\n", I);
             return pcx::tupi::make_intermediate(i * 2);
         };
         auto operator()(int i) const
             requires(I == 1)
         {
-            std::print("Stage 1 ret, v: {}.\n", i);
+            std::print("int stage: {}\n", I);
             return i + 1000;
         };
 
-        auto operator()(std::complex<float> i)
+        auto operator()(std::complex<float> i) const
             requires(I == 0)
         {
+            std::print("cx float stage: {}\n", I);
             return pcx::tupi::make_intermediate(
                 i * std::exp(std::complex(0.F, std::numbers::pi_v<float> / 4.F)));
         }
-        auto operator()(std::complex<float> cx)
+        auto operator()(std::complex<float> cx) const
             requires(I == 1)
         {
+            std::print("cx float stage: {}\n", I);
             return pcx::tupi::make_intermediate(cx * 100.f);
         }
-        auto operator()(std::complex<float> cx)
+        auto operator()(std::complex<float> cx) const
             requires(I == 2)
         {
+            std::print("cx float stage: {}\n", I);
             return pcx::tupi::make_intermediate(cx * 100.f);
         }
-        auto operator()(std::complex<float> cx)
+        auto operator()(std::complex<float> cx) const
             requires(I == 3)
         {
-            std::print("stage3 ({}, {})\n", cx.real(), cx.imag());
+            std::print("cx float stage: {}\n", I);
             return cx;
         }
     };
