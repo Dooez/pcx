@@ -189,7 +189,7 @@ struct vec_traits<f32, 4>::repack_t<2, 4> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b));
         auto y = _mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b));
-        return tupi::make_tuple(_mm_castpd_ps(x) _mm_castpd_ps(y));
+        return tupi::make_tuple(_mm_castpd_ps(x), _mm_castpd_ps(y));
     };
 };
 template<>
@@ -428,6 +428,7 @@ struct vec_traits<f32, 8>::repack_t<4, 2> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         a = _mm256_permutevar8x32_ps(a, vec_traits<f32, 8>::repack_t<2, 4>::idx0);
         b = _mm256_permutevar8x32_ps(b, vec_traits<f32, 8>::repack_t<2, 4>::idx0);
+        return tupi::make_tuple(a, b);
     }
 };
 template<>

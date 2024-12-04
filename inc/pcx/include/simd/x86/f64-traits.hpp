@@ -417,7 +417,7 @@ struct vec_traits<f64, 8>::repack_t<8, 2> {
 template<>
 struct vec_traits<f64, 8>::repack_t<2, 1> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto repack_t<1, 2>{}(a, b);
+        return repack_t<1, 2>{}(a, b);
     }
 };
 template<>
