@@ -54,7 +54,9 @@ struct vec_traits<f64, 2> {
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
-        PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {};
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            return tupi::make_tuple(a, b);
+        };
     };
     template<uZ To, uZ From>
     static constexpr auto repack = repack_t<To, From>{};
@@ -67,17 +69,16 @@ struct vec_traits<f64, 2> {
 };
 template<>
 struct vec_traits<f64, 2>::repack_t<1, 2> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm_unpacklo_pd(a, b);
         auto y = _mm_unpackhi_pd(a, b);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     };
 };
 template<>
 struct vec_traits<f64, 2>::repack_t<2, 1> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<1, 2>{}(a, b);
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return repack_t<1, 2>{}(a, b);
     };
 };
 
@@ -124,7 +125,9 @@ struct vec_traits<f64, 4> {
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
-        PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {};
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            return tupi::make_tuple(a, b);
+        };
     };
     template<uZ To, uZ From>
     static constexpr auto repack = repack_t<To, From>{};
@@ -154,46 +157,80 @@ struct vec_traits<f64, 4> {
 };
 template<>
 struct vec_traits<f64, 4>::repack_t<2, 4> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm256_permute2f128_pd(a, b, 0b00100000);
         auto y = _mm256_permute2f128_pd(a, b, 0b00110001);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     };
 };
 template<>
 struct vec_traits<f64, 4>::repack_t<1, 2> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm256_permute4x64_pd(a, 0b11011000);
         auto y = _mm256_permute4x64_pd(b, 0b11011000);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     };
 };
 template<>
-struct vec_traits<f64, 4>::repack_t<1, 4> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<2, 4>{}(a, b);
-        repack_t<1, 2>{}(a, b);
+struct vec_traits<f64, 4>::repack_t<1, 4> : tupi::compound_op_base {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto [x, y] = repack_t<2, 4>{}(a, b);
+        return repack_t<1, 2>{}(x, y);
+    };
+    template<uZ I>
+    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
+        return stage_t<I>{};
+    }
+    template<uZ I>
+    struct stage_t {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
+            requires(I == 0)
+        {
+            auto [x, y] = repack_t<2, 4>{}(a, b);
+            return tupi::make_intermediate(x, y);
+        }
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
+            requires(I == 1)
+        {
+            return repack_t<1, 2>{}(a, b);
+        }
     };
 };
 template<>
 struct vec_traits<f64, 4>::repack_t<4, 2> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<2, 4>{}(a, b);
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return repack_t<2, 4>{}(a, b);
     };
 };
 template<>
 struct vec_traits<f64, 4>::repack_t<2, 1> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<1, 2>{}(a, b);
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return repack_t<1, 2>{}(a, b);
     };
 };
 template<>
-struct vec_traits<f64, 4>::repack_t<4, 1> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<2, 1>{}(a, b);
-        repack_t<4, 2>{}(a, b);
+struct vec_traits<f64, 4>::repack_t<4, 1> : tupi::compound_op_base {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto [x, y] = repack_t<2, 1>{}(a, b);
+        return repack_t<4, 2>{}(x, y);
+    };
+    template<uZ I>
+    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
+        return stage_t<I>{};
+    }
+    template<uZ I>
+    struct stage_t {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
+            requires(I == 0)
+        {
+            auto [x, y] = repack_t<2, 1>{}(a, b);
+            return tupi::make_intermediate(x, y);
+        }
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
+            requires(I == 1)
+        {
+            return repack_t<4, 2>{}(a, b);
+        }
     };
 };
 
@@ -246,7 +283,9 @@ struct vec_traits<f64, 8> {
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
-        PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {}
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            return tupi::make_tuple(a, b);
+        }
     };
     template<uZ To, uZ From>
     static constexpr auto repack = repack_t<To, From>{};
@@ -294,11 +333,10 @@ struct vec_traits<f64, 8>::repack_t<1, 8> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 8, 1, 9, 2, 10, 3, 11);
     const static inline auto idx1 = _mm512_setr_epi64(4, 12, 5, 13, 6, 14, 7, 15);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm512_permutex2var_pd(a, idx0, b);
         auto y = _mm512_permutex2var_pd(a, idx1, b);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     }
 };
 template<>
@@ -306,11 +344,10 @@ struct vec_traits<f64, 8>::repack_t<2, 8> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 1, 8, 9, 2, 3, 10, 11);
     const static inline auto idx1 = _mm512_setr_epi64(4, 5, 12, 13, 6, 7, 14, 15);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm512_permutex2var_pd(a, idx0, b);
         auto y = _mm512_permutex2var_pd(a, idx1, b);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     }
 };
 template<>
@@ -318,49 +355,51 @@ struct vec_traits<f64, 8>::repack_t<4, 8> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 1, 2, 3, 8, 9, 10, 11);
     const static inline auto idx1 = _mm512_setr_epi64(4, 5, 6, 7, 12, 13, 14, 15);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm512_permutex2var_pd(a, idx0, b);
         auto y = _mm512_permutex2var_pd(a, idx1, b);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<1, 4> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 4, 1, 5, 2, 6, 3, 7);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         a = _mm512_permutexvar_pd(idx0, a);
         b = _mm512_permutexvar_pd(idx0, b);
+        return tupi::make_tuple(a, b);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<2, 4> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 1, 4, 5, 2, 3, 6, 7);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         a = _mm512_permutexvar_pd(idx0, a);
         b = _mm512_permutexvar_pd(idx0, b);
+        return tupi::make_tuple(a, b);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<8, 4> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<4, 8>{}(a, b);
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return repack_t<4, 8>{}(a, b);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<1, 2> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 2, 1, 3, 4, 6, 5, 7);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         a = _mm512_permutexvar_pd(idx0, a);
         b = _mm512_permutexvar_pd(idx0, b);
+        return tupi::make_tuple(a, b);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<4, 2> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         repack_t<2, 4>{}(a, b);
     }
 };
@@ -369,26 +408,26 @@ struct vec_traits<f64, 8>::repack_t<8, 2> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 1, 4, 5, 8, 9, 12, 13);
     const static inline auto idx1 = _mm512_setr_epi64(2, 3, 6, 7, 10, 11, 14, 15);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm512_permutex2var_pd(a, idx0, b);
         auto y = _mm512_permutex2var_pd(a, idx1, b);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<2, 1> {
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
-        repack_t<1, 2>{}(a, b);
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto repack_t<1, 2>{}(a, b);
     }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<4, 1> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 2, 4, 6, 1, 3, 5, 7);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         a = _mm512_permutexvar_pd(idx0, a);
         b = _mm512_permutexvar_pd(idx0, b);
+        return tupi::make_tuple(a, b);
     }
 };
 template<>
@@ -396,11 +435,10 @@ struct vec_traits<f64, 8>::repack_t<8, 1> {
     const static inline auto idx0 = _mm512_setr_epi64(0, 2, 4, 6, 8, 10, 13, 14);
     const static inline auto idx1 = _mm512_setr_epi64(1, 3, 5, 7, 9, 11, 13, 15);
 
-    PCX_AINLINE void operator()(impl_vec& a, impl_vec& b) const {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto x = _mm512_permutex2var_pd(a, idx0, b);
         auto y = _mm512_permutex2var_pd(a, idx1, b);
-        a      = x;
-        b      = y;
+        return tupi::make_tuple(x, y);
     }
 };
 #else
