@@ -41,7 +41,7 @@ inline constexpr auto load = detail_::load_t<Width>{};
 inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE void operator()(T* dest, vec<T, Width> data) const {
-        detail_::vec_traits<T, Width>::store(dest, data.native);
+        detail_::vec_traits<T, Width>::store(dest, data.value);
     }
 } store{};
 
@@ -124,7 +124,7 @@ struct repack_t {
         constexpr auto repack = traits::template repack<PackSize, V::pack_size()>;
 
         auto repacked = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
-        repack(repacked.real().native, repacked.imag().native);
+        repack(repacked.real().value, repacked.imag().value);
         return repacked;
     }
 };
@@ -148,6 +148,7 @@ inline constexpr auto repack = detail_::repack_t<PackSize>{};
 
 inline constexpr struct {
     template<tight_cx_vec V>
+        requires(!eval_cx_vec<V>)
     PCX_AINLINE auto operator()(V vec) const {
         using real_t    = V::real_type;
         using eval_vec  = cx_vec<real_t, false, false, V::width()>;
@@ -164,8 +165,8 @@ inline constexpr struct {
             return vec;
         }
     }
-    template<typename T, uZ Width, uZ PackSize>
-    PCX_AINLINE auto operator()(cx_vec<T, false, false, Width, PackSize> vec) const {
+    template<eval_cx_vec V>
+    PCX_AINLINE auto operator()(V vec) const {
         return vec;
     }
 } evaluate;

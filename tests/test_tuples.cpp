@@ -96,7 +96,7 @@ template<>
 struct s_nr_t::stage_t<0> {
     [[gnu::always_inline]] auto operator()(int i) const {
         std::print("Stage 0, v: {}.\n", i);
-        return pcx::tupi::intermediate_result(pcx::tupi::make_tuple(i * 3));
+        return pcx::tupi::make_intermediate(i * 3);
     };
 };
 template<>
@@ -107,7 +107,7 @@ struct s_nr_t::stage_t<1> {
 };
 
 auto foo(std::tuple<int, int, int> x) {
-    return pcx::tupi::group_invoke_t{}(staged, x);
+    return pcx::tupi::group_invoke(staged, x);
 }
 
 int main() {
@@ -116,8 +116,8 @@ int main() {
     static_assert(tupi::final_group_result<void>);
 
     auto [x0, x1, x2, x3, cx0] =
-        tupi::group_invoke_t{}(staged, tupi::make_tuple(0, 1, 2, 3, std::complex<float>(1, 0)));
-    tupi::group_invoke_t{}(staged_noret, tupi::make_tuple(0, 1, 2, 3));
+        tupi::group_invoke(staged, tupi::make_tuple(0, 1, 2, 3, std::complex<float>(1, 0)));
+    tupi::group_invoke(staged_noret, tupi::make_tuple(0, 1, 2, 3));
 
     std::print("{} {} {} {}\n", x0, x1, x2, x3);
     return 0;

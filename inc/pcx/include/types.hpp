@@ -63,23 +63,23 @@ template<typename T>
 struct max_vec_width;
 template<typename T, uZ Width>
 struct vec_traits {
-    struct native;
-    static auto set1(T value) -> native;
-    static auto zero() -> native;
+    struct impl_vec;
+    static auto set1(T value) -> impl_vec;
+    static auto zero() -> impl_vec;
     static auto load(const T* src);
-    static void store(T* dest, native vec);
-    static auto add(native lhs, native rhs) -> native;
-    static auto sub(native lhs, native rhs) -> native;
-    static auto mul(native lhs, native rhs) -> native;
-    static auto div(native lhs, native rhs) -> native;
-    static auto fmadd(native a, native b, native c) -> native;
-    static auto fnmadd(native a, native b, native c) -> native;
-    static auto fmsub(native a, native b, native c) -> native;
-    static auto fnmsub(native a, native b, native c) -> native;
+    static void store(T* dest, impl_vec vec);
+    static auto add(impl_vec lhs, impl_vec rhs) -> impl_vec;
+    static auto sub(impl_vec lhs, impl_vec rhs) -> impl_vec;
+    static auto mul(impl_vec lhs, impl_vec rhs) -> impl_vec;
+    static auto div(impl_vec lhs, impl_vec rhs) -> impl_vec;
+    static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
 
     template<uZ To, uZ From>
     struct repack {
-        static void permute(native& a, native& b);
+        static void permute(impl_vec& a, impl_vec& b);
     };
 
     struct tup_width;
@@ -97,13 +97,17 @@ template<typename T, uZ Width = detail_::max_vec_width<T>::value>
 struct vec {
     using value_type = T;
     using traits     = detail_::vec_traits<value_type, Width>;
-    using native_t   = typename traits::native;
+    using impl_vec_t = typename traits::impl_vec;
 
-    native_t native;
+    impl_vec_t value;
+
+    auto impl_vec() -> impl_vec_t& {
+        return value;
+    }
 
     PCX_AINLINE vec() = default;
-    PCX_AINLINE vec(native_t v)    //NOLINT(*explicit*)
-    : native(v) {};
+    PCX_AINLINE vec(impl_vec_t v)    //NOLINT(*explicit*)
+    : value(v) {};
 };
 
 /*template <typename T> using reg_t = typename reg<T>::type;*/

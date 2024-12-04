@@ -145,6 +145,11 @@ namespace pcx::tupi {
 template<typename... Ts>
 using tuple = std::tuple<Ts...>;
 
+using std::tuple_element;
+using std::tuple_element_t;
+using std::tuple_size;
+using std::tuple_size_v;
+
 namespace detail_ {
 template<typename>
 struct is_tuple : std::false_type {};
@@ -155,11 +160,18 @@ inline constexpr auto is_tuple_v = is_tuple<T>::value;
 }    // namespace detail_
 template<typename T>
 concept any_tuple = detail_::is_tuple_v<T>;
-
-using std::tuple_element;
-using std::tuple_element_t;
-using std::tuple_size;
-using std::tuple_size_v;
+template<typename T>
+concept tuple_like = requires(T v) {
+    { tuple_size_v<T> } -> std::common_with<uZ>;
+    {
+        []<uZ... Is>(std::index_sequence<Is...>, auto&& v) {
+            ((void)get<Is>(v), ...);
+        }(std::make_index_sequence<tuple_size_v<T>>{}, v)
+    };
+};
+template<typename T>
+    requires tuple_like<std::remove_cvref_t<T>>
+using index_sequence_for_tuple = std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>;
 
 template<typename... Args>
 PCX_AINLINE constexpr auto make_tuple(Args&&... args) {
@@ -184,7 +196,7 @@ PCX_AINLINE auto make_flat_tuple(T&& tuple) {
     if constexpr (any_tuple<std::remove_cvref_t<T>>) {
         return []<uZ... Is, typename U> PCX_LAINLINE(std::index_sequence<Is...>, U&& tuple) {
             return tuple_cat(make_flat_tuple(get<Is>(std::forward<U>(tuple)))...);
-        }(std::make_index_sequence<tuple_size_v<std::remove_cvref_t<T>>>{}, std::forward<T>(tuple));
+        }(index_sequence_for_tuple<T>{}, std::forward<T>(tuple));
     } else {
         return make_tuple(tuple);
     }
@@ -197,9 +209,7 @@ template<typename F, typename Tup>
 PCX_AINLINE auto apply(F&& f, Tup&& arg_tup) {
     return []<uZ... Is> PCX_LAINLINE(F&& f, Tup&& arg, std::index_sequence<Is...>) {
         return f(get<Is>(std::forward<Tup>(arg))...);
-    }(std::forward<F>(f),
-           std::forward<Tup>(arg_tup),
-           std::make_index_sequence<tuple_size_v<std::remove_cvref_t<Tup>>>{});
+    }(std::forward<F>(f), std::forward<Tup>(arg_tup), index_sequence_for_tuple<Tup>{});
 };
 
 namespace detail_ {
@@ -367,10 +377,10 @@ struct nonvoid_index_sequence {
     using type = nonvoid_index_sequence_impl<meta::value_sequence<>, 0, Ts...>::type;
 };
 template<typename... Ts>
-using make_index_sequence_for_nonvoid = nonvoid_index_sequence<Ts...>::type;
+using index_sequence_for_nonvoid = nonvoid_index_sequence<Ts...>::type;
 }    // namespace detail_
 
-struct group_invoke_t {
+inline constexpr struct {
     template<typename F, typename... Args>
         requires group_invocable<F, Args...>
     PCX_AINLINE static constexpr void operator()(F&& f, Args&&... args) {
@@ -456,7 +466,7 @@ private:
 
     template<typename... Args>
     PCX_AINLINE static auto make_nonvoid_tuple(Args&&... args) {
-        constexpr auto nonvoid_indexes = detail_::make_index_sequence_for_nonvoid<Args...>{};
+        constexpr auto nonvoid_indexes = detail_::index_sequence_for_nonvoid<Args...>{};
         return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, auto&& arg_tuple) {
             return tupi::make_tuple(get<Is>(arg_tuple)...);
         }(nonvoid_indexes, std::forward_as_tuple(std::forward<Args>(args)...));
@@ -474,9 +484,7 @@ private:
         if constexpr (compound_op<std::remove_cvref_t<S>>) {
             return []<uZ... Is> PCX_LAINLINE(S&& stage, Arg&& arg, std::index_sequence<Is...>) {
                 return invoke_stage_recursive<0>(std::forward<S>(stage), get<Is>(std::forward<Arg>(arg))...);
-            }(std::forward<S>(stage),
-                   std::forward<Arg>(arg),
-                   std::make_index_sequence<tuple_size_v<std::remove_cvref_t<Arg>>>{});
+            }(std::forward<S>(stage), std::forward<Arg>(arg), index_sequence_for_tuple<Arg>{});
         } else {
             if constexpr (std::same_as<decltype(apply(std::forward<S>(stage),    //
                                                       std::forward<Arg>(arg))),
@@ -488,6 +496,5 @@ private:
             }
         }
     }
-};
-inline constexpr auto group_invoke = group_invoke_t{};
+} group_invoke;
 }    // namespace pcx::tupi
