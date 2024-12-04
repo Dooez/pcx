@@ -419,14 +419,69 @@ private:
     }
 
     template<uZ To, uZ From>
-    struct regroup_t {
+    struct regroup_t : tupi::compound_op_base {
         template<simd::any_cx_vec V>
             requires(To <= V::width()) && (From <= V::width())
-        PCX_AINLINE void operator()(V& a, V& b) const {
-            using traits = V::vec_t::traits;
-            traits::template repack<To, From>::permute(a.real().native, b.real().native);
-            traits::template repack<To, From>::permute(a.imag().native, b.imag().native);
+        PCX_AINLINE auto operator()(V a, V b) const {
+            using traits          = V::vec_t::traits;
+            constexpr auto repack = traits::template repack<To, From>;
+            auto [re_a, re_b]     = repack(a.real().native, b.real().native);
+            auto [im_a, im_b]     = repack(a.imag().native, b.imag().native);
+            return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a}, V{.m_real = re_b, .m_imag = im_b});
         }
+        template<uZ I>
+        PCX_AINLINE constexpr friend auto get_stage(const regroup_t&) {
+            return stage_t<I>{};
+        }
+
+    private:
+        template<bool NegReal, bool NegImag, typename IR>
+        struct interim_wrapper {
+            IR result;
+        };
+        template<bool NegReal, bool NegImag, typename IR>
+        static constexpr auto wrap_interim(IR res) {
+            return tupi::make_interim(interim_wrapper<NegReal, NegImag, IR>(res));
+        }
+        template<uZ I>
+        struct stage_t {
+            template<simd::any_cx_vec V>
+                requires(I == 0)
+            PCX_AINLINE auto operator()(V a, V b) const {
+                using traits          = simd::detail_::vec_traits<T, Width>;
+                constexpr auto repack = traits::template repack<To, From>;
+                if constexpr (tupi::compound_op<decltype(repack)>) {
+                    auto stage = get_stage<I>(repack);
+                    if constexpr (tupi::final_result<decltype(stage(a.real().native, b.real().native))>) {
+                        auto [re_a, re_b] = stage(a.real().native, b.real().native);
+                        auto [im_a, im_b] = stage(a.imag().native, b.imag().native);
+                        return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
+                                                V{.m_real = re_b, .m_imag = im_b});
+                    } else {
+                        return wrap_interim<V::neg_real(), V::neg_imag()>(
+                            tupi::make_tuple(stage(a.real().native, b.real().native),
+                                             stage(a.imag().native, b.imag().native)));
+                    }
+                } else {
+                    auto [re_a, re_b] = repack(a.real().native, b.real().native);
+                    auto [im_a, im_b] = repack(a.imag().native, b.imag().native);
+                    return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
+                                            V{.m_real = re_b, .m_imag = im_b});
+                }
+            }
+            template<bool NegReal, bool NegImag, typename IR>
+                requires(I > 0)
+            PCX_AINLINE auto operator()(interim_wrapper<NegReal, NegImag, IR> wrapper) const {
+                using traits          = simd::detail_::vec_traits<T, Width>;
+                constexpr auto repack = traits::template repack<To, From>;
+                // auto           stage  = get_stage<I>(repack);
+                // if constexpr (tupi::final_result<decltype(tupi::apply(stage, wrapper.result))>) {
+                //     return tupi::apply(stage, wrapper.result);
+                // } else {
+                //     return wrap_interim<T, Width, PackFrom>(tupi::apply(stage, wrapper.result));
+                // }
+            }
+        };
     };
     template<uZ To, uZ From>
     static constexpr auto regroup = regroup_t<To, From>{};
