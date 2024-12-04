@@ -144,24 +144,15 @@ struct mul_stage<0> {
         constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return tupi::intermediate_result(tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
-                                                          lhs,
-                                                          rhs));
+        return tupi::make_intermediate(new_cx_vec{.m_real = real, .m_imag = imag},    //
+                                       lhs,
+                                       rhs);
     }
 };
 template<>
 struct mul_stage<1> {
-    PCX_AINLINE auto operator()(tight_cx_vec auto v) {
-        return v;
-    }
-    template<iZ Rot>
-    PCX_AINLINE auto operator()(imag_unit_t<Rot> v) {
-        return v;
-    };
     template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
-    PCX_AINLINE auto operator()(tupi::tuple<Res, Lhs, Rhs> args) const {
-        auto [res0, lhs, rhs] = args;
-
+    PCX_AINLINE auto operator()(Res res0, Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
         using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
         using vec            = Lhs::vec_t;
@@ -204,21 +195,25 @@ inline constexpr struct mul_t : pcx::tupi::compound_op_base {
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
         requires compatible_cx_vec<Lhs, Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
-        return stage<1>(stage<0>(lhs, rhs));
+        return tupi::apply(stage<1>, stage<0>(lhs, rhs));
     };
     template<uZ Power>
     PCX_AINLINE auto operator()(tight_cx_vec auto lhs, imag_unit_t<Power> rhs) {
-        return stage<1>(stage<0>(lhs, rhs));
+        return stage<0>(lhs, rhs);
     }
     template<uZ Power>
     PCX_AINLINE auto operator()(imag_unit_t<Power> lhs, tight_cx_vec auto rhs) {
-        return stage<1>(stage<0>(lhs, rhs));
+        return stage<0>(lhs, rhs);
     }
     template<uZ Powerl, iZ Powerr>
     PCX_AINLINE auto operator()(imag_unit_t<Powerl> lhs, imag_unit_t<Powerr> rhs) {
-        return stage<1>(stage<0>(lhs, rhs));
+        return stage<0>(lhs, rhs);
     }
 
+    template<uZ I>
+    constexpr friend auto get_stage(const div_t&) {
+        return detail_::mul_stage<I>{};
+    }
     template<uZ I>
     constexpr static detail_::mul_stage<I> stage{};
 } mul;
@@ -256,28 +251,17 @@ struct div_stage<0> {
 
         using new_cx_vec =
             cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-        return tupi::intermediate_result(tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
-                                                          rhs_re_sq,
-                                                          lhs,
-                                                          rhs));
+        return tupi::make_intermediate(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
     };
 };
 template<>
 struct div_stage<1> {
-    PCX_AINLINE auto operator()(tight_cx_vec auto v) {
-        return v;
-    }
-    template<iZ Rot>
-    PCX_AINLINE auto operator()(imag_unit_t<Rot> v) {
-        return v;
-    };
     template<tight_cx_vec Res0, tight_cx_vec Lhs, tight_cx_vec Rhs>
-    PCX_AINLINE auto operator()(tupi::tuple<Res0, typename Res0::vec_t, Lhs, Rhs> args) const {
+    PCX_AINLINE auto operator()(Res0 res0, typename Res0::vec_t rhs_re_sq, Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
         using traits         = detail_::vec_traits<typename Lhs::real_type, width>;
         using vec            = Lhs::vec_t;
 
-        auto [res0, rhs_re_sq, lhs, rhs] = args;
         vec real;
         vec imag;
         vec rhs_abs;
@@ -307,24 +291,16 @@ struct div_stage<1> {
         constexpr bool neg_imag = Res0::neg_imag() && im_reim_neg_imag;
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return tupi::intermediate_result(tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
-                                                          rhs_abs));
+        return tupi::make_intermediate(new_cx_vec{.m_real = real, .m_imag = imag},    //
+                                       rhs_abs);
     };
 };
 template<>
 struct div_stage<2> {
-    PCX_AINLINE auto operator()(tight_cx_vec auto v) {
-        return v;
-    }
-    template<iZ Rot>
-    PCX_AINLINE auto operator()(imag_unit_t<Rot> v) {
-        return v;
-    };
     template<tight_cx_vec Res1>
-    PCX_AINLINE auto operator()(tupi::tuple<Res1, typename Res1::vec_t> args) const {
-        constexpr auto width   = Res1::width();
-        using traits           = detail_::vec_traits<typename Res1::real_type, width>;
-        auto [cx_vec, rhs_abs] = args;
+    PCX_AINLINE auto operator()(Res1 cx_vec, typename Res1::vec_t rhs_abs) const {
+        constexpr auto width = Res1::width();
+        using traits         = detail_::vec_traits<typename Res1::real_type, width>;
         return Res1{.m_real = traits::div(cx_vec.real().native, rhs_abs.native),
                     .m_imag = traits::div(cx_vec.imag().native, rhs_abs.native)};
     };
@@ -338,8 +314,24 @@ inline constexpr struct div_t : tupi::compound_op_base {
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
         requires compatible_cx_vec<Lhs, Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
-        return stage<2>(stage<1>(stage<0>(lhs, rhs)));
+        return tupi::apply(stage<2>, tupi::apply(stage<1>, stage<0>(lhs, rhs)));
     };
+    template<uZ Power>
+    PCX_AINLINE auto operator()(tight_cx_vec auto lhs, imag_unit_t<Power> rhs) {
+        return stage<0>(lhs, rhs);
+    }
+    template<uZ Power>
+    PCX_AINLINE auto operator()(imag_unit_t<Power> lhs, tight_cx_vec auto rhs) {
+        return stage<0>(lhs, rhs);
+    }
+    template<uZ Powerl, iZ Powerr>
+    PCX_AINLINE auto operator()(imag_unit_t<Powerl> lhs, imag_unit_t<Powerr> rhs) {
+        return stage<0>(lhs, rhs);
+    }
+    template<uZ I>
+    constexpr friend auto get_stage(const div_t&) {
+        return detail_::div_stage<I>{};
+    }
     template<uZ I>
     constexpr static detail_::div_stage<I> stage{};
 } div;
