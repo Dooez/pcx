@@ -78,8 +78,8 @@ struct vec_traits {
     static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
 
     template<uZ To, uZ From>
-    struct repack {
-        static void permute(impl_vec& a, impl_vec& b);
+    struct repack_t {
+        static auto operator()(impl_vec a, impl_vec b);    // -> tupi::tuple<impl_vec, impl_vec>;
     };
 
     struct tup_width;
