@@ -303,37 +303,37 @@ struct compound_op_base {};
 template<typename T>
 concept compound_op = std::derived_from<T, compound_op_base>;
 template<typename... Ts>
-struct intermediate_result : public tuple<Ts...> {
+struct interim_result : public tuple<Ts...> {
     using tuple<Ts...>::tuple;
 };
 }    // namespace pcx::tupi
 
 template<typename... Ts>
-struct std::tuple_size<pcx::tupi::intermediate_result<Ts...>>
+struct std::tuple_size<pcx::tupi::interim_result<Ts...>>
 : std::integral_constant<std::size_t, sizeof...(Ts)> {};
 template<std::size_t I, typename... Ts>
-struct std::tuple_element<I, pcx::tupi::intermediate_result<Ts...>> {
+struct std::tuple_element<I, pcx::tupi::interim_result<Ts...>> {
     using type = pcx::h::detail_::index_into_types<I, Ts...>::type;
 };
 
 namespace pcx::tupi {
 
 template<typename... Args>
-PCX_AINLINE auto make_intermediate(Args&&... args) {
-    using res_t = intermediate_result<std::remove_cvref_t<Args>...>;
+PCX_AINLINE auto make_interim(Args&&... args) {
+    using res_t = interim_result<std::remove_cvref_t<Args>...>;
     return res_t(std::forward<Args>(args)...);
 }
 
 namespace detail_ {
 template<typename T>
-struct is_intermediate_result : std::false_type {};
+struct is_interim_result : std::false_type {};
 template<typename... Ts>
-struct is_intermediate_result<intermediate_result<Ts...>> : std::true_type {};
+struct is_interim_result<interim_result<Ts...>> : std::true_type {};
 template<typename T>
-inline constexpr auto is_intermediate_result_v = is_intermediate_result<T>::value;
+inline constexpr auto is_interim_result_v = is_interim_result<T>::value;
 };    // namespace detail_
 template<typename T>
-concept final_result = !detail_::is_intermediate_result_v<T>;
+concept final_result = !detail_::is_interim_result_v<T>;
 
 namespace detail_ {
 template<any_tuple T>

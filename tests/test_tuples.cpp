@@ -31,7 +31,7 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
             requires(I == 0)
         {
             std::print("int stage: {}\n", I);
-            return pcx::tupi::make_intermediate(i * 2);
+            return pcx::tupi::make_interim(i * 2);
         };
         auto operator()(int i) const
             requires(I == 1)
@@ -44,20 +44,20 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
             requires(I == 0)
         {
             std::print("cx float stage: {}\n", I);
-            return pcx::tupi::make_intermediate(
+            return pcx::tupi::make_interim(
                 i * std::exp(std::complex(0.F, std::numbers::pi_v<float> / 4.F)));
         }
         auto operator()(std::complex<float> cx) const
             requires(I == 1)
         {
             std::print("cx float stage: {}\n", I);
-            return pcx::tupi::make_intermediate(cx * 100.f);
+            return pcx::tupi::make_interim(cx * 100.f);
         }
         auto operator()(std::complex<float> cx) const
             requires(I == 2)
         {
             std::print("cx float stage: {}\n", I);
-            return pcx::tupi::make_intermediate(cx * 100.f);
+            return pcx::tupi::make_interim(cx * 100.f);
         }
         auto operator()(std::complex<float> cx) const
             requires(I == 3)
@@ -96,7 +96,7 @@ template<>
 struct s_nr_t::stage_t<0> {
     [[gnu::always_inline]] auto operator()(int i) const {
         std::print("Stage 0, v: {}.\n", i);
-        return pcx::tupi::make_intermediate(i * 3);
+        return pcx::tupi::make_interim(i * 3);
     };
 };
 template<>

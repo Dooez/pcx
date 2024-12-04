@@ -228,7 +228,7 @@ struct vec_traits<f32, 4>::repack_t<4, 1> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<2, 1>{}(a, b);
-            return tupi::make_intermediate(x, y);
+            return tupi::make_interim(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)
@@ -372,7 +372,7 @@ struct vec_traits<f32, 8>::repack_t<1, 8> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<4, 8>{}(a, b);
-            return tupi::make_intermediate(x, y);
+            return tupi::make_interim(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)
@@ -397,7 +397,7 @@ struct vec_traits<f32, 8>::repack_t<2, 8> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<4, 8>{}(a, b);
-            return tupi::make_intermediate(x, y);
+            return tupi::make_interim(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)
@@ -446,7 +446,7 @@ struct vec_traits<f32, 8>::repack_t<8, 2> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<4, 2>{}(a, b);
-            return tupi::make_intermediate(x, y);
+            return tupi::make_interim(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)
@@ -486,7 +486,7 @@ struct vec_traits<f32, 8>::repack_t<8, 1> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<4, 1>{}(a, b);
-            return tupi::make_intermediate(x, y);
+            return tupi::make_interim(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)

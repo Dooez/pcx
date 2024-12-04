@@ -112,21 +112,76 @@ struct cxstore_t {
     }
 };
 
-template<uZ PackSize>
-    requires power_of_two<PackSize>
+template<uZ PackTo>
+    requires power_of_two<PackTo>
 struct repack_t {
     template<eval_cx_vec V>
-        requires(PackSize <= V::width())
+        requires(PackTo <= V::width())
     PCX_AINLINE auto operator()(V vec) const {
         using repacked_vec_t =
-            cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackSize>;
+            cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackTo>;
         using traits          = detail_::vec_traits<typename V::real_type, V::width()>;
-        constexpr auto repack = traits::template repack<PackSize, V::pack_size()>;
+        constexpr auto repack = traits::template repack<PackTo, V::pack_size()>;
 
         auto repacked = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
         repack(repacked.real().value, repacked.imag().value);
         return repacked;
     }
+    template<uZ I>
+    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
+        return stage_t<I>{};
+    }
+
+private:
+    template<typename T, uZ Width, uZ PackFrom, typename IR>
+    struct interim_wrapper {
+        IR result;
+    };
+    template<typename T, uZ Width, uZ PackFrom, typename IR>
+    static constexpr auto wrap_interim(IR res) {
+        return tupi::make_interim(interim_wrapper<T, Width, PackFrom, IR>(res));
+    }
+    template<uZ I>
+    struct stage_t {
+        template<eval_cx_vec V>
+            requires(I == 0 && PackTo <= V::width())
+        PCX_AINLINE auto operator()(V vec) const {
+            constexpr auto width     = V::width();
+            constexpr auto pack_from = V::pack_size();
+            using real_type          = typename V::real_type;
+            using traits             = detail_::vec_traits<real_type, width>;
+            constexpr auto repack    = traits::template repack<PackTo, pack_from>;
+
+            auto re = vec.real().value;
+            auto im = vec.imag().value;
+
+            if constexpr (tupi::compound_op<decltype(repack)>) {
+                auto stage = get_stage<I>(repack);
+                if constexpr (tupi::final_result<decltype(stage(re, im))>) {
+                    return stage(re, im);
+                } else {
+                    return wrap_interim<real_type, width, pack_from>(stage(re, im));
+                }
+            } else {
+                using repacked_vec_t = cx_vec<real_type, false, false, width, PackTo>;
+                auto [r_re, r_im]    = repack(re, im);
+                return repacked_vec_t{.m_real = r_re, .m_imag = r_im};
+            }
+        }
+
+        template<typename T, uZ Width, uZ PackFrom, typename IR>
+            requires(I > 0)
+        PCX_AINLINE auto operator()(interim_wrapper<T, Width, PackFrom, IR> wrapper) const {
+            using traits          = detail_::vec_traits<T, Width>;
+            constexpr auto repack = traits::template repack<PackTo, PackFrom>;
+            auto           stage  = get_stage<I>(repack);
+            if constexpr (tupi::final_result<decltype(tupi::apply(stage, wrapper.result))>) {
+                return tupi::apply(stage, wrapper.result);
+            } else {
+                return wrap_interim<T, Width, PackFrom>(tupi::apply(stage, wrapper.result));
+            }
+        }
+    };
 };
 }    // namespace detail_
 

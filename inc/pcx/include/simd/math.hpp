@@ -144,7 +144,7 @@ struct mul_stage<0> {
         constexpr bool neg_imag = Lhs::neg_real() != Rhs::neg_imag();
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return tupi::make_intermediate(new_cx_vec{.m_real = real, .m_imag = imag},    //
+        return tupi::make_interim(new_cx_vec{.m_real = real, .m_imag = imag},    //
                                        lhs,
                                        rhs);
     }
@@ -251,7 +251,7 @@ struct div_stage<0> {
 
         using new_cx_vec =
             cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
-        return tupi::make_intermediate(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
+        return tupi::make_interim(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
     };
 };
 template<>
@@ -291,7 +291,7 @@ struct div_stage<1> {
         constexpr bool neg_imag = Res0::neg_imag() && im_reim_neg_imag;
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
-        return tupi::make_intermediate(new_cx_vec{.m_real = real, .m_imag = imag},    //
+        return tupi::make_interim(new_cx_vec{.m_real = real, .m_imag = imag},    //
                                        rhs_abs);
     };
 };
