@@ -118,14 +118,13 @@ struct repack_t {
     template<eval_cx_vec V>
         requires(PackTo <= V::width())
     PCX_AINLINE auto operator()(V vec) const {
-        using repacked_vec_t =
-            cx_vec<typename V::real_type, V::neg_real(), V::neg_imag(), V::width(), PackTo>;
-        using traits          = detail_::vec_traits<typename V::real_type, V::width()>;
+        using real_type       = typename V::real_type;
+        using repacked_vec_t  = cx_vec<real_type, false, false, V::width(), PackTo>;
+        using traits          = detail_::vec_traits<real_type, V::width()>;
         constexpr auto repack = traits::template repack<PackTo, V::pack_size()>;
 
-        auto repacked = repacked_vec_t{.m_real = vec.real(), .m_imag = vec.imag()};
-        repack(repacked.real().value, repacked.imag().value);
-        return repacked;
+        auto [re, im] = repack(vec.real_v(), vec.imag_v());
+        return repacked_vec_t{.m_real = re, .m_imag = im};
     }
     template<uZ I>
     PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
@@ -145,40 +144,37 @@ private:
     struct stage_t {
         template<eval_cx_vec V>
             requires(I == 0 && PackTo <= V::width())
-        PCX_AINLINE auto operator()(V vec) const {
+        PCX_AINLINE auto operator()(V v) const {
             constexpr auto width     = V::width();
             constexpr auto pack_from = V::pack_size();
             using real_type          = typename V::real_type;
             using traits             = detail_::vec_traits<real_type, width>;
-            constexpr auto repack    = traits::template repack<PackTo, pack_from>;
+            using repacked_vec_t     = cx_vec<real_type, false, false, width, PackTo>;
 
-            auto re = vec.real().value;
-            auto im = vec.imag().value;
-
+            constexpr auto repack = traits::template repack<PackTo, pack_from>;
             if constexpr (tupi::compound_op<decltype(repack)>) {
                 auto stage = get_stage<I>(repack);
-                if constexpr (tupi::final_result<decltype(stage(re, im))>) {
-                    return stage(re, im);
+                if constexpr (tupi::final_result<decltype(stage(v.real_v(), v.imag_v()))>) {
+                    auto [re, im] = stage(v.real_v(), v.imag_v());
+                    return repacked_vec_t{.m_real = re, .m_imag = im};
                 } else {
-                    return wrap_interim<real_type, width, pack_from>(stage(re, im));
+                    return wrap_interim<real_type, width, pack_from>(stage(v.real_v(), v.imag_v()));
                 }
             } else {
-                using repacked_vec_t = cx_vec<real_type, false, false, width, PackTo>;
-                auto [r_re, r_im]    = repack(re, im);
-                return repacked_vec_t{.m_real = r_re, .m_imag = r_im};
+                auto [re, im] = repack(v.real_v(), v.imag_v());
+                return repacked_vec_t{.m_real = re, .m_imag = im};
             }
         }
-
         template<typename T, uZ Width, uZ PackFrom, typename IR>
             requires(I > 0)
         PCX_AINLINE auto operator()(interim_wrapper<T, Width, PackFrom, IR> wrapper) const {
             using traits          = detail_::vec_traits<T, Width>;
             constexpr auto repack = traits::template repack<PackTo, PackFrom>;
-            auto           stage  = get_stage<I>(repack);
-            if constexpr (tupi::final_result<decltype(tupi::apply(stage, wrapper.result))>) {
-                return tupi::apply(stage, wrapper.result);
+            auto           stage  = tupi::apply | get_stage<I>(repack);
+            if constexpr (tupi::final_result<decltype(stage(wrapper.result))>) {
+                return stage(wrapper.result);
             } else {
-                return wrap_interim<T, Width, PackFrom>(tupi::apply(stage, wrapper.result));
+                return wrap_interim<T, Width, PackFrom>(stage(wrapper.result));
             }
         }
     };
