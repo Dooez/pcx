@@ -145,8 +145,8 @@ struct mul_stage<0> {
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
         return tupi::make_interim(new_cx_vec{.m_real = real, .m_imag = imag},    //
-                                       lhs,
-                                       rhs);
+                                  lhs,
+                                  rhs);
     }
 };
 template<>
@@ -211,7 +211,7 @@ inline constexpr struct mul_t : pcx::tupi::compound_op_base {
     }
 
     template<uZ I>
-    constexpr friend auto get_stage(const div_t&) {
+    constexpr friend auto get_stage(const mul_t&) {
         return detail_::mul_stage<I>{};
     }
     template<uZ I>
@@ -292,7 +292,7 @@ struct div_stage<1> {
 
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
         return tupi::make_interim(new_cx_vec{.m_real = real, .m_imag = imag},    //
-                                       rhs_abs);
+                                  rhs_abs);
     };
 };
 template<>
