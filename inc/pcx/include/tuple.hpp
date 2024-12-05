@@ -205,12 +205,40 @@ template<typename... Ts>
 PCX_AINLINE auto make_flat_tuple(Ts&&... args) {
     return tuple_cat(make_flat_tuple(std::forward<Ts>(args))...);
 }
-template<typename F, typename Tup>
-PCX_AINLINE auto apply(F&& f, Tup&& arg_tup) {
-    return []<uZ... Is> PCX_LAINLINE(F&& f, Tup&& arg, std::index_sequence<Is...>) {
-        return f(get<Is>(std::forward<Tup>(arg))...);
-    }(std::forward<F>(f), std::forward<Tup>(arg_tup), index_sequence_for_tuple<Tup>{});
+namespace detail_ {
+template<typename T>
+concept tuple_like = requires(T v) {
+    { tuple_size_v<T> } -> std::common_with<uZ>;
+    {
+        []<uZ... Is>(std::index_sequence<Is...>, auto&& v) {
+            ((void)get<Is>(v), ...);
+        }(std::make_index_sequence<tuple_size_v<T>>{}, v)
+    };
 };
+struct apply_t {
+    template<typename F, typename Tup>
+        requires tuple_like<std::remove_cvref_t<Tup>>
+    static auto operator()(F&& f, Tup&& arg) -> decltype(auto) {
+        return []<uZ... Is>(F&& f, Tup&& arg, std::index_sequence<Is...>) -> decltype(auto) {
+            return f(get<Is>(std::forward<Tup>(arg))...);
+        }(std::forward<F>(f), std::forward<Tup>(arg), index_sequence_for_tuple<Tup>{});
+    };
+    template<typename F>
+    constexpr auto operator|(F&& f) const {
+        return [f = std::forward<F>(f)]<typename Tup>(Tup&& arg) -> decltype(auto)
+                   requires tuple_like<std::remove_cvref_t<Tup>>
+        { return apply_t{}(f, std::forward<Tup>(arg)); };
+    };
+    template<typename F>
+    constexpr friend auto operator|(F&& f, apply_t) {
+        return [f = std::forward<F>(f)]<typename Tup>(Tup&& arg) -> decltype(auto)
+                   requires tuple_like<std::remove_cvref_t<Tup>>
+        { return apply_t{}(f, std::forward<Tup>(arg)); };
+    }
+};
+inline constexpr auto apply = apply_t{};
+}    // namespace detail_
+inline constexpr auto apply = detail_::apply_t{};
 
 namespace detail_ {
 template<typename T, uZ I>

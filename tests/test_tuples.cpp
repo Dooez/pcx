@@ -44,8 +44,7 @@ constexpr struct s_t : pcx::tupi::compound_op_base {
             requires(I == 0)
         {
             std::print("cx float stage: {}\n", I);
-            return pcx::tupi::make_interim(
-                i * std::exp(std::complex(0.F, std::numbers::pi_v<float> / 4.F)));
+            return pcx::tupi::make_interim(i * std::exp(std::complex(0.F, std::numbers::pi_v<float> / 4.F)));
         }
         auto operator()(std::complex<float> cx) const
             requires(I == 1)

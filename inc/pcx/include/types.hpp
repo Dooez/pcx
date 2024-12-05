@@ -138,6 +138,12 @@ struct cx_vec {
     PCX_AINLINE auto imag() -> vec_t& {
         return m_imag;
     }
+    PCX_AINLINE auto real_v() -> auto& {
+        return m_real.value;
+    }
+    PCX_AINLINE auto imag_v() -> auto& {
+        return m_imag.value;
+    }
 
     static consteval auto width() -> uZ {
         return Width;

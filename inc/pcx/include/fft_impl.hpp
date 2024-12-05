@@ -439,7 +439,7 @@ private:
             auto im          = simd::load<Count>(tw_ptr + Count * 2 * (IGroup + 1));
             auto re_upsample = vec_traits::upsample(re.value);
             auto im_upsample = vec_traits::upsample(im.value);
-            return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample, .m_imag = im_upsample};
+            return cx_vec{.m_real = re_upsample, .m_imag = im_upsample};
         }
         template<uZ I>
         PCX_AINLINE constexpr friend auto get_stage(const load_tw_t&) {
@@ -447,6 +447,7 @@ private:
         }
 
     private:
+        using cx_vec = simd::cx_vec<T, false, false, Width>;
         template<uZ I>
         struct stage_t {
             template<uZ Offset>
@@ -462,31 +463,20 @@ private:
                 if constexpr (tupi::compound_op<decltype(upsample)>) {
                     auto stage = get_stage<I - 1>(upsample);
                     if constexpr (tupi::final_result<decltype(stage(re))>) {
-                        auto re_upsample = stage(re.value);
-                        auto im_upsample = stage(im.value);
-                        return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample,
-                                                                    .m_imag = im_upsample};
+                        return cx_vec{.m_real = stage(re.value), .m_imag = stage(im.value)};
                     } else {
                         return tupi::make_interim(stage(re.value), stage(im.value));
                     }
                 } else {
-                    auto re_upsample = upsample(re.value);
-                    auto im_upsample = upsample(im.value);
-                    return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample,    //
-                                                                .m_imag = im_upsample};
+                    return cx_vec{.m_real = upsample(re.value), .m_imag = upsample(im.value)};
                 }
             }
-            PCX_AINLINE auto operator()(auto re, auto im)
-                requires(I > 1)
-            {
-                constexpr auto upsample = vec_traits::upsample;
-                auto           stage    = get_stage<I - 1>(upsample);
-                if constexpr (tupi::final_result<decltype(stage(re))>) {
-                    auto re_upsample = stage(re.value);
-                    auto im_upsample = stage(im.value);
-                    return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample, .m_imag = im_upsample};
+            PCX_AINLINE auto operator()(auto re, auto im) {
+                auto stage = tupi::apply | get_stage<I - 1>(vec_traits::upsample);
+                if constexpr (tupi::final_result<decltype(stage())>) {
+                    return cx_vec{.m_real = stage(re), .m_imag = stage(im)};
                 } else {
-                    return tupi::make_interim(stage(re.value), stage(im.value));
+                    return tupi::make_interim(stage(re), stage(im));
                 }
             }
         };
@@ -497,9 +487,8 @@ private:
         template<simd::any_cx_vec V>
             requires(To <= V::width()) && (From <= V::width())
         PCX_AINLINE auto operator()(V a, V b) const {
-            constexpr auto repack = vec_traits::template repack<To, From>;
-            auto [re_a, re_b]     = repack(a.real().native, b.real().native);
-            auto [im_a, im_b]     = repack(a.imag().native, b.imag().native);
+            auto [re_a, re_b] = repack(a.real_v(), b.real_v());
+            auto [im_a, im_b] = repack(a.imag_v(), b.imag_v());
             return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},    //
                                     V{.m_real = re_b, .m_imag = im_b});
         }
@@ -509,55 +498,50 @@ private:
         }
 
     private:
+        static constexpr auto repack = vec_traits::template repack<To, From>;
         template<bool NReal, bool NImag, typename IR>
         struct interim_wrapper {
             IR result;
         };
-        template<bool NReal, bool NImag, typename IR>
-        PCX_AINLINE static constexpr auto wrap_interim(IR res) {
-            return tupi::make_interim(interim_wrapper<NReal, NImag, IR>(res));
+        template<bool NReal, bool NImag, typename... IR>
+        PCX_AINLINE static constexpr auto wrap_interim(IR&&... res) {
+            return tupi::make_interim(interim_wrapper<NReal, NImag, IR>(std::forward<IR>(res))...);
         }
         template<uZ I>
         struct stage_t {
             template<simd::any_cx_vec V>
                 requires(I == 0)
             PCX_AINLINE auto operator()(V a, V b) const {
-                constexpr auto repack = vec_traits::template repack<To, From>;
                 if constexpr (tupi::compound_op<decltype(repack)>) {
                     auto stage = get_stage<I>(repack);
-                    if constexpr (tupi::final_result<decltype(stage(a.real().native, b.real().native))>) {
-                        auto [re_a, re_b] = stage(a.real().native, b.real().native);
-                        auto [im_a, im_b] = stage(a.imag().native, b.imag().native);
+                    if constexpr (tupi::final_result<decltype(stage(a.real_v(), b.real_v()))>) {
+                        auto [re_a, re_b] = stage(a.real_v(), b.real_v());
+                        auto [im_a, im_b] = stage(a.imag_v(), b.imag_v());
                         return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
                                                 V{.m_real = re_b, .m_imag = im_b});
                     } else {
-                        return wrap_interim<V::neg_real(), V::neg_imag()>(
-                            tupi::make_tuple(stage(a.real().native, b.real().native),
-                                             stage(a.imag().native, b.imag().native)));
+                        return wrap_interim<V::neg_real(), V::neg_imag()>(stage(a.real_v(), b.real_v()),
+                                                                          stage(a.imag_v(), b.imag_v()));
                     }
                 } else {
-                    auto [re_a, re_b] = repack(a.real().native, b.real().native);
-                    auto [im_a, im_b] = repack(a.imag().native, b.imag().native);
+                    auto [re_a, re_b] = repack(a.real_v(), b.real_v());
+                    auto [im_a, im_b] = repack(a.imag_v(), b.imag_v());
                     return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
                                             V{.m_real = re_b, .m_imag = im_b});
                 }
             }
             template<bool NReal, bool NImag, typename IR>
-                requires(I > 0)
-            PCX_AINLINE auto operator()(interim_wrapper<NReal, NImag, IR> wrapper) const {
-                constexpr auto repack = vec_traits::template repack<To, From>;
-
-                auto stage = get_stage<I>(repack);
-                if constexpr (tupi::final_result<decltype(tupi::apply(stage, get<0>(wrapper.result)))>) {
+            PCX_AINLINE auto operator()(interim_wrapper<NReal, NImag, IR> re,
+                                        interim_wrapper<NReal, NImag, IR> im) const {
+                auto stage = tupi::apply | get_stage<I>(repack);
+                if constexpr (tupi::final_result<decltype(stage(re.result))>) {
                     using cx_vec      = simd::cx_vec<T, NReal, NImag, Width, To>;
-                    auto [re_a, re_b] = tupi::apply(stage, get<0>(wrapper.result));
-                    auto [im_a, im_b] = tupi::apply(stage, get<1>(wrapper.result));
+                    auto [re_a, re_b] = stage(re.result);
+                    auto [im_a, im_b] = stage(im.result);
                     return tupi::make_tuple(cx_vec{.m_real = re_a, .m_imag = im_a},
                                             cx_vec{.m_real = re_b, .m_imag = im_b});
                 } else {
-                    return wrap_interim<NReal, NImag>(
-                        tupi::make_tuple(tupi::apply(stage, get<0>(wrapper.result)),
-                                         tupi::apply(stage, get<1>(wrapper.result))));
+                    return wrap_interim<NReal, NImag>(stage(re.result), stage(im.result));
                 }
             }
         };
