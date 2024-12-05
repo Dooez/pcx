@@ -170,11 +170,11 @@ private:
         PCX_AINLINE auto operator()(interim_wrapper<T, Width, PackFrom, IR> wrapper) const {
             using traits          = detail_::vec_traits<T, Width>;
             constexpr auto repack = traits::template repack<PackTo, PackFrom>;
-            using repacked_vec_t  = cx_vec<T, false, false, Width, PackTo>;
+            using cx_vec          = simd::cx_vec<T, false, false, Width, PackTo>;
             auto stage            = tupi::apply | get_stage<I>(repack);
             if constexpr (tupi::final_result<decltype(stage(wrapper.result))>) {
                 auto [re, im] = stage(wrapper.result);
-                return repacked_vec_t{.m_real = re, .m_imag = im};
+                return cx_vec{.m_real = re, .m_imag = im};
             } else {
                 return wrap_interim<T, Width, PackFrom>(stage(wrapper.result));
             }
