@@ -114,7 +114,7 @@ struct cxstore_t {
 
 template<uZ PackTo>
     requires power_of_two<PackTo>
-struct repack_t {
+struct repack_t : tupi::compound_op_base {
     template<eval_cx_vec V>
         requires(PackTo <= V::width())
     PCX_AINLINE auto operator()(V vec) const {
@@ -170,9 +170,11 @@ private:
         PCX_AINLINE auto operator()(interim_wrapper<T, Width, PackFrom, IR> wrapper) const {
             using traits          = detail_::vec_traits<T, Width>;
             constexpr auto repack = traits::template repack<PackTo, PackFrom>;
-            auto           stage  = tupi::apply | get_stage<I>(repack);
+            using repacked_vec_t  = cx_vec<T, false, false, Width, PackTo>;
+            auto stage            = tupi::apply | get_stage<I>(repack);
             if constexpr (tupi::final_result<decltype(stage(wrapper.result))>) {
-                return stage(wrapper.result);
+                auto [re, im] = stage(wrapper.result);
+                return repacked_vec_t{.m_real = re, .m_imag = im};
             } else {
                 return wrap_interim<T, Width, PackFrom>(stage(wrapper.result));
             }
