@@ -135,7 +135,12 @@ struct vec_traits<f32, 4> {
         return _mm_fnmsub_ps(a, b, c);
     }
 
-    static auto upsample(vec_traits<f32, 2> vec);
+    static constexpr struct {
+        PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec vec) const {
+            auto a = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(vec.data())));
+            return _mm_unpacklo_ps(a, a);
+        }
+    } upsample;
 
     template<uZ To, uZ From>
         requires(To <= 4 && From <= 4)
@@ -278,6 +283,51 @@ struct vec_traits<f32, 8> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm256_fnmsub_ps(a, b, c);
     }
+
+    static constexpr struct upsample_t : tupi::compound_op_base {
+        static inline const auto idx4 = _mm256_set_epi32(0, 0, 1, 1, 2, 2, 3, 3);
+
+        PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec vec) const {
+            auto a = _mm256_set1_ps(vec[0]);
+            auto b = _mm_set1_ps(vec[1]);
+            return _mm256_insertf128_ps(a, b, 0b1);
+        }
+        PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
+            return _mm256_permutexvar_ps(_mm256_castps128_ps256(vec), idx4);
+        }
+        template<uZ I>
+        PCX_AINLINE constexpr friend auto get_stage(const upsample_t&) {
+            return stage_t<I>{};
+        }
+
+    private:
+        template<uZ I>
+        struct stage_t {
+            template<uZ From, typename... Ts>
+            struct interim_wrapper : public tupi::tuple<Ts...> {
+                using tupi::tuple<Ts...>::tuple;
+            };
+            template<uZ From, typename... Ts>
+            PCX_AINLINE auto make_interim(Ts&&... vs) {
+                return tupi::make_interim(
+                    interim_wrapper<From, std::remove_cvref_t<Ts>...>(std::forward<Ts>(vs)...));
+            }
+            PCX_AINLINE auto operator()(std::array<f32, 2> vec) const {
+                auto a = _mm256_set1_ps(vec[0]);
+                auto b = _mm_set1_ps(vec[1]);
+                return make_interim<2>(a, b);
+            }
+            template<typename... Ts>
+            PCX_AINLINE auto operator()(interim_wrapper<2, Ts...> res) const {
+                auto [a, b] = res;
+                return _mm256_insertf128_ps(a, b, 0b1);
+            }
+            PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
+                return _mm256_permutexvar_ps(_mm256_castps128_ps256(vec), idx4);
+            }
+        };
+    }    // namespace pcx::simd::detail_
+    upsample;
 
     template<uZ To, uZ From>
         requires(To <= 8 && From <= 8)
@@ -543,41 +593,25 @@ struct vec_traits<f32, 16> {
         return _mm512_fnmsub_ps(a, b, c);
     }
 
-    template<uZ SrcWidth>
-        requires(SrcWidth <= 16)
-    struct upsample_t {
+    static constexpr struct upsample_t {
         inline static const auto idx2 = _mm512_setr_epi32(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1);
         inline static const auto idx4 = _mm512_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3);
         inline static const auto idx8 = _mm512_setr_epi32(0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7);
 
-        PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec v) const -> impl_vec
-            requires(SrcWidth == 2)
-        {
+        PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec v) const -> impl_vec {
             auto v128 = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(v.data())));
             auto vs   = _mm512_zextps128_ps512(v128);
             return _mm512_permutevar_ps(vs, idx2);
         }
-        PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec v) const -> impl_vec
-            requires(SrcWidth == 4)
-        {
+        PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec v) const -> impl_vec {
             auto vs = _mm512_zextps128_ps512(v);
             return _mm512_permutevar_ps(vs, idx4);
         }
-        PCX_AINLINE auto operator()(vec_traits<f32, 8>::impl_vec v) const -> impl_vec
-            requires(SrcWidth == 8)
-        {
+        PCX_AINLINE auto operator()(vec_traits<f32, 8>::impl_vec v) const -> impl_vec {
             auto vs = _mm512_zextps256_ps512(v);
             return _mm512_permutevar_ps(vs, idx8);
         }
-        PCX_AINLINE auto operator()(vec_traits<f32, 16>::impl_vec v) const -> impl_vec
-            requires(SrcWidth == 16)
-        {
-            return v;
-        }
-    };
-    template<uZ SrcWidth>
-        requires(SrcWidth <= 16)
-    static constexpr auto upsample = upsample_t<SrcWidth>{};
+    } upsample;
 
     template<uZ To, uZ From>
         requires(To <= 16 && From <= 16)
