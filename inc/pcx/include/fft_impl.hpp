@@ -273,6 +273,7 @@ private:
 template<uZ NodeSize, typename T, uZ Width>
 struct subtransform {
     using btfly_node = btfly_node_dit<NodeSize, T, Width>;
+    using vec_traits = simd::detail_::vec_traits<T, Width>;
 
 
     void perform_lo_k(uZ size, uZ max_size, T* dest_ptr, const T* tw_ptr) {
@@ -391,7 +392,20 @@ private:
 
 
         // quick maffs
+        // GropsTuple = 0..NodeSize/2;
         //
+        // template<uZ Count>
+        // auto cl_btfly(tuple<...> lo, tuple<...> hi, const T* tw_ptr){
+        // auto tw = tupi::group_invoke(load_tw<Count>, tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr), GroupTuple);
+        // auto vs = tupi::group_invoke(regroup<16, NodeSize / Count>, v_lo, v_hi);
+        // auto v_hi_tw = tupi::group_invoke(simd::mul, v_hi, tw);
+        // auto btfly_res = tupi::group_invoke(simd::btfly, v_hi, tw);
+        // auto new_lo    = tupi::group_invoke([](auto p) { return get<0>(p); }, btfly_res);
+        // auto new_hi    = tupi::group_invoke([](auto p) { return get<1>(p); }, btfly_res);
+        // return tupi::make_tuple(new_lo, new_hi, tw_ptr + Count * 2 * NodeSize / 2);
+        // }
+        //
+
         // single_load(v0, v1){
         // traits::repack<Width, Width / 2>(v0, v1);
         // btfly
@@ -416,13 +430,74 @@ private:
         auto newlohi = simd::btfly(lo, hi_tw);
     }
 
+    template<uZ Count>
+        requires(Count > 1)
+    struct load_tw_t : tupi::compound_op_base {
+        template<uZ IGroup>
+        PCX_AINLINE auto operator()(const T* tw_ptr, uZ_constant<IGroup>) {
+            auto re          = simd::load<Count>(tw_ptr + Count * 2 * IGroup);
+            auto im          = simd::load<Count>(tw_ptr + Count * 2 * (IGroup + 1));
+            auto re_upsample = vec_traits::upsample(re.value);
+            auto im_upsample = vec_traits::upsample(im.value);
+            return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample, .m_imag = im_upsample};
+        }
+        template<uZ I>
+        PCX_AINLINE constexpr friend auto get_stage(const load_tw_t&) {
+            return stage_t<I>{};
+        }
+
+    private:
+        template<uZ I>
+        struct stage_t {
+            template<uZ Offset>
+            PCX_AINLINE auto operator()(const T* tw_ptr, uZ_constant<Offset>) {
+                auto re = simd::load<Count>(tw_ptr + Offset);
+                auto im = simd::load<Count>(tw_ptr + Count + Offset);
+                return tupi::make_interim(re, im);
+            };
+            PCX_AINLINE auto operator()(auto re, auto im)
+                requires(I == 1)
+            {
+                constexpr auto upsample = vec_traits::upsample;
+                if constexpr (tupi::compound_op<decltype(upsample)>) {
+                    auto stage = get_stage<I - 1>(upsample);
+                    if constexpr (tupi::final_result<decltype(stage(re))>) {
+                        auto re_upsample = stage(re.value);
+                        auto im_upsample = stage(im.value);
+                        return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample,
+                                                                    .m_imag = im_upsample};
+                    } else {
+                        return tupi::make_interim(stage(re.value), stage(im.value));
+                    }
+                } else {
+                    auto re_upsample = upsample(re.value);
+                    auto im_upsample = upsample(im.value);
+                    return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample,    //
+                                                                .m_imag = im_upsample};
+                }
+            }
+            PCX_AINLINE auto operator()(auto re, auto im)
+                requires(I > 1)
+            {
+                constexpr auto upsample = vec_traits::upsample;
+                auto           stage    = get_stage<I - 1>(upsample);
+                if constexpr (tupi::final_result<decltype(stage(re))>) {
+                    auto re_upsample = stage(re.value);
+                    auto im_upsample = stage(im.value);
+                    return simd::cx_vec<T, false, false, Width>{.m_real = re_upsample, .m_imag = im_upsample};
+                } else {
+                    return tupi::make_interim(stage(re.value), stage(im.value));
+                }
+            }
+        };
+    };
+
     template<uZ To, uZ From>
     struct regroup_t : tupi::compound_op_base {
         template<simd::any_cx_vec V>
             requires(To <= V::width()) && (From <= V::width())
         PCX_AINLINE auto operator()(V a, V b) const {
-            using traits          = V::vec_t::traits;
-            constexpr auto repack = traits::template repack<To, From>;
+            constexpr auto repack = vec_traits::template repack<To, From>;
             auto [re_a, re_b]     = repack(a.real().native, b.real().native);
             auto [im_a, im_b]     = repack(a.imag().native, b.imag().native);
             return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},    //
@@ -439,7 +514,7 @@ private:
             IR result;
         };
         template<bool NReal, bool NImag, typename IR>
-        static constexpr auto wrap_interim(IR res) {
+        PCX_AINLINE static constexpr auto wrap_interim(IR res) {
             return tupi::make_interim(interim_wrapper<NReal, NImag, IR>(res));
         }
         template<uZ I>
@@ -447,8 +522,7 @@ private:
             template<simd::any_cx_vec V>
                 requires(I == 0)
             PCX_AINLINE auto operator()(V a, V b) const {
-                using traits          = simd::detail_::vec_traits<T, Width>;
-                constexpr auto repack = traits::template repack<To, From>;
+                constexpr auto repack = vec_traits::template repack<To, From>;
                 if constexpr (tupi::compound_op<decltype(repack)>) {
                     auto stage = get_stage<I>(repack);
                     if constexpr (tupi::final_result<decltype(stage(a.real().native, b.real().native))>) {
@@ -471,8 +545,7 @@ private:
             template<bool NReal, bool NImag, typename IR>
                 requires(I > 0)
             PCX_AINLINE auto operator()(interim_wrapper<NReal, NImag, IR> wrapper) const {
-                using traits          = simd::detail_::vec_traits<T, Width>;
-                constexpr auto repack = traits::template repack<To, From>;
+                constexpr auto repack = vec_traits::template repack<To, From>;
 
                 auto stage = get_stage<I>(repack);
                 if constexpr (tupi::final_result<decltype(tupi::apply(stage, get<0>(wrapper.result)))>) {
