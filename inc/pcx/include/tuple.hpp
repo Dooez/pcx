@@ -181,10 +181,18 @@ template<typename... Ts>
 PCX_AINLINE constexpr auto tuple_cat(Ts&&... tuples) {
     return std::tuple_cat(std::forward<Ts>(tuples)...);
 }
-template<uZ I, typename T>
-PCX_AINLINE constexpr auto get(T&& v) {
-    return std::get<I>(std::forward<T>(v));
-}
+namespace detail_ {
+template<uZ I>
+struct get_t {
+    template<typename T>
+    PCX_AINLINE constexpr static auto operator()(T&& v) {
+        return std::get<I>(std::forward<T>(v));
+    }
+};
+}    // namespace detail_
+template<uZ I>
+inline constexpr auto get = detail_::get_t<I>{};
+
 template<uZ TupleSize, typename T>
 PCX_AINLINE constexpr auto make_broadcast_tuple(T&& v) {
     return []<uZ... Is> PCX_LAINLINE(auto&& v, std::index_sequence<Is...>) {

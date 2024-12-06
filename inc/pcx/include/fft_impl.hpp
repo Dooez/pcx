@@ -151,8 +151,8 @@ private:
         auto [lo, hi]  = extract_halves<stride>(data);
         auto hi_tw     = tupi::group_invoke(simd::mul, hi, tws);
         auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
-        auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
-        auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+        auto new_lo    = tupi::group_invoke(tupi::get<0>, btfly_res);
+        auto new_hi    = tupi::group_invoke(tupi::get<1>, btfly_res);
         return combine_halves<stride>(new_lo, new_hi);
     };
     template<uZ Size, simd::any_cx_vec... Ts>
@@ -161,8 +161,8 @@ private:
 
         auto [lo, hi]  = extract_halves<stride>(data);
         auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi);
-        auto new_lo    = tupi::group_invoke([](auto p) { return tupi::get<0>(p); }, btfly_res);
-        auto new_hi    = tupi::group_invoke([](auto p) { return tupi::get<1>(p); }, btfly_res);
+        auto new_lo    = tupi::group_invoke(tupi::get<0>, btfly_res);
+        auto new_hi    = tupi::group_invoke(tupi::get<1>, btfly_res);
         auto ctw       = conj(tws);
         auto new_hi_tw = tupi::group_invoke(simd::mul, new_hi, tws);
         return combine_halves<stride>(new_lo, new_hi_tw);
@@ -315,6 +315,10 @@ struct subtransform {
 
 
 private:
+    static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
+    template<uZ... Is>
+    using idx_seq = std::index_sequence<Is...>;
+
     template<uZ NodeSizeL>
     PCX_AINLINE auto iterate_lo_k(uZ max_size, uZ& size, auto data_ptr, auto tw_ptr) {
         static constexpr auto single_load_size = NodeSizeL * Width;
@@ -390,22 +394,29 @@ private:
             return tupi::make_tuple(simd::cxload<1, Width>(data_ptr + Width * 2 * Is)...);
         }(data_ptr, std::make_index_sequence<NodeSize>{});
 
+        // normal btfly ...
 
-        // quick maffs
-        // GropsTuple = 0..NodeSize/2;
-        //
-        // template<uZ Count>
-        // auto cl_btfly(tuple<...> lo, tuple<...> hi, const T* tw_ptr){
-        // auto tw = tupi::group_invoke(load_tw<Count>, tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr), GroupTuple);
-        // auto vs = tupi::group_invoke(regroup<16, NodeSize / Count>, v_lo, v_hi);
-        // auto v_hi_tw = tupi::group_invoke(simd::mul, v_hi, tw);
-        // auto btfly_res = tupi::group_invoke(simd::btfly, v_hi, tw);
-        // auto new_lo    = tupi::group_invoke([](auto p) { return get<0>(p); }, btfly_res);
-        // auto new_hi    = tupi::group_invoke([](auto p) { return get<1>(p); }, btfly_res);
-        // return tupi::make_tuple(new_lo, new_hi, tw_ptr + Count * 2 * NodeSize / 2);
-        // }
-        //
+        auto data_lo = [&data]<uZ... Is>(idx_seq<Is...>) {
+            return tupi::make_tuple(get<Is * 2>(data)...);
+        }(half_node_idxs);
+        auto data_hi = [&data]<uZ... Is>(idx_seq<Is...>) {
+            return tupi::make_tuple(get<Is * 2 + 1>(data)...);
+        }(half_node_idxs);
+        auto [lo, hi, tw] = []<uZ Count = 2> PCX_LAINLINE(this auto f,
+                                                          auto      data_lo,
+                                                          auto      data_hi,
+                                                          auto      tw_ptr,
+                                                          uZ_constant<Count> = {}) {
+            if constexpr (Count == NodeSize) {
+                return single_load_btfly<Count>(data_lo, data_hi, tw_ptr);
+            } else {
+                auto [lo, hi, tw] = single_load_btfly<Count>(data_lo, data_hi, tw_ptr);
+                return f(lo, hi, tw, uZ_constant<Count * 2>{});
+            }
+        }(data_lo, data_hi, tw_ptr);
 
+        // single_load_btfly<2>();
+        //
         // single_load(v0, v1){
         // traits::repack<Width, Width / 2>(v0, v1);
         // btfly
@@ -422,13 +433,31 @@ private:
         // }
         //
     }
+    template<uZ Count>
+        requires(Count > 1)
+    struct single_load_btfly_t {
+        template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
+        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
+            auto tw_tup    = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
+            auto tw        = tupi::group_invoke(load_tw<Count>, tw_tup, half_node_tuple);
+            auto regrouped = tupi::group_invoke(regroup<16, NodeSize / Count>, lo, hi);
+            auto lo_re     = tupi::group_invoke(tupi::get<0>, regrouped);
+            auto hi_re     = tupi::group_invoke(tupi::get<1>, regrouped);
+            auto hi_tw     = tupi::group_invoke(simd::mul, hi_re, tw);
+            auto btfly_res = tupi::group_invoke(simd::btfly, lo_re, hi_tw);
+            auto new_lo    = tupi::group_invoke(tupi::get<0>, btfly_res);
+            auto new_hi    = tupi::group_invoke(tupi::get<1>, btfly_res);
+            return tupi::make_tuple(new_lo, new_hi, tw_ptr + Count * 2 * NodeSize / 2);
+        }
 
-    template<uZ GroupSize>
-    auto foo(auto lo, auto hi, auto tw) {
-        regroup<Width, GroupSize>(lo, hi);
-        auto hi_tw   = simd::mul(hi, tw);
-        auto newlohi = simd::btfly(lo, hi_tw);
-    }
+    private:
+        static constexpr auto half_node_tuple = []<uZ... Is>(idx_seq<Is...>) {
+            return tupi::make_tuple(uZ_constant<Is>{}...);
+        }(half_node_idxs);
+    };
+    template<uZ Count>
+    constexpr static auto single_load_btfly = single_load_btfly_t<Count>{};
+
 
     template<uZ Count>
         requires(Count > 1)
@@ -481,6 +510,9 @@ private:
             }
         };
     };
+    template<uZ Count>
+    static constexpr auto load_tw = load_tw_t{};
+
 
     template<uZ GroupTo, uZ GroupFrom>
     struct regroup_t : tupi::compound_op_base {
