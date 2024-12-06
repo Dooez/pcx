@@ -436,7 +436,7 @@ private:
         } else {
             constexpr auto group_size = (tuple_size_v<std::remove_cvref_t<Args>>, ...);
             return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
-                constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZ_constant<I>, F&& f, Args&&... args) {
+                constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZc<I>, F&& f, Args&&... args) {
                     if constexpr (std::same_as<decltype(f(get<I>(std::forward<Args>(args))...)), void>) {
                         f(get<I>(std::forward<Args>(args))...);
                         return detail_::void_wrapper{};
@@ -444,7 +444,7 @@ private:
                         return f(get<I>(std::forward<Args>(args))...);
                     }
                 };
-                return make_nonvoid_tuple(invoker(uZ_constant<Is>{},    //
+                return make_nonvoid_tuple(invoker(uZc<Is>{},    //
                                                   std::forward<F>(f),
                                                   std::forward<Args>(args)...)...);
             }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
@@ -473,10 +473,10 @@ private:
         return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
                                                      S&& stage,
                                                      Args&&... args) {
-            constexpr auto invoker = []<uZ K> PCX_LAINLINE(uZ_constant<K>, S&& stage, Args&&... args) {
+            constexpr auto invoker = []<uZ K> PCX_LAINLINE(uZc<K>, S&& stage, Args&&... args) {
                 return stage(get<K>(std::forward<Args>(args))...);
             };
-            return make_nonvoid_tuple(invoker(uZ_constant<Is>{},    //
+            return make_nonvoid_tuple(invoker(uZc<Is>{},    //
                                               std::forward<S>(stage),
                                               std::forward<Args>(args)...)...);
         }(std::make_index_sequence<group_size>{},

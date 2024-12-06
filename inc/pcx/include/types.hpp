@@ -36,7 +36,7 @@ namespace stdv = std::views;
 namespace stdr = std::ranges;
 
 template<uZ I>
-using uZ_constant = std::integral_constant<uZ, I>;
+using uZc = std::integral_constant<uZ, I>;
 
 template<uZ N>
 concept power_of_two = N > 0 && (N & (N - 1)) == 0;
