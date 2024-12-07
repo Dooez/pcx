@@ -244,7 +244,8 @@ struct apply_t {
         { return apply_t{}(f, std::forward<Tup>(arg)); };
     }
 };
-inline constexpr auto apply = apply_t{};
+
+
 }    // namespace detail_
 inline constexpr auto apply = detail_::apply_t{};
 
@@ -333,13 +334,18 @@ struct has_group_invoke_result {
     static constexpr bool value =
         has_group_invoke_result_h<(..., tuple_size_v<std::remove_cvref_t<Args>>)-1, F, Args...>::value;
 };
+
+struct interim_result_base {};
+struct compound_op_base {};
 }    // namespace detail_
 
-struct compound_op_base {};
+using detail_::compound_op_base;
 template<typename T>
-concept compound_op = std::derived_from<T, compound_op_base>;
+concept compound_op = std::derived_from<T, detail_::compound_op_base>;
 template<typename... Ts>
-struct interim_result : public tuple<Ts...> {
+struct interim_result
+: public tuple<Ts...>
+, public detail_::interim_result_base {
     using tuple<Ts...>::tuple;
 };
 }    // namespace pcx::tupi
@@ -359,17 +365,8 @@ PCX_AINLINE auto make_interim(Args&&... args) {
     using res_t = interim_result<std::remove_cvref_t<Args>...>;
     return res_t(std::forward<Args>(args)...);
 }
-
-namespace detail_ {
 template<typename T>
-struct is_interim_result : std::false_type {};
-template<typename... Ts>
-struct is_interim_result<interim_result<Ts...>> : std::true_type {};
-template<typename T>
-inline constexpr auto is_interim_result_v = is_interim_result<T>::value;
-};    // namespace detail_
-template<typename T>
-concept final_result = !detail_::is_interim_result_v<T>;
+concept final_result = !std::derived_from<T, detail_::interim_result_base>;
 
 namespace detail_ {
 template<any_tuple T>
@@ -533,4 +530,165 @@ private:
         }
     }
 } group_invoke;
+
+
+namespace detail_ {
+template<typename... Args>
+struct capture_t {
+    template<typename F>
+        requires std::invocable<F, Args...>
+    constexpr auto operator|(F&& f) {}
+};
+
+
+template<typename... Fs>
+struct functor : compound_op_base {
+    template<typename... Ts>
+    static auto operator()(Ts&&... args) {
+
+    };
+
+    template<typename F>
+    auto operator|(F&& foo) {
+
+    };
+    template<uZ I>
+    constexpr friend auto get_stage(const functor& f) {
+        return stage_t<I>{.ref = &f};
+    }
+
+private:
+    using ops_t = tuple<Fs...>;
+    ops_t m_opts;
+
+    template<uZ OpIdx, uZ OpStage, typename IR>
+        requires(!final_result<IR>)
+    struct interim_wrapper {
+        IR result;
+    };
+    template<uZ OpIdx, uZ OpStage, typename IR>
+    static auto wrap_interim(IR&& result) {
+        return interim_wrapper<OpIdx, OpStage, IR>(std::forward<IR>(result));
+    }
+    template<uZ I>
+    struct stage_t {
+        functor* ref;
+        template<uZ OpIdx, uZ OpStage, typename IR>
+        auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) {
+            if constexpr (OpStage > 0 || compound_op<tuple_element_t<OpIdx, ops_t>>) {
+                auto stage = tupi::apply | get_stage<OpStage>(get<OpIdx>(ref->m_opts));
+                if constexpr (tupi::final_result<decltype(stage(wr.result))>) {
+                    if constexpr (OpIdx == sizeof...(Fs) - 1) {
+                        return stage(wr.result);
+                    } else {
+                        return wrap_interim<OpIdx + 1, 0>(tupi::make_interim(stage(wr.result)));
+                    }
+                } else {
+                    return wrap_interim<OpIdx, OpStage + 1>(stage(wr.result));
+                }
+            } else {
+                auto op = tupi::apply | get<OpIdx>(ref->m_opts);
+                if constexpr (OpIdx == sizeof...(Fs) - 1) {
+                    return op(wr.result);
+                } else {
+                    return wrap_interim<OpIdx + 1, 0>(op(wr.result));
+                }
+            }
+        };
+    };
+};
+template<typename... Ts>
+struct distributed_t
+: public tuple<Ts...>
+, std::conditional_t<(final_result<Ts> && ...), decltype([] {}), interim_result_base> {
+    using tuple<Ts...>::tuple;
+};
+
+}    // namespace detail_
+}    // namespace pcx::tupi
+
+
+template<typename... Ts>
+struct std::tuple_size<pcx::tupi::detail_::distributed_t<Ts...>>
+: std::integral_constant<std::size_t, sizeof...(Ts)> {};
+template<std::size_t I, typename... Ts>
+struct std::tuple_element<I, pcx::tupi::detail_::distributed_t<Ts...>> {
+    using type = pcx::h::detail_::index_into_types<I, Ts...>::type;
+};
+namespace pcx::tupi {
+//
+namespace detail_ {
+
+template<typename... T>
+auto distribute(T...);
+
+template<typename... Fs>
+struct pipelined_t : compound_op_base {
+    template<typename... Ts>
+    auto operator()(distributed_t<Ts...> args) {}
+
+    template<typename F>
+    auto operator|(F&&) const {}
+
+private:
+    using op_t = tuple<Fs...>;
+    op_t ops;
+
+    static constexpr auto op_count = sizeof...(Fs);
+
+    template<uZ OpStage, typename IR>
+        requires(!final_result<IR>)
+    struct interim_wrapper : public interim_result_base {
+        static constexpr auto op_stage_idx = OpStage;
+
+        IR result;
+    };
+
+    template<uZ OpStage, typename IR>
+    static auto wrap_interim(IR&& result) {
+        return interim_wrapper<OpStage, IR>(std::forward<IR>(result));
+    }
+
+    template<uZ I>
+    struct stage_t {
+        pipelined_t* ref;
+        template<typename... Ts>
+            requires(sizeof...(Ts) == op_count)
+        auto operator()(distributed_t<Ts...> args) /* -> distributed_t<...> */ {
+            // Ts => interim_wrapper<OpStage, IR> || final_result<Ts>
+            return [&]<uZ... Is>(std::index_sequence<Is...>) {
+                constexpr auto invoke_stage = []<typename Arg>(auto&& f, Arg&& arg) -> decltype(auto) {
+                    if constexpr (final_result<std::remove_cvref_t<Arg>>) {
+                        return std::forward<Arg>(arg);
+                    } else {
+                        // Arg => interim_wrapper<OpStage, IR>
+                        constexpr uZ stage_idx = Arg::op_stage_idx;
+
+                        auto stage = apply | get_stage<stage_idx>(std::forward<decltype(f)>(f));
+                        if constexpr (final_result<decltype(stage(arg.result))>) {
+                            return stage(arg.result);
+                        } else {
+                            return make_interim<stage_idx + 1>(stage(arg.result));
+                        }
+                    }
+                };
+                return distribute(invoke_stage(get<Is>(ref->ops), get<Is>(args))...);
+            }(std::make_index_sequence<op_count>{});
+        }
+    };
+};
+
+
+// auto x = simd::mul;
+// auto y = simd::div;
+// auto f = pipeline(x, y);
+// auto b = [](cx_vec x) { return distribute(x.real(), im.real()); } | pipeline(x, x) | apply |
+//          [](auto re, auto im) { return cx_vec<T>; };
+
+
+// auto x = capture_f_t(x, y) | simd::mul;
+// auto y = capture_f_t(b, a) | simd::div;
+// auto f = interleave(x, y) | apply | simd::add;
+
+}    // namespace detail_
 }    // namespace pcx::tupi
