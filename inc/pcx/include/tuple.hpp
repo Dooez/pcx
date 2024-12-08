@@ -223,6 +223,9 @@ concept tuple_like = requires(T v) {
         }(std::make_index_sequence<tuple_size_v<T>>{}, v)
     };
 };
+
+template<typename F>
+struct to_apply;
 struct apply_t {
     template<typename F, typename Tup>
         requires tuple_like<std::remove_cvref_t<Tup>>
@@ -232,20 +235,27 @@ struct apply_t {
         }(std::forward<F>(f), std::forward<Tup>(arg), index_sequence_for_tuple<Tup>{});
     };
     template<typename F>
+    constexpr friend auto operator|(F&& f, const apply_t&) {
+        return to_apply<F>{std::forward<F>(f)};
+    }
+    template<typename F>
     constexpr auto operator|(F&& f) const {
         return [f = std::forward<F>(f)]<typename Tup>(Tup&& arg) -> decltype(auto)
                    requires tuple_like<std::remove_cvref_t<Tup>>
         { return apply_t{}(f, std::forward<Tup>(arg)); };
     };
-    // template<typename F>
-    // constexpr friend auto operator|(F&& f, apply_t) {
-    //     return [f = std::forward<F>(f)]<typename Tup>(Tup&& arg) -> decltype(auto)
-    //                requires tuple_like<std::remove_cvref_t<Tup>>
-    //     { return apply_t{}(f, std::forward<Tup>(arg)); };
-    // }
 };
-
-
+template<typename F>
+struct to_apply {
+    template<typename AF, typename G>
+    constexpr auto operator|(this AF&& apply_f, G&& g) {
+        return std::forward_like<AF>(apply_f.op) |
+                   [g = std::forward<G>(g)]<typename Tup>(Tup&& arg) -> decltype(auto)
+                   requires tuple_like<std::remove_cvref_t<Tup>>
+        { return apply_t{}(g, std::forward<Tup>(arg)); };
+    };
+    F op;
+};
 }    // namespace detail_
 inline constexpr auto apply = detail_::apply_t{};
 
@@ -533,68 +543,10 @@ private:
 
 
 namespace detail_ {
-template<typename F, typename... Fs>
-struct functor;
-struct napply_t;
-
-template<typename F>
-struct almost_applied;
-
-struct napply_t {
-    template<typename F, typename Tup>
-        requires tuple_like<std::remove_cvref_t<Tup>>
-    static auto operator()(F&& f, Tup&& arg) -> decltype(auto) {
-        return []<uZ... Is>(F&& f, Tup&& arg, std::index_sequence<Is...>) -> decltype(auto) {
-            return f(get<Is>(std::forward<Tup>(arg))...);
-        }(std::forward<F>(f), std::forward<Tup>(arg), index_sequence_for_tuple<Tup>{});
-    };
-    template<typename F>
-    constexpr friend auto operator|(F&& f, const napply_t&) {
-        return almost_applied<F>{std::forward<F>(f)};
-    }
-    template<typename F>
-    constexpr auto operator|(F&& f) const {
-        return [f = std::forward<F>(f)]<typename Tup>(Tup&& arg) -> decltype(auto)
-                   requires tuple_like<std::remove_cvref_t<Tup>>
-        { return napply_t{}(f, std::forward<Tup>(arg)); };
-    };
-    // template<typename F>
-    // constexpr friend auto operator|(F&& f, napply_t) {
-    //     return [f = std::forward<F>(f)]<typename Tup>(Tup&& arg) -> decltype(auto)
-    //                requires tuple_like<std::remove_cvref_t<Tup>>
-    //     { return napply_t{}(f, std::forward<Tup>(arg)); };
-    // }
-};
-inline constexpr auto napply = napply_t{};
-
-template<typename F>
-struct almost_applied {
-    template<typename AF, typename G>
-    constexpr auto operator|(this AF&& apply_f, G&& g) {
-        return std::forward_like<AF>(apply_f.op) |
-                   [g = std::forward<G>(g)]<typename Tup>(Tup&& arg) -> decltype(auto)
-                   requires tuple_like<std::remove_cvref_t<Tup>>
-        { return napply_t{}(g, std::forward<Tup>(arg)); };
-    };
-    F op;
-};
-template<typename T>
-struct is_functor : std::false_type {};
-template<typename F, typename... Fs>
-struct is_functor<functor<F, Fs...>> : std::true_type {};
-
 template<typename F0, typename... Fs>
-struct functor : compound_op_base {
+struct compound_functor_t : compound_op_base {
     template<typename F, typename... Ts>
     auto operator()(this F&& f, Ts&&... args) -> decltype(auto) {
-        // return [&]<uZ I>(this auto invoker, uZc<I>, auto&&... args) -> decltype(auto) {
-        //     if constexpr (I == tuple_size_v<ops_t> - 1) {
-        //         return get<I>(std::forward_like<F>(f.ops))(std::forward<decltype(args)>(args)...);
-        //     } else {
-        //         return invoker(uZc<I + 1>{},
-        //                        get<I>(std::forward_like<F>(f.ops))(std::forward<decltype(args)>(args)...));
-        //     }
-        // }(uZc<0>{}, std::forward<Ts>(args)...);
         return [&]<uZ I>(this auto invoker, uZc<I>, auto&&... args) {
             auto stage = get_stage<I>(f);
             if constexpr (final_result<decltype(stage(std::forward<decltype(args)>(args)...))>) {
@@ -604,34 +556,23 @@ struct functor : compound_op_base {
             }
         }(uZc<0>{}, args...);
     };
-
     template<typename F, typename G>
-        requires(!std::same_as<std::remove_cvref_t<G>, napply_t>)
+        requires(!std::same_as<std::remove_cvref_t<G>, apply_t>)
     auto operator|(this F&& f, G&& g) {
-        return functor<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
+        return compound_functor_t<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
             .ops{std::forward<F>(f), std::forward<G>(g)}
         };
     };
-    // template<typename F, typename G>
-    //     requires(!is_functor<std::remove_cvref_t<G>>::value && is_functor<std::remove_cvref_t<G>>::value)
-    // constexpr friend auto operator|(F&& f, G&& g) {
-    //     return functor<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
-    //         .ops{std::forward<F>(f), std::forward<G>(g)}
-    //     };
-    // }
-
     template<uZ I, typename G>
-        requires(std::same_as<std::remove_cvref_t<G>, functor>)
+        requires(std::same_as<std::remove_cvref_t<G>, compound_functor_t>)
     constexpr friend auto get_stage(G&& f) {
-        return stage_t<I>{.ref = &f};
+        return stage_t<I>{.fptr = &f};
     }
-
     using ops_t = tuple<F0, Fs...>;
     ops_t ops;
 
 private:
     template<uZ OpIdx, uZ OpStage, typename IR>
-    // requires(!final_result<IR>)
     struct interim_wrapper : public interim_result_base {
         IR result;
     };
@@ -641,13 +582,13 @@ private:
     }
     template<uZ I>
     struct stage_t {
-        functor* ref;
+        compound_functor_t* fptr;
 
         auto operator()(auto&&... args)
             requires(I == 0)
         {
             if constexpr (compound_op<tuple_element_t<0, ops_t>>) {
-                auto stage = get_stage<0>(get<0>(ref->ops));
+                auto stage = get_stage<0>(get<0>(fptr->ops));
                 if constexpr (tupi::final_result<decltype(stage(args...))>) {
                     if constexpr (tuple_size_v<ops_t> == 1) {
                         return stage(args...);
@@ -659,16 +600,16 @@ private:
                 }
             } else {
                 if constexpr (tuple_size_v<ops_t> == 1) {
-                    return get<0>(ref->ops)(args...);
+                    return get<0>(fptr->ops)(args...);
                 } else {
-                    return wrap_interim<1, 0>(get<0>(ref->ops)(args...));
+                    return wrap_interim<1, 0>(get<0>(fptr->ops)(args...));
                 }
             }
         };
         template<uZ OpIdx, uZ OpStage, typename IR>
         auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) {
             if constexpr (OpStage > 0 || compound_op<tuple_element_t<OpIdx, ops_t>>) {
-                auto stage = get_stage<OpStage>(get<OpIdx>(ref->ops));
+                auto stage = get_stage<OpStage>(get<OpIdx>(fptr->ops));
                 if constexpr (tupi::final_result<decltype(stage(wr.result))>) {
                     if constexpr (OpIdx == tuple_size_v<ops_t> - 1) {
                         return stage(wr.result);
@@ -679,7 +620,7 @@ private:
                     return wrap_interim<OpIdx, OpStage + 1>(stage(wr.result));
                 }
             } else {
-                auto op = get<OpIdx>(ref->ops);
+                auto op = get<OpIdx>(fptr->ops);
                 if constexpr (OpIdx == tuple_size_v<ops_t> - 1) {
                     return op(wr.result);
                 } else {
@@ -698,7 +639,6 @@ struct distributed_t
 }    // namespace detail_
 }    // namespace pcx::tupi
 
-
 template<typename... Ts>
 struct std::tuple_size<pcx::tupi::detail_::distributed_t<Ts...>>
 : std::integral_constant<std::size_t, sizeof...(Ts)> {};
@@ -706,36 +646,50 @@ template<std::size_t I, typename... Ts>
 struct std::tuple_element<I, pcx::tupi::detail_::distributed_t<Ts...>> {
     using type = pcx::h::detail_::index_into_types<I, Ts...>::type;
 };
+
 namespace pcx::tupi {
-//
 namespace detail_ {
-inline constexpr struct distribute_t {
+struct pass_t {
+    template<typename... Args>
+    PCX_AINLINE static auto operator()(Args&&... args) {
+        return std::forward_as_tuple(std::forward<Args>(args)...);
+    }
+    template<typename F>
+        requires(!std::same_as<std::remove_cvref_t<F>, detail_::apply_t>)
+    constexpr auto operator|(F&& f) const {
+        return detail_::compound_functor_t<std::remove_cvref_t<F>>{.ops{std::forward<F>(f)}};
+    }
+};
+}    // namespace detail_
+/**
+ * @brief Compound functor factory. 
+ * Example: `pass | [](auto&&... args){ /.../ }` will create a functor accepting `auto&&... args` 
+ */
+constexpr auto pass = detail_::pass_t{};
+
+namespace detail_ {
+struct distribute_t {
     template<typename... Args>
     static constexpr auto operator()(Args&&... args) {
-        return distributed_t<Args...>{std::forward<Args>(args)...};
+        return detail_::distributed_t<Args...>{std::forward<Args>(args)...};
     }
     template<typename F, typename G>
-        requires(!std::same_as<std::remove_cvref_t<G>, napply_t>)
+        requires(!std::same_as<std::remove_cvref_t<G>, detail_::apply_t>)
     constexpr auto operator|(this F&& f, G&& g) {
-        return functor<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
+        return detail_::compound_functor_t<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
             .ops{std::forward<F>(f), std::forward<G>(g)}
         };
     }
-    // template<typename F, typename G>
-    //     requires std::same_as<std::remove_cvref_t<G>, distribute_t>
-    // constexpr friend auto operator|(F&& f, G&& g) {
-    //     return functor<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
-    //         .m_opts{std::forward<F>(f), std::forward<G>(g)}
-    //     };
-    // }
-} distribute;
+};
+}    // namespace detail_
 
-template<typename... Fs>
-struct pipelined_t;
-template<typename T>
-struct is_pipelined : std::false_type {};
-template<typename... Fs>
-struct is_pipelined<pipelined_t<Fs...>> : std::true_type {};
+/**
+ * @brief Distributes the arguments to be forwarded to pipelined operations.
+ * Number of `distribute()` arguments must be equal to the number of `pipeline()` arguments.
+ */
+inline constexpr auto distribute = detail_::distribute_t{};
+
+namespace detail_ {
 template<typename... Fs>
 struct pipelined_t : compound_op_base {
     template<typename... Ts>
@@ -750,19 +704,12 @@ struct pipelined_t : compound_op_base {
         }(uZc<0>{}, args);
     }
     template<typename F, typename G>
-        requires(!std::same_as<std::remove_cvref_t<G>, napply_t>)
+        requires(!std::same_as<std::remove_cvref_t<G>, apply_t>)
     constexpr auto operator|(this F&& f, G&& g) {
-        return functor<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
+        return compound_functor_t<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
             .ops{std::forward<F>(f), std::forward<G>(g)}
         };
     }
-    // template<typename F, typename G>
-    //     requires(is_pipelined<std::remove_cvref_t<G>>::value)
-    // constexpr friend auto operator|(F&& f, G&& g) {
-    //     return functor<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
-    //         .ops{std::forward<F>(f), std::forward<G>(g)}
-    //     };
-    // }
     template<uZ I, typename F>
         requires std::same_as<std::remove_cvref_t<F>, pipelined_t>
     friend constexpr auto get_stage(F&& f) {
@@ -792,7 +739,7 @@ private:
         template<typename... Ts>
             requires(sizeof...(Ts) == op_count)
         auto operator()(distributed_t<Ts...> args) /* -> distributed_t<...> */ {
-            // Ts => interim_wrapper<OpStage, IR> || final_result<Ts>
+            // Ts => interim_wrapper<OpStage, IR> or final_result<Ts>
             return [&]<uZ... OpIs>(std::index_sequence<OpIs...>) {
                 constexpr auto invoke_stage = []<typename Arg>(auto&& f, Arg&& arg) -> decltype(auto) {
                     if constexpr (I == 0) {
@@ -800,9 +747,6 @@ private:
                         if constexpr (final_result<decltype(stage(std::forward<Arg>(arg)))>) {
                             return stage(std::forward<Arg>(arg));
                         } else {
-                            // auto v  = stage(std::forward<Arg>(arg));
-                            // auto wi = wrap_interim<1>(std::move(v));
-                            // return wi;
                             return wrap_interim<1>(stage(std::forward<Arg>(arg)));
                         }
                     } else if constexpr (final_result<std::remove_cvref_t<Arg>>) {
@@ -825,38 +769,19 @@ private:
     };
 };
 
+/**
+ * @brief Combines the passed functors. If the passed functors are compound, 
+ * they will be executed inteleaved. The input must be 
+ *
+ * @param  f... functors to be pipelined. 
+ * @return Compound functor, accepting a return value of `distribute(args...)` 
+ * with `sizeof...(args) == sizeof...(f)`.
+ */
 template<typename... Fs>
 auto pipeline(Fs&&... f) {
-    return pipelined_t<std::remove_cvref_t<Fs>...>{.ops = make_tuple(std::forward<Fs>(f)...)};
+    return pipelined_t<std::remove_cvref_t<Fs>...>{.ops{std::forward<Fs>(f)...}};
 }
-
-constexpr struct {
-    template<typename... Args>
-    PCX_AINLINE static auto operator()(Args&&... args) {
-        return std::forward_as_tuple(std::forward<Args>(args)...);
-    }
-    template<typename F>
-        requires(!std::same_as<std::remove_cvref_t<F>, napply_t>)
-    constexpr auto operator|(F&& f) const {
-        return functor<std::remove_cvref_t<F>>{.ops{std::forward<F>(f)}};
-    }
-} pass;
-
-// auto
-// auto regroup = pass    //
-//                |
-//                [](auto lo, auto hi) {
-//                    return distribute(tupi::make_tuple(lo.real(), lo.imag()),    //
-//                                      tupi::make_tuple(lo.imag(), hi.imag()));
-//                }
-//                | pipeline(apply | repack, apply | repack)    //
-//                | apply                                       //
-//                | [](auto re, auto im) {
-//                      return tupi::make_tuple(cx_vec<T>{get<0>(re), get<0>(im)},    //
-//                                              cx_vec<T>{get<1>(re), get<1>(im)});
-//                  };
-//
-
-
 }    // namespace detail_
+
+
 }    // namespace pcx::tupi

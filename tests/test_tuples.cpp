@@ -146,9 +146,9 @@ int main() {
     };
 
 
-    auto proc = td::pass | s0 | s1 | s2 | split | td::napply | join;
+    auto proc = tupi::pass | s0 | s1 | s2 | split | tupi::apply | join;
     // auto proc2       = td::pass | s0 | s1 | split | td::napply | join;
-    auto pipelined_f = td::distribute                //
+    auto pipelined_f = tupi::distribute              //
                        | td::pipeline(proc, proc)    //
                                                      // | td::napply                  //
                                                      // | comb                        //
@@ -157,7 +157,7 @@ int main() {
 
 
     std::print("Start\n");
-    auto res = pipelined_f(10, 20);
+    auto res = pipelined_f(10, 200);
     // auto res0 = proc(10);
     std::print("End\n");
 
