@@ -768,7 +768,7 @@ private:
         }
     };
 };
-
+}    // namespace detail_
 /**
  * @brief Combines the passed functors. If the passed functors are compound, 
  * they will be executed inteleaved. The input must be 
@@ -779,9 +779,7 @@ private:
  */
 template<typename... Fs>
 auto pipeline(Fs&&... f) {
-    return pipelined_t<std::remove_cvref_t<Fs>...>{.ops{std::forward<Fs>(f)...}};
+    return detail_::pipelined_t<std::remove_cvref_t<Fs>...>{.ops{std::forward<Fs>(f)...}};
 }
-}    // namespace detail_
-
 
 }    // namespace pcx::tupi

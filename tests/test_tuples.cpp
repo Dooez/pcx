@@ -128,11 +128,11 @@ int main() {
         return x + 1;
     };
     auto split = [](auto x) {
-        std::print("Splitting value. {} \n", x);
+        std::print("Splitting value. {}.\n", x);
         return tupi::make_tuple(x, x * 2);
     };
     auto join = [](auto x, auto x2) {
-        std::print("Joining value. {} {}\n", x, x2);
+        std::print("Joining value. {} {}.\n", x, x2);
         return x + x2;
     };
     auto comb = [](auto x, auto y) {
@@ -141,24 +141,40 @@ int main() {
     };
 
     auto post = [](auto x) {
-        std::print("Post combine.{}\n", x);
+        std::print("Post combine. {}.\n", x);
         return x + 1;
     };
 
 
-    auto proc = tupi::pass | s0 | s1 | s2 | split | tupi::apply | join;
-    // auto proc2       = td::pass | s0 | s1 | split | td::napply | join;
-    auto pipelined_f = tupi::distribute              //
-                       | td::pipeline(proc, proc)    //
-                                                     // | td::napply                  //
-                                                     // | comb                        //
-                                                     // | post                        //
+    // clang-format off
+    auto proc = tupi::pass
+                | [](auto x) {
+                    std::print("Stage 0. x: {}.\n", x);
+                    return x + 1;
+                }
+                | [](auto x) {
+                    std::print("Stage 1. x: {}.\n", x);
+                    return x + 1;
+                }
+                | s0 
+                | s1 
+                | s2 
+                | split 
+                | tupi::apply 
+                | join;
+
+    // clang-format on
+    auto pipelined_f = tupi::distribute                //
+                       | tupi::pipeline(proc, proc)    //
+                       | tupi::apply                   //
+                       | comb                          //
+                       | post                          //
         ;
 
 
     std::print("Start\n");
     auto res = pipelined_f(10, 200);
-    // auto res0 = proc(10);
+    std::print("{}.\n", res);
     std::print("End\n");
 
     // static_assert(tupi::final_group_result<void>);
