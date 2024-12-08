@@ -112,12 +112,60 @@ auto foo(std::tuple<int, int, int> x) {
 int main() {
     using namespace pcx;
 
-    static_assert(tupi::final_group_result<void>);
+    namespace td = pcx::tupi::detail_;
 
-    auto [x0, x1, x2, x3, cx0] =
-        tupi::group_invoke(staged, tupi::make_tuple(0, 1, 2, 3, std::complex<float>(1, 0)));
-    tupi::group_invoke(staged_noret, tupi::make_tuple(0, 1, 2, 3));
 
-    std::print("{} {} {} {}\n", x0, x1, x2, x3);
+    auto s0 = [](auto x) {
+        std::print("Stage 0. x: {}.\n", x);
+        return x + 1;
+    };
+    auto s1 = [](auto x) {
+        std::print("Stage 1. x: {}.\n", x);
+        return x + 1;
+    };
+    auto s2 = [](auto x) {
+        std::print("Stage 2. x: {}.\n", x);
+        return x + 1;
+    };
+    auto split = [](auto x) {
+        std::print("Splitting value. {} \n", x);
+        return tupi::make_tuple(x, x * 2);
+    };
+    auto join = [](auto x, auto x2) {
+        std::print("Joining value. {} {}\n", x, x2);
+        return x + x2;
+    };
+    auto comb = [](auto x, auto y) {
+        std::print("Combining 2 values. {} {}.\n", x, y);
+        return x + y;
+    };
+
+    auto post = [](auto x) {
+        std::print("Post combine.{}\n", x);
+        return x + 1;
+    };
+
+
+    auto proc = td::pass | s0 | s1 | s2 | split | td::napply | join;
+    // auto proc2       = td::pass | s0 | s1 | split | td::napply | join;
+    auto pipelined_f = td::distribute                //
+                       | td::pipeline(proc, proc)    //
+                                                     // | td::napply                  //
+                                                     // | comb                        //
+                                                     // | post                        //
+        ;
+
+
+    std::print("Start\n");
+    auto res = pipelined_f(10, 20);
+    // auto res0 = proc(10);
+    std::print("End\n");
+
+    // static_assert(tupi::final_group_result<void>);
+    // auto [x0, x1, x2, x3, cx0] =
+    //     tupi::group_invoke(staged, tupi::make_tuple(0, 1, 2, 3, std::complex<float>(1, 0)));
+    // tupi::group_invoke(staged_noret, tupi::make_tuple(0, 1, 2, 3));
+    //
+    // std::print("{} {} {} {}\n", x0, x1, x2, x3);
     return 0;
 }
