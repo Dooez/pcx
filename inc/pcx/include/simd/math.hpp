@@ -196,6 +196,7 @@ inline constexpr struct mul_t : pcx::tupi::compound_op_base {
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
         requires compatible_cx_vec<Lhs, Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        //return (stage<0> | tupi::apply | stage<1>)(lhs, rhs);
         return tupi::apply(stage<1>, stage<0>(lhs, rhs));
     };
     template<uZ Power>
