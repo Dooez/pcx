@@ -118,4 +118,38 @@ using reverse_value_sequence = typename detail_::reverse_value_seq<S>::type;
 template<any_index_sequence S>
 using reverse_index_sequence =
     value_to_index_sequence<typename detail_::reverse_value_seq<index_to_value_sequence<S>>::type>;
+
+template<typename... T>
+struct types {};
+namespace detail_ {
+template<typename T>
+struct is_types : std::false_type {};
+template<typename... Ts>
+struct is_types<types<Ts...>> : std::true_type {};
+template<uZ K, uZ I, typename... Ts>
+    requires(K <= I && I <= sizeof...(Ts))
+struct get_types_h;
+template<uZ K, uZ I, typename T, typename... Ts>
+struct get_types_h<K, I, T, Ts...> {
+    using type = std::conditional_t<K == I, T, typename get_types_h<K + 1, I, Ts...>::type>;
+};
+template<uZ K>
+struct get_types_h<K, K> {
+    using type = void;
+};
+}    // namespace detail_
+
+template<typename T>
+concept any_types = detail_::is_types<T>::value;
+namespace detail_ {
+template<uZ I, any_types Ts>
+struct get_type;
+template<uZ I, typename... Ts>
+struct get_type<I, types<Ts...>> {
+    using type = get_types_h<0, I, Ts...>::type;
+};
+}    // namespace detail_
+template<uZ I, any_types Ts>
+using get_type_t = detail_::get_type<I, Ts>::type;
+
 }    // namespace pcx::meta

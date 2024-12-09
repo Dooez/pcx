@@ -1,4 +1,5 @@
 #pragma once
+#include "pcx/include/meta.hpp"
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
 #include "pcx/include/tuple.hpp"
@@ -503,128 +504,104 @@ private:
     template<uZ Count>
     constexpr static auto regroup_btfly = regroup_btfly_t<Count>{};
 
-
     template<uZ Count>
-        requires(Count > 1)
-    struct load_tw_t : tupi::compound_op_base {
-        template<uZ IGroup>
-        PCX_AINLINE auto operator()(const T* tw_ptr, uZc<IGroup>) {
-            auto re          = simd::load<Count>(tw_ptr + Count * (2 * IGroup));
-            auto im          = simd::load<Count>(tw_ptr + Count * (2 * IGroup + 1));
-            auto re_upsample = vec_traits::upsample(re.value);
-            auto im_upsample = vec_traits::upsample(im.value);
-            return cx_vec{.m_real = re_upsample, .m_imag = im_upsample};
+    static constexpr auto load_tw =
+        tupi::pass    //
+        |
+        []<uZ IGroup>(const T* tw_ptr, uZc<IGroup>) {
+            auto re = simd::load<Count>(tw_ptr + Count * (2 * IGroup));
+            auto im = simd::load<Count>(tw_ptr + Count * (2 * IGroup + 1));
+            return tupi::distribute(re, im);
         }
-        template<uZ I>
-        PCX_AINLINE constexpr friend auto get_stage(const load_tw_t&) {
-            return stage_t<I>{};
-        }
-
-    private:
-        using cx_vec = simd::cx_vec<T, false, false, Width>;
-        template<uZ I>
-        struct stage_t {
-            template<uZ IGroup>
-            PCX_AINLINE static auto operator()(const T* tw_ptr, uZc<IGroup>) {
-                auto re = simd::load<Count>(tw_ptr + Count * (2 * IGroup));
-                auto im = simd::load<Count>(tw_ptr + Count * (2 * IGroup + 1));
-                return tupi::make_interim(re, im);
-            };
-            PCX_AINLINE static auto operator()(auto re, auto im)
-                requires(I == 1)
-            {
-                constexpr auto upsample = vec_traits::upsample;
-                if constexpr (tupi::compound_op<decltype(upsample)>) {
-                    auto stage = get_stage<I - 1>(upsample);
-                    if constexpr (tupi::final_result<decltype(stage(re))>) {
-                        return cx_vec{.m_real = stage(re.value), .m_imag = stage(im.value)};
-                    } else {
-                        return tupi::make_interim(stage(re.value), stage(im.value));
-                    }
-                } else {
-                    return cx_vec{.m_real = upsample(re.value), .m_imag = upsample(im.value)};
-                }
-            }
-            PCX_AINLINE static auto operator()(auto re, auto im) {
-                auto stage = tupi::apply | get_stage<I - 1>(vec_traits::upsample);
-                if constexpr (tupi::final_result<decltype(stage())>) {
-                    return cx_vec{.m_real = stage(re), .m_imag = stage(im)};
-                } else {
-                    return tupi::make_interim(stage(re), stage(im));
-                }
-            }
-        };
-    };
-    template<uZ Count>
-    static constexpr auto load_tw = load_tw_t{};
-
+        | tupi::pipeline(vec_traits::upsample, vec_traits::upsamle)    //
+        | tupi::apply                                                  //
+        | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
 
     template<uZ GroupTo, uZ GroupFrom>
-    struct regroup_t : tupi::compound_op_base {
-        template<simd::any_cx_vec V>
-            requires(GroupTo <= V::width()) && (GroupFrom <= V::width())
-        PCX_AINLINE auto operator()(V a, V b) const {
-            auto [re_a, re_b] = repack(a.real_v(), b.real_v());
-            auto [im_a, im_b] = repack(a.imag_v(), b.imag_v());
-            return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},    //
-                                    V{.m_real = re_b, .m_imag = im_b});
-        }
-        template<uZ I>
-        PCX_AINLINE constexpr friend auto get_stage(const regroup_t&) {
-            return stage_t<I>{};
-        }
+    static constexpr auto regroup = //
+        tupi::pass //
+        | []<simd::any_cx_vec V>(V a, V b) 
+            requires(GroupTo <= V::width()) && (GroupFrom <= V::width()) 
+          {
+            auto re = tupi::make_tuple(a.real_v(), b.real_v());
+            auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
+            return tupi::distribute(re, im, meta::types<V>{});
+          }
+        | tupi::pipeline(tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>, //
+                         tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,
+                         tupi::pass)
+        | tupi::apply
+        | []<typename V>(auto re, auto im, meta::types<V>){
+            return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    //
+                                    V{.m_real = get<1>(re), .m_imag = get<1>(im)});
+          };
 
-    private:
-        static constexpr auto repack = vec_traits::template repack<GroupTo, GroupFrom>;
-        template<bool NReal, bool NImag, typename IR>
-        struct interim_wrapper {
-            IR result;
-        };
-        template<bool NReal, bool NImag, typename... IR>
-        PCX_AINLINE static constexpr auto wrap_interim(IR&&... res) {
-            return tupi::make_interim(interim_wrapper<NReal, NImag, IR>(std::forward<IR>(res))...);
-        }
-        template<uZ I>
-        struct stage_t {
-            template<simd::any_cx_vec V>
-                requires(I == 0)
-            PCX_AINLINE static auto operator()(V a, V b) {
-                if constexpr (tupi::compound_op<decltype(repack)>) {
-                    auto stage = get_stage<I>(repack);
-                    if constexpr (tupi::final_result<decltype(stage(a.real_v(), b.real_v()))>) {
-                        auto [re_a, re_b] = stage(a.real_v(), b.real_v());
-                        auto [im_a, im_b] = stage(a.imag_v(), b.imag_v());
-                        return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
-                                                V{.m_real = re_b, .m_imag = im_b});
-                    } else {
-                        return wrap_interim<V::neg_real(), V::neg_imag()>(stage(a.real_v(), b.real_v()),
-                                                                          stage(a.imag_v(), b.imag_v()));
-                    }
-                } else {
-                    auto [re_a, re_b] = repack(a.real_v(), b.real_v());
-                    auto [im_a, im_b] = repack(a.imag_v(), b.imag_v());
-                    return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
-                                            V{.m_real = re_b, .m_imag = im_b});
-                }
-            }
-            template<bool NReal, bool NImag, typename IR>
-            PCX_AINLINE static auto operator()(interim_wrapper<NReal, NImag, IR> re,
-                                               interim_wrapper<NReal, NImag, IR> im) {
-                auto stage = tupi::apply | get_stage<I>(repack);
-                if constexpr (tupi::final_result<decltype(stage(re.result))>) {
-                    using cx_vec      = simd::cx_vec<T, NReal, NImag, Width, GroupTo>;
-                    auto [re_a, re_b] = stage(re.result);
-                    auto [im_a, im_b] = stage(im.result);
-                    return tupi::make_tuple(cx_vec{.m_real = re_a, .m_imag = im_a},
-                                            cx_vec{.m_real = re_b, .m_imag = im_b});
-                } else {
-                    return wrap_interim<NReal, NImag>(stage(re.result), stage(im.result));
-                }
-            }
-        };
-    };
-    template<uZ To, uZ From>
-    static constexpr auto regroup = regroup_t<To, From>{};
+    // template<uZ GroupTo, uZ GroupFrom>
+    // struct regroup_t : tupi::compound_op_base {
+    //     template<simd::any_cx_vec V>
+    //         requires(GroupTo <= V::width()) && (GroupFrom <= V::width())
+    //     PCX_AINLINE auto operator()(V a, V b) const {
+    //         auto [re_a, re_b] = repack(a.real_v(), b.real_v());
+    //         auto [im_a, im_b] = repack(a.imag_v(), b.imag_v());
+    //         return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},    //
+    //                                 V{.m_real = re_b, .m_imag = im_b});
+    //     }
+    //     template<uZ I>
+    //     PCX_AINLINE constexpr friend auto get_stage(const regroup_t&) {
+    //         return stage_t<I>{};
+    //     }
+    //
+    // private:
+    //     static constexpr auto repack = vec_traits::template repack<GroupTo, GroupFrom>;
+    //     template<bool NReal, bool NImag, typename IR>
+    //     struct interim_wrapper {
+    //         IR result;
+    //     };
+    //     template<bool NReal, bool NImag, typename... IR>
+    //     PCX_AINLINE static constexpr auto wrap_interim(IR&&... res) {
+    //         return tupi::make_interim(interim_wrapper<NReal, NImag, IR>(std::forward<IR>(res))...);
+    //     }
+    //     template<uZ I>
+    //     struct stage_t {
+    //         template<simd::any_cx_vec V>
+    //             requires(I == 0)
+    //         PCX_AINLINE static auto operator()(V a, V b) {
+    //             if constexpr (tupi::compound_op<decltype(repack)>) {
+    //                 auto stage = get_stage<I>(repack);
+    //                 if constexpr (tupi::final_result<decltype(stage(a.real_v(), b.real_v()))>) {
+    //                     auto [re_a, re_b] = stage(a.real_v(), b.real_v());
+    //                     auto [im_a, im_b] = stage(a.imag_v(), b.imag_v());
+    //                     return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
+    //                                             V{.m_real = re_b, .m_imag = im_b});
+    //                 } else {
+    //                     return wrap_interim<V::neg_real(), V::neg_imag()>(stage(a.real_v(), b.real_v()),
+    //                                                                       stage(a.imag_v(), b.imag_v()));
+    //                 }
+    //             } else {
+    //                 auto [re_a, re_b] = repack(a.real_v(), b.real_v());
+    //                 auto [im_a, im_b] = repack(a.imag_v(), b.imag_v());
+    //                 return tupi::make_tuple(V{.m_real = re_a, .m_imag = im_a},
+    //                                         V{.m_real = re_b, .m_imag = im_b});
+    //             }
+    //         }
+    //         template<bool NReal, bool NImag, typename IR>
+    //         PCX_AINLINE static auto operator()(interim_wrapper<NReal, NImag, IR> re,
+    //                                            interim_wrapper<NReal, NImag, IR> im) {
+    //             auto stage = tupi::apply | get_stage<I>(repack);
+    //             if constexpr (tupi::final_result<decltype(stage(re.result))>) {
+    //                 using cx_vec      = simd::cx_vec<T, NReal, NImag, Width, GroupTo>;
+    //                 auto [re_a, re_b] = stage(re.result);
+    //                 auto [im_a, im_b] = stage(im.result);
+    //                 return tupi::make_tuple(cx_vec{.m_real = re_a, .m_imag = im_a},
+    //                                         cx_vec{.m_real = re_b, .m_imag = im_b});
+    //             } else {
+    //                 return wrap_interim<NReal, NImag>(stage(re.result), stage(im.result));
+    //             }
+    //         }
+    //     };
+    // };
+    // template<uZ To, uZ From>
+    // static constexpr auto regroup = regroup_t<To, From>{};
 };
 
 }    // namespace pcx::detail_
