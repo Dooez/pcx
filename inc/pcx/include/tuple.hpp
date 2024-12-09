@@ -224,6 +224,18 @@ concept tuple_like = requires(T v) {
     };
 };
 
+
+struct interim_result_base {};
+struct compound_op_base {};
+
+}    // namespace detail_
+using detail_::compound_op_base;
+template<typename T>
+concept compound_op = std::derived_from<T, detail_::compound_op_base>;
+template<typename T>
+concept final_result = !std::derived_from<T, detail_::interim_result_base>;
+
+namespace detail_ {
 template<typename F>
 struct to_apply;
 struct apply_t {
@@ -245,6 +257,47 @@ struct apply_t {
         { return apply_t{}(f, std::forward<Tup>(arg)); };
     };
 };
+
+template<typename F>
+struct applied_functor_t : public compound_op_base {
+    template<typename Tup>
+        requires tuple_like<std::remove_cvref_t<Tup>>
+    constexpr auto operator()(Tup&& args) const -> decltype(auto) {}
+
+    template<uZ I, typename G>
+        requires std::same_as<std::remove_cvref_t<G>, applied_functor_t>
+    friend constexpr auto get_stage(G&& g) {
+        return stage_t<std::add_pointer_t<G>, I>{.fptr = &std::forward<G>(g)};
+    }
+
+private:
+    F op;
+
+    template<typename Fptr, uZ I>
+    struct stage_t {
+        Fptr fptr;
+
+        template<typename Tup>
+            requires tuple_like<std::remove_cvref_t<Tup>>
+        constexpr auto operator()(Tup&& args) const -> decltype(auto)
+            requires(I == 0)
+        {
+            if constexpr (compound_op<F>) {
+                using res_t = decltype(apply_t{}(get_stage<I>(fptr->op), std::forward<Tup>(args)));
+                return apply_t{}(get_stage<I>(fptr->op), std::forward<Tup>(args));
+            } else {
+                return apply_t{}(fptr->op, std::forward<Tup>(args));
+            }
+        }
+
+        constexpr auto operator()(auto&& v)
+            requires(I > 0)
+        {
+            return get_stage<I>(fptr->op)(std::forward<decltype(v)>(v));
+        }
+    };
+};
+
 template<typename F>
 struct to_apply {
     template<typename AF, typename G>
@@ -344,14 +397,8 @@ struct has_group_invoke_result {
     static constexpr bool value =
         has_group_invoke_result_h<(..., tuple_size_v<std::remove_cvref_t<Args>>)-1, F, Args...>::value;
 };
-
-struct interim_result_base {};
-struct compound_op_base {};
 }    // namespace detail_
 
-using detail_::compound_op_base;
-template<typename T>
-concept compound_op = std::derived_from<T, detail_::compound_op_base>;
 template<typename... Ts>
 struct interim_result
 : public tuple<Ts...>
@@ -375,8 +422,6 @@ PCX_AINLINE auto make_interim(Args&&... args) {
     using res_t = interim_result<std::remove_cvref_t<Args>...>;
     return res_t(std::forward<Args>(args)...);
 }
-template<typename T>
-concept final_result = !std::derived_from<T, detail_::interim_result_base>;
 
 namespace detail_ {
 template<any_tuple T>
@@ -528,6 +573,74 @@ private:
 } group_invoke;
 
 namespace detail_ {
+struct invoke_t : compound_op_base {
+    template<typename F, typename... Args>
+        requires std::invocable<F, Args...>
+    PCX_AINLINE static constexpr auto operator()(F&& f, Args&&... args) {
+        return []<uZ I>(this auto invoker, uZc<I>, auto&&... args) {
+            using res_t = decltype(stage_t<I>{}(std::forward<decltype(args)>(args)...));
+            if constexpr (final_result<res_t>) {
+                return stage_t<I>{}(std::forward<decltype(args)>(args)...);
+            } else {
+                return invoker(uZc<I + 1>{}, stage_t<I>{}(std::forward<decltype(args)>(args)...));
+            }
+        }(uZc<0>{}, std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
+    // template<typename F, typename G>
+    //     requires(!std::same_as<std::remove_cvref_t<G>, apply_t>)
+    // constexpr auto operator|(this F&& f, G&& g) {
+    //     return compound_functor_t<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
+    //         .ops{std::forward<F>(f), std::forward<G>(g)}
+    //     };
+    // };
+
+    template<uZ I>
+    friend constexpr auto get_stage(invoke_t) {
+        return stage_t<I>{};
+    }
+
+private:
+    template<typename Fptr, typename IR>
+    struct interim_wrapper : interim_result_base {
+        Fptr fptr;
+        IR   result;
+    };
+    template<typename Fptr, typename IR>
+    static constexpr auto wrap_interim(Fptr fptr, IR res) {
+        return interim_wrapper<Fptr, IR>{.fptr = fptr, .result = res};
+    }
+
+    template<uZ I>
+    struct stage_t {
+        template<typename F, typename... Args>
+        constexpr static auto operator()(F&& f, Args&&... args) {
+            if constexpr (compound_op<std::remove_cvref_t<F>>) {
+                using res_t = decltype(get_stage<I>(std::forward<F>(f))(std::forward<Args>(args)...));
+                if constexpr (final_result<res_t>) {
+                    return get_stage<I>(std::forward<F>(f))(std::forward<Args>(args)...);
+                } else {
+                    return wrap_interim(&f, get_stage<I>(std::forward<F>(f))(std::forward<Args>(args)...));
+                }
+            } else {
+                return std::forward<F>(f)(std::forward<Args>(args)...);
+            }
+        }
+        template<typename Fptr, typename IR>
+        constexpr static auto operator()(interim_wrapper<Fptr, IR> wrapper) {
+            using res_t = decltype(get_stage<I>(*wrapper.fptr)(wrapper.result));
+            if constexpr (final_result<res_t>) {
+                return get_stage<I>(*wrapper.fptr)(wrapper.result);
+            } else {
+                return wrap_interim(wrapper.fptr, get_stage<I>(*wrapper.fptr)(wrapper.result));
+            }
+        }
+    };
+};
+
+}    // namespace detail_
+constexpr inline auto invoke = detail_::invoke_t{};
+namespace detail_ {
 template<typename F0, typename... Fs>
 struct compound_functor_t : compound_op_base {
     template<typename F, typename... Ts>
@@ -550,8 +663,8 @@ struct compound_functor_t : compound_op_base {
     };
     template<uZ I, typename G>
         requires(std::same_as<std::remove_cvref_t<G>, compound_functor_t>)
-    constexpr friend auto get_stage(G&& f) {
-        return stage_t<std::add_pointer_t<G>, I>{.fptr = &f};
+    constexpr friend auto get_stage(G&& g) {
+        return stage_t<std::add_pointer_t<G>, I>{.fptr = &g};
     }
     using ops_t = tuple<F0, Fs...>;
     ops_t ops;
@@ -635,9 +748,9 @@ struct std::tuple_element<I, pcx::tupi::detail_::distributed_t<Ts...>> {
 namespace pcx::tupi {
 namespace detail_ {
 struct pass_t {
-    template<typename... Args>
-    PCX_AINLINE static auto operator()(Args&&... args) {
-        return std::forward_as_tuple(std::forward<Args>(args)...);
+    template<typename Arg>
+    PCX_AINLINE static auto operator()(Arg&& arg) {
+        return std::forward<Arg>(arg);
     }
     template<typename F>
         requires(!std::same_as<std::remove_cvref_t<F>, detail_::apply_t>)
@@ -647,8 +760,9 @@ struct pass_t {
 };
 }    // namespace detail_
 /**
- * @brief Compound functor factory. 
+ * @brief Compound functor factory.
  * Example: `pass | [](auto&&... args){ /.../ }` will create a functor accepting `auto&&... args` 
+ * If used as a functor will pass input argument.
  */
 constexpr auto pass = detail_::pass_t{};
 

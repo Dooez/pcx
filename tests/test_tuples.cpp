@@ -145,6 +145,12 @@ int main() {
                 | tupi::apply 
                 | join;
 
+    auto proc2 = tupi::pass 
+                | [&](auto x){return tupi::make_tuple(tupi::pass | s0 | s1, x);}
+                | tupi::apply
+                | tupi::invoke
+                | s2;
+
     // clang-format on
     auto comb = [](auto x, auto y) {
         std::print("Combining 2 values. {}+{}.\n", x, y);
@@ -154,16 +160,17 @@ int main() {
         std::print("Post combine. {}.\n", x);
         return x + 1;
     };
-    auto pipelined_f = tupi::distribute                //
-                       | tupi::pipeline(proc, proc)    //
-                       | tupi::apply                   //
-                       | comb                          //
-                       | post                          //
+    auto pipelined_f = tupi::distribute                  //
+                       | tupi::pipeline(proc2, proc2)    //
+                       | tupi::apply                     //
+                       | comb                            //
+                       | post                            //
         ;
 
     std::print("Start\n");
-    // auto res = pipelined_f(10, 200);
-    auto r = tupi::group_invoke(pipelined_f, tupi::make_tuple(10, 100), tupi::make_tuple(1, 2));
+    auto res = pipelined_f(10, 200);
+    // auto r = proc2(10);
+    // auto r = tupi::group_invoke(pipelined_f, tupi::make_tuple(10, 100), tupi::make_tuple(1, 2));
     // auto r = tupi::group_invoke(tupi::pass | s0 | s1, tupi::make_tuple(10));
     // std::print("{}.\n", res);
     std::print("End\n");

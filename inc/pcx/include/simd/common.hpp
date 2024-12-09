@@ -113,7 +113,6 @@ struct cxstore_t {
     }
 };
 
-
 // clang-format off
 template<uZ PackTo>
     requires power_of_two<PackTo>
@@ -122,8 +121,17 @@ static constexpr auto new_repack =
     | []<eval_cx_vec V>(V vec)
         requires(PackTo <= V::width())
       {
-        
-      };
+        using real_type       = typename V::real_type;
+        using repacked_vec_t  = cx_vec<real_type, false, false, V::width(), PackTo>;
+        using traits          = detail_::vec_traits<real_type, V::width()>;
+        constexpr auto repack = traits::template repack<PackTo, V::pack_size()>;
+        return tupi::distribute(tupi::make_tuple(repack, vec.real_v(), vec.imag_v()), meta::types<repacked_vec_t>{});
+      }
+    | tupi::pipeline(tupi::apply | tupi::invoke, tupi::pass)
+    | tupi::apply
+    | []<typename cx_vec>(auto tup, meta::types<cx_vec>){
+        return cx_vec{.m_real = get<0>(tup), .m_imag = get<1>(tup)};
+    };
 
 // clang-format on
 
@@ -148,12 +156,12 @@ struct repack_t : tupi::compound_op_base {
 
 private:
     template<typename T, uZ Width, uZ PackFrom, typename IR>
-    struct interim_wrapper {
+    struct interim_wrapper : tupi::detail_::interim_result_base {
         IR result;
     };
     template<typename T, uZ Width, uZ PackFrom, typename IR>
     static constexpr auto wrap_interim(IR res) {
-        return tupi::make_interim(interim_wrapper<T, Width, PackFrom, IR>(res));
+        return interim_wrapper<T, Width, PackFrom, IR>(res);
     }
     template<uZ I>
     struct stage_t {
@@ -186,7 +194,7 @@ private:
             using traits          = detail_::vec_traits<T, Width>;
             constexpr auto repack = traits::template repack<PackTo, PackFrom>;
             using cx_vec          = simd::cx_vec<T, false, false, Width, PackTo>;
-            auto stage            = tupi::apply | get_stage<I>(repack);
+            auto stage            = get_stage<I>(repack);
             if constexpr (tupi::final_result<decltype(stage(wrapper.result))>) {
                 auto [re, im] = stage(wrapper.result);
                 return cx_vec{.m_real = re, .m_imag = im};
