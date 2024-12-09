@@ -217,32 +217,13 @@ struct vec_traits<f32, 4>::repack_t<2, 1> {
         return repack_t<1, 2>{}(a, b);
     };
 };
-template<>
-struct vec_traits<f32, 4>::repack_t<4, 1> : tupi::compound_op_base {
-    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto [x, y] = repack_t<2, 1>{}(a, b);
-        return repack_t<4, 2>{}(a, b);
-    };
-    template<uZ I>
-    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
-        return stage_t<I>{};
-    }
-    template<uZ I>
-    struct stage_t {
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 0)
-        {
-            auto [x, y] = repack_t<2, 1>{}(a, b);
-            return tupi::make_interim(x, y);
-        }
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 1)
-        {
-            return repack_t<4, 2>{}(a, b);
-        }
-    };
-};
 
+template<>
+struct vec_traits<f32, 4>::repack_t<4, 1>
+: public decltype(tupi::pass                                //
+                  | vec_traits<f32, 4>::repack_t<2, 1>{}    //
+                  | tupi::apply                             //
+                  | vec_traits<f32, 4>::repack_t<4, 2>{}) {};
 
 template<>
 struct vec_traits<f32, 8> {
@@ -284,50 +265,26 @@ struct vec_traits<f32, 8> {
         return _mm256_fnmsub_ps(a, b, c);
     }
 
-    static constexpr struct upsample_t : tupi::compound_op_base {
+    static constexpr struct up_stage0_t {
         static inline const auto idx4 = _mm256_set_epi32(0, 0, 1, 1, 2, 2, 3, 3);
-
-        PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec vec) const {
+        PCX_AINLINE auto         operator()(vec_traits<f32, 2>::impl_vec vec) const {
             auto a = _mm256_set1_ps(vec[0]);
             auto b = _mm_set1_ps(vec[1]);
-            return _mm256_insertf128_ps(a, b, 0b1);
+            return tupi::make_tuple(a, b, uZc<2>{});
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
-            return _mm256_permutexvar_ps(_mm256_castps128_ps256(vec), idx4);
+            return tupi::make_tuple(_mm256_permutexvar_ps(_mm256_castps128_ps256(vec), idx4));
         }
-        template<uZ I>
-        PCX_AINLINE constexpr friend auto get_stage(const upsample_t&) {
-            return stage_t<I>{};
+    } up_stage0;
+    static constexpr struct {
+        PCX_AINLINE auto operator()(impl_vec v) {
+            return v;
         }
-
-    private:
-        template<uZ I>
-        struct stage_t {
-            template<uZ From, typename... Ts>
-            struct interim_wrapper : public tupi::tuple<Ts...> {
-                using tupi::tuple<Ts...>::tuple;
-            };
-            template<uZ From, typename... Ts>
-            PCX_AINLINE auto make_interim(Ts&&... vs) {
-                return tupi::make_interim(
-                    interim_wrapper<From, std::remove_cvref_t<Ts>...>(std::forward<Ts>(vs)...));
-            }
-            PCX_AINLINE auto operator()(std::array<f32, 2> vec) const {
-                auto a = _mm256_set1_ps(vec[0]);
-                auto b = _mm_set1_ps(vec[1]);
-                return make_interim<2>(a, b);
-            }
-            template<typename... Ts>
-            PCX_AINLINE auto operator()(interim_wrapper<2, Ts...> res) const {
-                auto [a, b] = res;
-                return _mm256_insertf128_ps(a, b, 0b1);
-            }
-            PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
-                return _mm256_permutexvar_ps(_mm256_castps128_ps256(vec), idx4);
-            }
-        };
-    }    // namespace pcx::simd::detail_
-    upsample;
+        PCX_AINLINE auto operator()(auto a, auto b, uZc<2>) {
+            return _mm256_insertf128_ps(a, b, 0b1);
+        }
+    } up_stage1;
+    static constexpr auto upsample = tupi::pass | up_stage0 | tupi::apply | up_stage1;
 
     template<uZ To, uZ From>
         requires(To <= 8 && From <= 8)
@@ -406,56 +363,19 @@ struct vec_traits<f32, 8>::repack_t<2, 4> {
         return tupi::make_tuple(a, b);
     }
 };
+
 template<>
-struct vec_traits<f32, 8>::repack_t<1, 8> : tupi::compound_op_base {
-    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto [x, y] = repack_t<4, 8>{}(a, b);
-        return repack_t<1, 4>{}(x, y);
-    }
-    template<uZ I>
-    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
-        return stage_t<I>{};
-    }
-    template<uZ I>
-    struct stage_t {
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 0)
-        {
-            auto [x, y] = repack_t<4, 8>{}(a, b);
-            return tupi::make_interim(x, y);
-        }
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 1)
-        {
-            return repack_t<1, 4>{}(a, b);
-        }
-    };
-};
+struct vec_traits<f32, 8>::repack_t<1, 8>
+: public decltype(tupi::pass                                //
+                  | vec_traits<f32, 8>::repack_t<4, 8>{}    //
+                  | tupi::apply                             //
+                  | vec_traits<f32, 8>::repack_t<1, 4>{}) {};
 template<>
-struct vec_traits<f32, 8>::repack_t<2, 8> : tupi::compound_op_base {
-    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto [x, y] = repack_t<4, 8>{}(a, b);
-        return repack_t<2, 4>{}(x, y);
-    }
-    template<uZ I>
-    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
-        return stage_t<I>{};
-    }
-    template<uZ I>
-    struct stage_t {
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 0)
-        {
-            auto [x, y] = repack_t<4, 8>{}(a, b);
-            return tupi::make_interim(x, y);
-        }
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 1)
-        {
-            return repack_t<2, 4>{}(a, b);
-        }
-    };
-};
+struct vec_traits<f32, 8>::repack_t<2, 8>
+: public decltype(tupi::pass                                //
+                  | vec_traits<f32, 8>::repack_t<4, 8>{}    //
+                  | tupi::apply                             //
+                  | vec_traits<f32, 8>::repack_t<2, 4>{}) {};
 template<>
 struct vec_traits<f32, 8>::repack_t<8, 4> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -481,31 +401,13 @@ struct vec_traits<f32, 8>::repack_t<4, 2> {
         return tupi::make_tuple(a, b);
     }
 };
+
 template<>
-struct vec_traits<f32, 8>::repack_t<8, 2> : tupi::compound_op_base {
-    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto [x, y] = repack_t<4, 2>{}(a, b);
-        return repack_t<8, 4>{}(x, y);
-    }
-    template<uZ I>
-    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
-        return stage_t<I>{};
-    }
-    template<uZ I>
-    struct stage_t {
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 0)
-        {
-            auto [x, y] = repack_t<4, 2>{}(a, b);
-            return tupi::make_interim(x, y);
-        }
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 1)
-        {
-            return repack_t<8, 4>{}(a, b);
-        }
-    };
-};
+struct vec_traits<f32, 8>::repack_t<8, 2>
+: public decltype(tupi::pass                                //
+                  | vec_traits<f32, 8>::repack_t<8, 4>{}    //
+                  | tupi::apply                             //
+                  | vec_traits<f32, 8>::repack_t<4, 2>{}) {};
 template<>
 struct vec_traits<f32, 8>::repack_t<2, 1> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -522,30 +424,12 @@ struct vec_traits<f32, 8>::repack_t<4, 1> {
     }
 };
 template<>
-struct vec_traits<f32, 8>::repack_t<8, 1> : tupi::compound_op_base {
-    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto [x, y] = repack_t<4, 1>{}(a, b);
-        return repack_t<8, 4>{}(x, y);
-    }
-    template<uZ I>
-    PCX_AINLINE constexpr friend auto get_stage(const repack_t&) {
-        return stage_t<I>{};
-    }
-    template<uZ I>
-    struct stage_t {
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 0)
-        {
-            auto [x, y] = repack_t<4, 1>{}(a, b);
-            return tupi::make_interim(x, y);
-        }
-        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
-            requires(I == 1)
-        {
-            return repack_t<8, 4>{}(a, b);
-        }
-    };
-};
+struct vec_traits<f32, 8>::repack_t<8, 1>
+: public decltype(tupi::pass                                //
+                  | vec_traits<f32, 8>::repack_t<8, 4>{}    //
+                  | tupi::apply                             //
+                  | vec_traits<f32, 8>::repack_t<4, 1>{}) {};
+
 #ifdef PCX_AVX512
 template<>
 struct max_vec_width<f32> {

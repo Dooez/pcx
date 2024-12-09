@@ -558,7 +558,7 @@ struct compound_functor_t : compound_op_base {
     };
     template<typename F, typename G>
         requires(!std::same_as<std::remove_cvref_t<G>, apply_t>)
-    auto operator|(this F&& f, G&& g) {
+    constexpr auto operator|(this F&& f, G&& g) {
         return compound_functor_t<std::remove_cvref_t<F>, std::remove_cvref_t<G>>{
             .ops{std::forward<F>(f), std::forward<G>(g)}
         };
