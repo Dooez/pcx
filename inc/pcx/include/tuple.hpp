@@ -442,8 +442,8 @@ private:
             return invoke_stage_recursive<0>(std::forward<F>(f), std::forward<Args>(args)...);
         } else {
             constexpr auto group_size = (tuple_size_v<std::remove_cvref_t<Args>>, ...);
-            return []<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>, F&& f, Args&&... args) {
-                constexpr auto invoker = []<uZ I> PCX_LAINLINE(uZc<I>, F&& f, Args&&... args) {
+            return [&]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                auto invoker = [&]<uZ I> PCX_LAINLINE(uZc<I>) {
                     if constexpr (std::same_as<decltype(f(get<I>(std::forward<Args>(args))...)), void>) {
                         f(get<I>(std::forward<Args>(args))...);
                         return detail_::void_wrapper{};
@@ -451,10 +451,8 @@ private:
                         return f(get<I>(std::forward<Args>(args))...);
                     }
                 };
-                return make_nonvoid_tuple(invoker(uZc<Is>{},    //
-                                                  std::forward<F>(f),
-                                                  std::forward<Args>(args)...)...);
-            }(std::make_index_sequence<group_size>{}, std::forward<F>(f), std::forward<Args>(args)...);
+                return make_nonvoid_tuple(invoker(uZc<Is>{})...);
+            }(std::make_index_sequence<group_size>{});
         }
     }
 
@@ -477,18 +475,12 @@ private:
     PCX_AINLINE static auto invoke_stage(F&& f, Args&&... args) {
         auto&&         stage      = get_stage<I>(std::forward<F>(f));
         constexpr auto group_size = (..., tuple_size_v<std::remove_cvref_t<Args>>);
-        return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
-                                                     S&& stage,
-                                                     Args&&... args) {
-            constexpr auto invoker = []<uZ K> PCX_LAINLINE(uZc<K>, S&& stage, Args&&... args) {
+        return [&]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+            auto invoker = [&]<uZ K> PCX_LAINLINE(uZc<K>) {
                 return stage(get<K>(std::forward<Args>(args))...);
             };
-            return make_nonvoid_tuple(invoker(uZc<Is>{},    //
-                                              std::forward<S>(stage),
-                                              std::forward<Args>(args)...)...);
-        }(std::make_index_sequence<group_size>{},
-               std::forward<decltype(stage)>(stage),
-               std::forward<Args>(args)...);
+            return make_nonvoid_tuple(invoker(uZc<Is>{})...);
+        }(std::make_index_sequence<group_size>{});
     }
 
     template<uZ I, typename F, typename Arg>
@@ -496,15 +488,11 @@ private:
     PCX_AINLINE static auto invoke_stage(F&& f, Arg&& arg) {
         auto&&         stage      = get_stage<I>(std::forward<F>(f));
         constexpr auto group_size = tuple_size_v<std::remove_cvref_t<Arg>>;
-        return []<uZ... Is, typename S> PCX_LAINLINE(std::index_sequence<Is...>,    //
-                                                     S&&   stage,
-                                                     Arg&& arg) {
-            return make_nonvoid_tuple(                        //
-                passthrough_invoke(std::forward<S>(stage),    //
+        return [&]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+            return make_nonvoid_tuple(                                      //
+                passthrough_invoke(std::forward<decltype(stage)>(stage),    //
                                    std::get<Is>(std::forward<Arg>(arg)))...);
-        }(std::make_index_sequence<group_size>{},
-               std::forward<decltype(stage)>(stage),
-               std::forward<Arg>(arg));
+        }(std::make_index_sequence<group_size>{});
     }
 
     template<typename... Args>
@@ -525,22 +513,19 @@ private:
         requires(!final_result<std::remove_cvref_t<Arg>>)
     PCX_AINLINE static auto passthrough_invoke(S&& stage, Arg&& arg) {
         if constexpr (compound_op<std::remove_cvref_t<S>>) {
-            return []<uZ... Is> PCX_LAINLINE(S&& stage, Arg&& arg, std::index_sequence<Is...>) {
+            return [&]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                 return invoke_stage_recursive<0>(std::forward<S>(stage), get<Is>(std::forward<Arg>(arg))...);
-            }(std::forward<S>(stage), std::forward<Arg>(arg), index_sequence_for_tuple<Arg>{});
+            }(index_sequence_for_tuple<Arg>{});
         } else {
-            if constexpr (std::same_as<decltype(apply(std::forward<S>(stage),    //
-                                                      std::forward<Arg>(arg))),
-                                       void>) {
-                apply(std::forward<S>(stage), std::forward<Arg>(arg));
+            if constexpr (std::same_as<decltype(stage(std::forward<Arg>(arg))), void>) {
+                stage(std::forward<Arg>(arg));
                 return detail_::void_wrapper{};
             } else {
-                return apply(std::forward<S>(stage), std::forward<Arg>(arg));
+                return stage(std::forward<Arg>(arg));
             }
         }
     }
 } group_invoke;
-
 
 namespace detail_ {
 template<typename F0, typename... Fs>
@@ -566,7 +551,7 @@ struct compound_functor_t : compound_op_base {
     template<uZ I, typename G>
         requires(std::same_as<std::remove_cvref_t<G>, compound_functor_t>)
     constexpr friend auto get_stage(G&& f) {
-        return stage_t<I>{.fptr = &f};
+        return stage_t<std::add_pointer_t<G>, I>{.fptr = &f};
     }
     using ops_t = tuple<F0, Fs...>;
     ops_t ops;
@@ -580,11 +565,11 @@ private:
     static auto wrap_interim(IR&& result) {
         return interim_wrapper<OpIdx, OpStage, IR>{.result = std::forward<IR>(result)};
     }
-    template<uZ I>
+    template<typename Fptr, uZ I>
     struct stage_t {
-        compound_functor_t* fptr;
+        Fptr fptr;
 
-        auto operator()(auto&&... args)
+        constexpr auto operator()(auto&&... args) const
             requires(I == 0)
         {
             if constexpr (compound_op<tuple_element_t<0, ops_t>>) {
@@ -607,7 +592,7 @@ private:
             }
         };
         template<uZ OpIdx, uZ OpStage, typename IR>
-        auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) {
+        constexpr auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) const {
             if constexpr (OpStage > 0 || compound_op<tuple_element_t<OpIdx, ops_t>>) {
                 auto stage = get_stage<OpStage>(get<OpIdx>(fptr->ops));
                 if constexpr (tupi::final_result<decltype(stage(wr.result))>) {
