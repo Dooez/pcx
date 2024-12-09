@@ -3,6 +3,7 @@
 
 #include "pcx/include/simd/math.hpp"
 #include "pcx/include/simd/traits.hpp"
+#include "pcx/include/tuple.hpp"
 
 #include <algorithm>
 #include <complex>
@@ -111,6 +112,20 @@ struct cxstore_t {
         store(dest + store_offset, data.imag());
     }
 };
+
+
+// clang-format off
+template<uZ PackTo>
+    requires power_of_two<PackTo>
+static constexpr auto new_repack =   
+    tupi::pass             
+    | []<eval_cx_vec V>(V vec)
+        requires(PackTo <= V::width())
+      {
+        
+      };
+
+// clang-format on
 
 template<uZ PackTo>
     requires power_of_two<PackTo>
