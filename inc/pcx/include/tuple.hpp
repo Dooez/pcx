@@ -787,7 +787,7 @@ struct pipelined_t : compound_op_base {
     template<typename... Ts>
     auto operator()(distributed_t<Ts...> args) {
         return [&]<uZ I>(this auto invoker, uZc<I>, auto&& args) {
-            auto stage = get_stage<I>(*this);
+            auto stage = get_stage<I>(invoker);
             if constexpr (final_result<decltype(stage(std::forward<decltype(args)>(args)))>) {
                 return stage(std::forward<decltype(args)>(args));
             } else {

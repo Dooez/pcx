@@ -140,7 +140,7 @@ struct vec_traits<f32, 4> {
             auto a = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(vec.data())));
             return _mm_unpacklo_ps(a, a);
         }
-    } upsample;
+    } upsample{};
 
     template<uZ To, uZ From>
         requires(To <= 4 && From <= 4)
@@ -273,9 +273,9 @@ struct vec_traits<f32, 8> {
             return tupi::make_tuple(a, b, uZc<2>{});
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
-            return tupi::make_tuple(_mm256_permutexvar_ps(_mm256_castps128_ps256(vec), idx4));
+            return tupi::make_tuple(_mm256_permutevar8x32_ps(_mm256_castps128_ps256(vec), idx4));
         }
-    } up_stage0;
+    } up_stage0{};
     static constexpr struct {
         PCX_AINLINE auto operator()(impl_vec v) {
             return v;
@@ -283,7 +283,7 @@ struct vec_traits<f32, 8> {
         PCX_AINLINE auto operator()(auto a, auto b, uZc<2>) {
             return _mm256_insertf128_ps(a, b, 0b1);
         }
-    } up_stage1;
+    } up_stage1{};
     static constexpr auto upsample = tupi::pass | up_stage0 | tupi::apply | up_stage1;
 
     template<uZ To, uZ From>
@@ -495,7 +495,7 @@ struct vec_traits<f32, 16> {
             auto vs = _mm512_zextps256_ps512(v);
             return _mm512_permutevar_ps(vs, idx8);
         }
-    } upsample;
+    } upsample{};
 
     template<uZ To, uZ From>
         requires(To <= 16 && From <= 16)

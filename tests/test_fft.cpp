@@ -42,7 +42,7 @@ void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
 
 };    // namespace pcxt
 
-void foo(std::complex<f32>* dest, auto&& tw) {
+void foo(std::complex<f32>* dest, const std::array<std::complex<f32>, 7>& tw) {
     auto dest_r     = reinterpret_cast<f32*>(dest);
     using node_t    = detail_::btfly_node_dit<8, float, 16>;
     auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {

@@ -265,7 +265,7 @@ struct btfly_node_dit {
                         get_tw_value<reverse_bit_order(Is, Size / 2)>())...);
             }(std::make_index_sequence<Size / 2>{});
         };
-    } const_tw_getter;
+    } const_tw_getter{};
 };
 
 template<uZ NodeSize, typename T, uZ Width>
