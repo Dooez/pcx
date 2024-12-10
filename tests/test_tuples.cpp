@@ -143,13 +143,15 @@ int main() {
                 | s2 
                 | split 
                 | tupi::apply 
-                | join;
+                | join
+                ;
 
     auto proc2 = tupi::pass 
-                | [&](auto x){return tupi::make_tuple(tupi::pass | s0 | s1, x);}
-                | tupi::apply
-                | tupi::invoke
-                | s2;
+                    | [&](auto x){return tupi::make_tuple(tupi::pass | s0 | s1, x);}
+                    | tupi::apply
+                    | tupi::invoke
+                    | s2
+                    ;
 
     // clang-format on
     auto comb = [](auto x, auto y) {
