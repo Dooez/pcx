@@ -113,27 +113,6 @@ struct cxstore_t {
     }
 };
 
-// clang-format off
-template<uZ PackTo>
-    requires power_of_two<PackTo>
-static constexpr auto new_repack =   
-    tupi::pass             
-    | []<eval_cx_vec V>(V vec)
-        requires(PackTo <= V::width())
-      {
-        using real_type       = typename V::real_type;
-        using repacked_vec_t  = cx_vec<real_type, false, false, V::width(), PackTo>;
-        using traits          = detail_::vec_traits<real_type, V::width()>;
-        constexpr auto repack = traits::template repack<PackTo, V::pack_size()>;
-        return tupi::distribute(tupi::make_tuple(repack, vec.real_v(), vec.imag_v()), meta::types<repacked_vec_t>{});
-      }
-    | tupi::pipeline(tupi::apply | tupi::invoke, tupi::pass)
-    | tupi::apply
-    | []<typename cx_vec>(auto tup, meta::types<cx_vec>){
-        return cx_vec{.m_real = get<0>(tup), .m_imag = get<1>(tup)};
-    };
-
-// clang-format on
 
 template<uZ PackTo>
     requires power_of_two<PackTo>
@@ -218,9 +197,31 @@ template<uZ DestPackSize>
     requires power_of_two<DestPackSize>
 inline constexpr auto cxstore = detail_::cxstore_t<DestPackSize>{};
 
-template<uZ PackSize>
-    requires power_of_two<PackSize>
-inline constexpr auto repack = detail_::repack_t<PackSize>{};
+// clang-format off
+template<uZ PackTo>
+    requires power_of_two<PackTo>
+static constexpr auto repack =   
+    tupi::pass             
+    | []<eval_cx_vec V>(V vec)
+        requires(PackTo <= V::width())
+      {
+        using real_type       = typename V::real_type;
+        using repacked_vec_t  = cx_vec<real_type, false, false, V::width(), PackTo>;
+        using traits          = detail_::vec_traits<real_type, V::width()>;
+        constexpr auto repack = traits::template repack<PackTo, V::pack_size()>;
+        return tupi::distribute(tupi::make_tuple(repack, vec.real_v(), vec.imag_v()), meta::types<repacked_vec_t>{});
+      }
+    | tupi::pipeline(tupi::apply | tupi::invoke, tupi::pass)
+    | tupi::apply
+    | []<typename cx_vec>(auto tup, meta::types<cx_vec>){
+        return cx_vec{.m_real = get<0>(tup), .m_imag = get<1>(tup)};
+      }
+    ;
+
+// clang-format on
+// template<uZ PackSize>
+//     requires power_of_two<PackSize>
+// inline constexpr auto repack = detail_::repack_t<PackSize>{};
 
 inline constexpr struct {
     template<tight_cx_vec V>

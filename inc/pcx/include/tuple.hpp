@@ -413,11 +413,11 @@ struct std::tuple_element<I, pcx::tupi::interim_result<Ts...>> {
 
 namespace pcx::tupi {
 
-// template<typename... Args>
-// PCX_AINLINE auto make_interim(Args&&... args) {
-//     using res_t = interim_result<std::remove_cvref_t<Args>...>;
-//     return res_t(std::forward<Args>(args)...);
-// }
+template<typename... Args>
+PCX_AINLINE auto make_interim(Args&&... args) {
+    using res_t = interim_result<std::remove_cvref_t<Args>...>;
+    return res_t(std::forward<Args>(args)...);
+}
 //
 namespace detail_ {
 template<any_tuple T>
@@ -669,14 +669,12 @@ struct invoke_t : compound_op_base {
             }
         }(uZc<0>{}, std::forward<F>(f), std::forward<Args>(args)...);
     }
-
     template<typename F>
     constexpr auto operator|(F&& f) const {
         return compound_functor_t<invoke_t, F>{
             .ops = {invoke_t{}, std::forward<F>(f)}
         };
     }
-
     template<uZ I>
     friend constexpr auto get_stage(invoke_t) {
         return stage_t<I>{};
@@ -837,11 +835,15 @@ private:
             return [&]<uZ... OpIs>(std::index_sequence<OpIs...>) {
                 constexpr auto invoke_stage = []<typename Arg>(auto&& f, Arg&& arg) -> decltype(auto) {
                     if constexpr (I == 0) {
-                        auto stage = get_stage<0>(std::forward<decltype(f)>(f));
-                        if constexpr (final_result<decltype(stage(std::forward<Arg>(arg)))>) {
-                            return stage(std::forward<Arg>(arg));
+                        if constexpr (compound_op_cvref<decltype(f)>) {
+                            auto stage = get_stage<0>(std::forward<decltype(f)>(f));
+                            if constexpr (final_result<decltype(stage(std::forward<Arg>(arg)))>) {
+                                return stage(std::forward<Arg>(arg));
+                            } else {
+                                return wrap_interim<1>(stage(std::forward<Arg>(arg)));
+                            }
                         } else {
-                            return wrap_interim<1>(stage(std::forward<Arg>(arg)));
+                            return std::forward<decltype(f)>(f)(std::forward<Arg>(arg));
                         }
                     } else if constexpr (final_result_cvref<Arg>) {
                         return std::forward<Arg>(arg);
@@ -872,7 +874,7 @@ private:
  * with `sizeof...(args) == sizeof...(f)`.
  */
 template<typename... Fs>
-auto pipeline(Fs&&... f) {
+constexpr auto pipeline(Fs&&... f) {
     return detail_::pipelined_t<std::remove_cvref_t<Fs>...>{.ops{std::forward<Fs>(f)...}};
 }
 
