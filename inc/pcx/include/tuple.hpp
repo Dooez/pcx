@@ -568,6 +568,7 @@ private:
     }
 } group_invoke;
 
+
 namespace detail_ {
 template<typename F0, typename... Fs>
 struct compound_functor_t : compound_op_base {
@@ -786,12 +787,12 @@ template<typename... Fs>
 struct pipelined_t : compound_op_base {
     template<typename... Ts>
     auto operator()(distributed_t<Ts...> args) {
+        const auto pl_ptr = this;
         return [&]<uZ I>(this auto invoker, uZc<I>, auto&& args) {
-            auto stage = get_stage<I>(invoker);
-            if constexpr (final_result<decltype(stage(std::forward<decltype(args)>(args)))>) {
-                return stage(std::forward<decltype(args)>(args));
+            if constexpr (final_result<decltype(get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)))>) {
+                return get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args));
             } else {
-                return invoker(uZc<I + 1>{}, stage(std::forward<decltype(args)>(args)));
+                return invoker(uZc<I + 1>{}, get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)));
             }
         }(uZc<0>{}, args);
     }
@@ -864,7 +865,192 @@ private:
         }
     };
 };
+
+template<typename F>
+struct group_functor_t : compound_op_base {
+    template<typename... Args>
+    // requires((tuple_like<Args>
+    //           && ...) /* && same_size_tuple_like<Args...> */ /* && group_invocable<F, Args...> */);
+    constexpr auto operator()(Args&&... args) {
+        const auto pl_ptr = this;
+        return [&]<uZ I>(this auto invoker, uZc<I>, auto&&... args) {
+            using ret_t = decltype(get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)...));
+            if constexpr (final_result<ret_t>) {
+                return get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)...);
+            } else {
+                return invoker(uZc<I + 1>{}, get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)...));
+            }
+        }(uZc<0>{}, std::forward<Args>(args)...);
+    }
+    template<typename GF, typename H>
+        requires(!std::same_as<std::remove_cvref_t<H>, apply_t>)
+    constexpr auto operator|(this GF&& h, H&& g) {
+        return compound_functor_t<std::remove_cvref_t<GF>, std::remove_cvref_t<H>>{
+            .ops{std::forward<GF>(h), std::forward<H>(g)}
+        };
+    }
+    template<uZ I, typename G>
+        requires std::same_as<std::remove_cvref_t<G>, group_functor_t>
+    friend constexpr auto get_stage(G&& g) {
+        return stage_t<std::add_pointer_t<G>, I>{.fptr = &g};
+    }
+    F op;
+
+private:
+    template<uZ OpStage, typename IR>
+        requires(!final_result<IR>)
+    struct interim_wrapper : public interim_result_base {
+        static constexpr auto op_stage_idx = OpStage;
+
+        IR result;
+    };
+    template<uZ OpStage, typename IR>
+    static auto wrap_interim(IR&& result) {
+        return interim_wrapper<OpStage, IR>{.result = std::forward<IR>(result)};
+    }
+    template<typename Fptr, uZ I>
+    struct stage_t {
+        Fptr fptr;
+
+        template<typename... Tups>
+            requires(I == 0 && (tuple_like<Tups> && ...))
+        constexpr auto operator()(Tups&&... arg_tups) /* -> distributed_t<...> */ {
+            return [&]<uZ... Is>(std::index_sequence<Is...>) {
+                auto invoke_group = [&]<uZ IGrp>(uZc<IGrp>) -> decltype(auto) {
+                    auto invoke_stage = [this]<typename... Args>(Args&&... args) -> decltype(auto) {
+                        if constexpr (compound_op_cvref<decltype(*fptr)>) {
+                            if constexpr (final_result<decltype(get_stage<0>(*fptr)(
+                                              std::forward<Args>(args)...))>) {
+                                return get_stage<0>(*fptr)(std::forward<Args>(args)...);
+                            } else {
+                                return wrap_interim<1>(get_stage<0>(*fptr)(std::forward<Args>(args)...));
+                            }
+                        } else {
+                            return (*fptr)(std::forward<Args>(args)...);
+                        }
+                    };
+                    return invoke_stage(*fptr, get<IGrp>(std::forward<Tups>(arg_tups))...);
+                };
+                return distribute(invoke_group(uZc<Is>{})...);
+            }(std::make_index_sequence<0>{});
+        };
+
+        template<typename... Ts>
+            requires(I > 0)
+        constexpr auto operator()(distributed_t<Ts...> args) /* -> distributed_t<...> */ {
+            // same_as<Ts,interim_wrapper<OpStage, IR>> || final_result<Ts>
+            return [&]<uZ... OpIs>(std::index_sequence<OpIs...>) {
+                constexpr auto invoke_stage = [this]<typename Arg>(Arg&& arg) -> decltype(auto) {
+                    if constexpr (final_result_cvref<Arg>) {
+                        return std::forward<Arg>(arg);
+                    } else {
+                        // same_as<interim_wrapper<OpStage, IR>>
+                        constexpr uZ stage_idx = Arg::op_stage_idx;
+
+                        if constexpr (final_result<decltype(get_stage<stage_idx>(*fptr)(arg.result))>) {
+                            return get_stage<stage_idx>(*fptr)(arg.result);
+                        } else {
+                            return wrap_interim<stage_idx + 1>(get_stage<stage_idx>(*fptr)(arg.result));
+                        }
+                    }
+                };
+                return distribute(invoke_stage(*fptr, get<OpIs>(args))...);
+            }(std::make_index_sequence<sizeof...(Ts)>{});
+        }
+    };
+};
+
+struct grp_invoke_t {
+    template<typename F>
+    static constexpr auto operator()(F&& f) {
+        return group_functor_t<F>{.op = std::forward<F>(f)};
+    }
+    template<typename F, typename... Args>
+    static constexpr auto operator()(F&& f, Args&&... args) {
+        return []<uZ I>(this auto invoker, uZc<I>, auto&&... args) {
+            using res_t = decltype(stage_t<I>{}(std::forward<decltype(args)>(args)...));
+            if constexpr (final_result<res_t>) {
+                return stage_t<I>{}(std::forward<decltype(args)>(args)...);
+            } else {
+                return invoker(uZc<I + 1>{}, stage_t<I>{}(std::forward<decltype(args)>(args)...));
+            }
+        }(uZc<0>{}, std::forward<F>(f), std::forward<Args>(args)...);
+    }
+    template<typename F>
+    constexpr auto operator|(F&& f) const {
+        return compound_functor_t<grp_invoke_t, F>{
+            .ops = {grp_invoke_t{}, std::forward<F>(f)}
+        };
+    }
+    template<uZ I>
+    constexpr friend auto get_stage(grp_invoke_t) {
+        return stage_t<I>{};
+    }
+
+private:
+    template<typename Fptr, typename IR>
+        requires(!final_result<IR>)
+    struct interim_wrapper : public interim_result_base {
+        Fptr fptr;
+        IR   result;
+    };
+    template<typename T>
+    struct is_interim_wrapper : public std::false_type {};
+    template<typename Fptr, typename IR>
+    static auto wrap_interim(Fptr fptr, IR&& result) {
+        return interim_wrapper<Fptr, IR>{.fptr = fptr, .result = std::forward<IR>(result)};
+    }
+
+    template<uZ I>
+    struct stage_t {
+        template<typename F, typename... Tups>
+            requires(I == 0 && (tuple_like<Tups> && ...))
+        static constexpr auto operator()(F&& f, Tups&&... arg_tups) /* -> distributed_t<...> */ {
+            return [&]<uZ... Is>(std::index_sequence<Is...>) {
+                auto invoke_group = [&]<uZ IGrp>(uZc<IGrp>) -> decltype(auto) {
+                    auto invoke_stage = [&]<typename... Args>(Args&&... args) -> decltype(auto) {
+                        if constexpr (compound_op_cvref<F>) {
+                            return get_stage<0>(std::forward<F>(f))(std::forward<Args>(args)...);
+                        } else {
+                            return (std::forward<F>(f))(std::forward<Args>(args)...);
+                        }
+                    };
+                    return invoke_stage(get<IGrp>(std::forward<Tups>(arg_tups))...);
+                };
+                constexpr auto final = (final_result<decltype(invoke_group(uZc<Is>{}))> && ...);
+                if constexpr (final) {
+                    return distribute(invoke_group(uZc<Is>{})...);
+                } else {
+                    return wrap_interim(&f, distribute(invoke_group(uZc<Is>{})...));
+                }
+            }(std::make_index_sequence<0>{});
+        };
+
+        template<typename Fptr, typename... Ts>
+        static constexpr auto operator()(interim_wrapper<Fptr, distributed_t<Ts...>> wrapper) {
+            return [&]<uZ... Is>(std::index_sequence<Is...>) {
+                auto invoke_stage = [&]<typename Arg>(Arg&& arg) -> decltype(auto) {
+                    if constexpr (final_result_cvref<Arg>) {
+                        return std::forward<Arg>(arg);
+                    } else {
+                        return get_stage<I>(*wrapper.fptr)(arg);
+                    }
+                };
+                constexpr auto final =
+                    (final_result_cvref<decltype(invoke_stage(get<Is>(wrapper.result)))> && ...);
+                if constexpr (final) {
+                    return distribute(invoke_stage(get<Is>(wrapper.result))...);
+                } else {
+                    return wrap_interim(wrapper.fptr, distribute(invoke_stage(get<Is>(wrapper.result))...));
+                }
+            }(std::make_index_sequence<sizeof...(Ts)>{});
+        }
+    };
+};
+template<typename Fptr, typename IR>
+struct grp_invoke_t::is_interim_wrapper<grp_invoke_t::interim_wrapper<Fptr, IR>> : public std::true_type {};
 }    // namespace detail_
+
 /**
  * @brief Combines the passed functors. If the passed functors are compound, 
  * they will be executed inteleaved. The input must be 

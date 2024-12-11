@@ -180,7 +180,6 @@ struct cx_vec {
         return new_cx_vec{.m_real = vec.m_real, .m_imag = vec.m_imag};
     }
 };
-
 namespace detail_ {
 template<typename T>
 struct is_cx_vec : std::false_type {};
@@ -206,5 +205,13 @@ concept compatible_cx_vec = (any_cx_vec<T> &&                                   
 
 }    // namespace simd
 }    // namespace pcx
+
+template<pcx::simd::any_cx_vec V>
+struct std::tuple_size<V> : std::integral_constant<std::size_t, 2> {};
+template<std::size_t I, pcx::simd::any_cx_vec V>
+    requires(I < 2)
+struct std::tuple_element<I, V> {
+    using type = V::vec_t;
+};
 
 #endif
