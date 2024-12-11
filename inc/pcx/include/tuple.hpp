@@ -892,7 +892,7 @@ struct group_functor_t : compound_op_base {
     template<uZ I, typename G>
         requires std::same_as<std::remove_cvref_t<G>, group_functor_t>
     friend constexpr auto get_stage(G&& g) {
-        return stage_t<std::add_pointer_t<G>, I>{.fptr = &g};
+        return stage_t<std::add_pointer_t<G>, I>{.fptr = &(g.op)};
     }
     F op;
 
@@ -939,7 +939,7 @@ private:
             requires(I > 0)
         constexpr auto operator()(distributed_t<Ts...> args) /* -> distributed_t<...> */ {
             // same_as<Ts,interim_wrapper<OpStage, IR>> || final_result<Ts>
-            return [&]<uZ... OpIs>(std::index_sequence<OpIs...>) {
+            return [&]<uZ... OpIs>(std::index_sequence<OpIs...>) {    //TODO: remove OpIs with I;
                 constexpr auto invoke_stage = [this]<typename Arg>(Arg&& arg) -> decltype(auto) {
                     if constexpr (final_result_cvref<Arg>) {
                         return std::forward<Arg>(arg);
