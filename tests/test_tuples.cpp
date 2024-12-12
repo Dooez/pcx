@@ -61,10 +61,22 @@ int main() {
                        | post                            //
         ;
 
+    auto gri   = tupi::detail_::grp_invoke_t{};
+    auto grp_f = tupi::detail_::grp_invoke_t{}(proc2);
+    auto prnt  = gri([](auto x) { std::print("prnt: {}\n", x); });
+
     std::print("Start\n");
-    auto res = pipelined_f(10, 200);
+    // auto res = pipelined_f(10, 200);
+    // proc2(10);
+    // auto res = grp_f(tupi::make_tuple(200, 10));
     // auto r = proc2(10);
     // auto r = tupi::group_invoke(pipelined_f, tupi::make_tuple(10, 100), tupi::make_tuple(1, 2));
+    // gri(proc2, tupi::make_tuple(10, 200));
+    auto t = tupi::make_tuple(10, 200);
+    prnt(tupi::make_tuple(10, 200));
+    // grp_f(tupi::make_tuple(10, 200));
+    // std::print("prnt: {}\n", get<0>(t));
+    // std::print("prnt: {}\n", get<1>(t));
     // auto r = tupi::group_invoke(tupi::pass | s0 | s1, tupi::make_tuple(10));
     // std::print("{}.\n", res);
     std::print("End\n");
