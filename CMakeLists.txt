@@ -25,7 +25,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
 
     target_link_libraries(test_tuples PUBLIC pcx)
     set_target_properties(test_tuples PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
-    target_compile_options(test_tuples PRIVATE -save-temps -march=native)
+    target_compile_options(test_tuples PRIVATE -save-temps -march=native -ftemplate-backtrace-limit=0)
 
     ENABLE_TESTING()
     add_test(NAME test_fft COMMAND test_fft)

@@ -61,8 +61,8 @@ int main() {
                        | post                            //
         ;
 
-    auto gri   = tupi::detail_::grp_invoke_t{};
-    auto grp_f = tupi::detail_::grp_invoke_t{}(proc2);
+    auto gri   = tupi::detail_::group_invoke_t{};
+    auto grp_f = tupi::detail_::group_invoke_t{}(proc2);
     auto prnt  = gri([](auto x) { std::print("prnt: {}\n", x); });
 
     std::print("Start\n");
