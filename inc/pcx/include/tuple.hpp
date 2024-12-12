@@ -730,6 +730,8 @@ struct distributed_t
 , std::conditional_t<(final_result<Ts> && ...), decltype([] {}), interim_result_base> {
     using tuple<Ts...>::tuple;
 };
+template<typename... Ts>
+distributed_t(Ts...) -> distributed_t<Ts...>;
 }    // namespace detail_
 }    // namespace pcx::tupi
 
@@ -766,7 +768,7 @@ namespace detail_ {
 struct distribute_t {
     template<typename... Args>
     static constexpr auto operator()(Args&&... args) {
-        return detail_::distributed_t<Args...>{std::forward<Args>(args)...};
+        return detail_::distributed_t{std::forward<Args>(args)...};
     }
     template<typename F, typename G>
         requires(!std::same_as<std::remove_cvref_t<G>, detail_::apply_t>)
@@ -862,8 +864,7 @@ private:
                         }
                     }
                 };
-                using res_t = distributed_t<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args)))...>;
-                return res_t(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args))...);
+                return distributed_t{invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args))...};
             }(std::make_index_sequence<op_count>{});
         }
     };
@@ -939,11 +940,11 @@ private:
                     }
                 };
                 constexpr auto final = (final_result<decltype(invoke_group(uZc<Is>{}))> && ...);
-                using res_t          = distributed_t<decltype(invoke_group(uZc<Is>{}))...>;
+                // using res_t          = distributed_t<decltype(invoke_group(uZc<Is>{}))...>;
                 if constexpr (final) {
-                    return res_t{invoke_group(uZc<Is>{})...};
+                    return distributed_t{invoke_group(uZc<Is>{})...};
                 } else {
-                    return wrap_interim(&f, res_t{invoke_group(uZc<Is>{})...});
+                    return wrap_interim(&f, distributed_t{invoke_group(uZc<Is>{})...});
                 }
             }(std::make_index_sequence<group_count>{});
         };
@@ -966,11 +967,11 @@ private:
                 };
                 constexpr auto final =
                     (final_result_cvref<decltype(invoke_stage(get<Is>(wrapper.result)))> && ...);
-                using res_t = distributed_t<decltype(invoke_stage(get<Is>(wrapper.result)))...>;
                 if constexpr (final) {
-                    return res_t{invoke_stage(get<Is>(wrapper.result))...};
+                    return distributed_t{invoke_stage(get<Is>(wrapper.result))...};
                 } else {
-                    return wrap_interim(wrapper.fptr, res_t{invoke_stage(get<Is>(wrapper.result))...});
+                    return wrap_interim(wrapper.fptr,
+                                        distributed_t{invoke_stage(get<Is>(wrapper.result))...});
                 }
             }(std::make_index_sequence<sizeof...(Ts)>{});
         }
