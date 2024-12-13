@@ -750,7 +750,12 @@ private:
                         return get_stage<I>(std::forward<decltype(f)>(f))(arg);
                     }
                 };
-                using ret_t = distributed_t<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args)))...>;
+                constexpr auto final =
+                    (final_result_cvref<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args)))> && ...);
+                using ret_t = std::conditional_t<
+                    final,
+                    tuple<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args)))...>,
+                    distributed_t<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args)))...>>;
                 return ret_t{invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args))...};
             }(std::make_index_sequence<op_count>{});
         }
