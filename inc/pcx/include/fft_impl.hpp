@@ -508,13 +508,9 @@ private:
     static constexpr auto load_tw =
         tupi::pass    
         | []<uZ IGroup>(const T* tw_ptr, uZc<IGroup>) {
-            auto re = simd::load<Count>(tw_ptr + Count * (2 * IGroup));
-            auto im = simd::load<Count>(tw_ptr + Count * (2 * IGroup + 1));
-            return tupi::distribute(re, im);
-            // return simd::cxload<Count>(tw_ptr + Count * (2 * IGroup));
+            return simd::cxload<Count>(tw_ptr + Count * (2 * IGroup));
           }
-        // | tupi::grp_pipeline(vec_traits::upsample)    
-        | tupi::pipeline(vec_traits::upsample, vec_traits::upsamle)    
+        | tupi::group_invoke(vec_traits::upsample)    
         | tupi::apply                                                  
         | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
 
@@ -531,9 +527,6 @@ private:
         | tupi::pipeline(tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>, 
                          tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,
                          tupi::pass)
-        // | tupi::pipeline(tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>, 
-        //                  tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,
-        //                  tupi::pass)
         | tupi::apply
         | []<typename V>(auto re, auto im, meta::types<V>){
             return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    

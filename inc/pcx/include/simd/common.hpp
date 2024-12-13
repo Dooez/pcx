@@ -214,7 +214,7 @@ static constexpr auto repack =
     | tupi::pipeline(tupi::apply | tupi::invoke, tupi::pass)
     | tupi::apply
     | []<typename cx_vec>(auto tup, meta::types<cx_vec>){
-        return cx_vec{.m_real = get<0>(tup), .m_imag = get<1>(tup)};
+        return cx_vec{.m_real = tupi::get<0>(tup), .m_imag = tupi::get<1>(tup)};
       }
     ;
 

@@ -185,7 +185,7 @@ namespace detail_ {
 template<uZ I>
 struct get_t {
     template<typename T>
-    PCX_AINLINE constexpr static auto operator()(T&& v) {
+    PCX_AINLINE constexpr static auto operator()(T&& v) -> decltype(auto) {
         return std::get<I>(std::forward<T>(v));
     }
 };
@@ -223,6 +223,8 @@ concept tuple_like = requires(T v) {
         }(std::make_index_sequence<tuple_size_v<T>>{}, v)
     };
 };
+template<typename T>
+concept tuple_like_cvref = tuple_like<std::remove_cvref_t<T>>;
 
 
 struct interim_result_base {};
@@ -574,13 +576,14 @@ namespace detail_ {
 template<typename F0, typename... Fs>
 struct compound_functor_t : compound_op_base {
     template<typename F, typename... Ts>
-    auto operator()(this F&& f, Ts&&... args) -> decltype(auto) {
+    constexpr auto operator()(this F&& f, Ts&&... args) -> decltype(auto) {
         return [&]<uZ I>(this auto invoker, uZc<I>, auto&&... args) {
-            auto stage = get_stage<I>(f);
-            if constexpr (final_result<decltype(stage(std::forward<decltype(args)>(args)...))>) {
-                return stage(std::forward<decltype(args)>(args)...);
+            using res_t = decltype(get_stage<I>(std::forward<F>(f))(std::forward<decltype(args)>(args)...));
+            if constexpr (final_result<res_t>) {
+                return get_stage<I>(std::forward<F>(f))(std::forward<decltype(args)>(args)...);
             } else {
-                return invoker(uZc<I + 1>{}, stage(std::forward<decltype(args)>(args)...));
+                return invoker(uZc<I + 1>{},
+                               get_stage<I>(std::forward<F>(f))(std::forward<decltype(args)>(args)...));
             }
         }(uZc<0>{}, args...);
     };
@@ -788,8 +791,9 @@ inline constexpr auto distribute = detail_::distribute_t{};
 namespace detail_ {
 template<typename... Fs>
 struct pipelined_t : compound_op_base {
-    template<typename... Ts>
-    auto operator()(distributed_t<Ts...> args) {
+    template<typename Tup>
+        requires tuple_like_cvref<Tup> && (tuple_size_v<std::remove_cvref_t<Tup>> == sizeof...(Fs))
+    auto operator()(Tup&& args) {
         const auto pl_ptr = this;
         return [&]<uZ I>(this auto invoker, uZc<I>, auto&& args) {
             if constexpr (final_result<decltype(get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)))>) {
@@ -797,7 +801,7 @@ struct pipelined_t : compound_op_base {
             } else {
                 return invoker(uZc<I + 1>{}, get_stage<I>(*pl_ptr)(std::forward<decltype(args)>(args)));
             }
-        }(uZc<0>{}, args);
+        }(uZc<0>{}, std::forward<Tup>(args));
     }
     template<typename F, typename G>
         requires(!std::same_as<std::remove_cvref_t<G>, apply_t>)
@@ -809,7 +813,7 @@ struct pipelined_t : compound_op_base {
     template<uZ I, typename F>
         requires std::same_as<std::remove_cvref_t<F>, pipelined_t>
     friend constexpr auto get_stage(F&& f) {    // NOLINT(*std-forward*)
-        return stage_t<I>{.ref = &f};
+        return stage_t<std::add_pointer_t<F>, I>{.ref = &f};
     }
 
     using op_t = tuple<Fs...>;
@@ -818,38 +822,30 @@ struct pipelined_t : compound_op_base {
 private:
     static constexpr auto op_count = sizeof...(Fs);
 
-    template<typename IR>
-        requires(!final_result<IR>)
-    struct interim_wrapper : public interim_result_base {
-        IR result;
-    };
-    template<typename IR>
-    static auto wrap_interim(IR&& result) {
-        return interim_wrapper<IR>{.result = std::forward<IR>(result)};
-    }
-
-    template<uZ I>
+    template<typename Pptr, uZ I>
     struct stage_t {
-        pipelined_t* ref;
-        template<typename... Ts>
-            requires(sizeof...(Ts) == op_count)
-        auto operator()(distributed_t<Ts...> args) /* -> distributed_t<...> */ {
+        Pptr ref;
+
+        template<typename Tup>
+            requires tuple_like_cvref<Tup> && (tuple_size_v<std::remove_cvref_t<Tup>> == sizeof...(Fs))
+        constexpr auto operator()(Tup&& args) /* -> distributed_t<...> */ {
             // Ts => interim_wrapper<OpStage, IR> or final_result<Ts>
             return [&]<uZ... OpIs>(std::index_sequence<OpIs...>) {
                 constexpr auto invoke_stage = []<typename Arg>(auto&& f, Arg&& arg) -> decltype(auto) {
                     if constexpr (I == 0) {
                         if constexpr (compound_op_cvref<decltype(f)>) {
-                            return get_stage<I>(std::forward<decltype(f)>(f));
+                            return get_stage<I>(std::forward<decltype(f)>(f))(std::forward<Arg>(arg));
                         } else {
                             return std::forward<decltype(f)>(f)(std::forward<Arg>(arg));
                         }
                     } else if constexpr (final_result_cvref<Arg>) {
                         return std::forward<Arg>(arg);
                     } else {
-                        return get_stage<I>(std::forward<decltype(f)>(f))(arg.result);
+                        return get_stage<I>(std::forward<decltype(f)>(f))(arg);
                     }
                 };
-                return distributed_t{invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args))...};
+                using ret_t = distributed_t<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args)))...>;
+                return ret_t{invoke_stage(get<OpIs>(ref->ops), get<OpIs>(args))...};
             }(std::make_index_sequence<op_count>{});
         }
     };
@@ -858,11 +854,14 @@ private:
 struct group_invoke_t {
     template<typename F>
     static constexpr auto operator()(F&& f) {
-        return pass                                          //
-               | [f = std::forward<F>(f)](auto&&... args)    //
-        { return distribute(f, std::forward<decltype(args)>(args)...); }
+        // clang-format off
+        return pass                                          
+               | [f = std::forward<F>(f)](auto&&... args){
+                   return std::forward_as_tuple(f, std::forward<decltype(args)>(args)...);
+                 }
                | apply    //
                | group_invoke_t{};
+        // clang-format on
     }
     template<typename F, typename... Args>
     static constexpr auto operator()(F&& f, Args&&... args) {
@@ -925,11 +924,11 @@ private:
                     }
                 };
                 constexpr auto final = (final_result<decltype(invoke_group(uZc<Is>{}))> && ...);
-                // using res_t          = distributed_t<decltype(invoke_group(uZc<Is>{}))...>;
+                using res_t          = distributed_t<decltype(invoke_group(uZc<Is>{}))...>;
                 if constexpr (final) {
-                    return distributed_t{invoke_group(uZc<Is>{})...};
+                    return res_t{invoke_group(uZc<Is>{})...};
                 } else {
-                    return wrap_interim(&f, distributed_t{invoke_group(uZc<Is>{})...});
+                    return wrap_interim(&f, res_t{invoke_group(uZc<Is>{})...});
                 }
             }(std::make_index_sequence<group_count>{});
         };
@@ -952,11 +951,11 @@ private:
                 };
                 constexpr auto final =
                     (final_result_cvref<decltype(invoke_stage(get<Is>(wrapper.result)))> && ...);
+                using res_t = distributed_t<decltype(invoke_stage(get<Is>(wrapper.result)))...>;
                 if constexpr (final) {
-                    return distributed_t{invoke_stage(get<Is>(wrapper.result))...};
+                    return res_t{invoke_stage(get<Is>(wrapper.result))...};
                 } else {
-                    return wrap_interim(wrapper.fptr,
-                                        distributed_t{invoke_stage(get<Is>(wrapper.result))...});
+                    return wrap_interim(wrapper.fptr, res_t{invoke_stage(get<Is>(wrapper.result))...});
                 }
             }(std::make_index_sequence<sizeof...(Ts)>{});
         }

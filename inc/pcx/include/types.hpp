@@ -159,7 +159,7 @@ struct cx_vec {
     }
 
     template<iZ Count = 1>
-    PCX_AINLINE friend auto mul_by_j(cx_vec vec) {
+    PCX_AINLINE friend auto mul_by_j(const cx_vec& vec) {
         constexpr auto rot = (Count % 4 + 4) % 4;
         if constexpr (rot == 0) {
             return vec;
@@ -175,9 +175,19 @@ struct cx_vec {
         }
     }
 
-    PCX_AINLINE friend auto conj(cx_vec vec) {
+    PCX_AINLINE friend auto conj(const cx_vec& vec) {
         using new_cx_vec = cx_vec<T, NReal, !NImag, Width, PackSize>;
         return new_cx_vec{.m_real = vec.m_real, .m_imag = vec.m_imag};
+    }
+    template<uZ I>
+        requires(I < 2)
+    friend auto get(const cx_vec& vec) {
+        if constexpr (I == 0) {
+            return vec.real();
+
+        } else {
+            return vec.imag();
+        }
     }
 };
 namespace detail_ {

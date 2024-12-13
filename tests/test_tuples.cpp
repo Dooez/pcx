@@ -66,7 +66,7 @@ int main() {
     auto prnt  = gri([](auto x) { std::print("prnt: {}\n", x); });
 
     std::print("Start\n");
-    // auto res = pipelined_f(10, 200);
+    auto res = pipelined_f(10, 200);
     // proc2(10);
     // auto res = grp_f(tupi::make_tuple(200, 10));
     // auto r = proc2(10);
