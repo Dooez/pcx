@@ -200,9 +200,7 @@ struct btfly_node_dit {
      * hi     = [Stride / 2, Stride / 2 + 1, ..., Stride - 1    , Stride * 3 / 2, Stride * 3 / 2 + 1, ... ]
      * return = [0, 1, ..., N - 1] 
      */
-    template<uZ Stride, typename... Tsl, typename... Tsh>
-        requires(simd::any_cx_vec<std::remove_cvref_t<Tsl>> && ...)
-                && (simd::any_cx_vec<std::remove_cvref_t<Tsh>> && ...)
+    template<uZ Stride, simd::any_cx_vec... Tsl, simd::any_cx_vec... Tsh>
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
         return []<uZ... Grp> PCX_LAINLINE(auto lo, auto hi, std::index_sequence<Grp...>) {
             constexpr auto iterate = []<uZ... Iters, uZ Offset> PCX_LAINLINE(auto lo,
