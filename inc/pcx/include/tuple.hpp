@@ -266,18 +266,26 @@ struct apply_t {
 
 template<typename F>
 struct applied_functor_t : public compound_op_base {
-    template<typename Tup>
+    template<typename G, typename Tup>
         requires tuple_like<std::remove_cvref_t<Tup>>
-    constexpr auto operator()(Tup&& args) const -> decltype(auto) {
-        // TODO: do
+    constexpr auto operator()(this G&& g, Tup&& args) -> decltype(auto) {
+        return [&]<uZ... Is>(std::index_sequence<Is...>) -> decltype(auto) {
+            [&]<uZ I, typename... Args>(this auto invoker, uZc<I>, Args&&... args) -> decltype(auto) {
+                using res_t = decltype(get_stage<I>(std::forward<G>(g))(std::forward<Args>(args)...));
+                if constexpr (final_result_cvref<res_t>) {
+                    return get_stage<I>(std::forward<G>(g))(std::forward<Args>(args)...);
+                } else {
+                    return invoker(uZc<I + 1>{},
+                                   get_stage<I>(std::forward<G>(g))(std::forward<Args>(args)...));
+                }
+            }(uZc<0>{}, get<Is>(std::forward<Tup>(args))...);
+        }(std::make_index_sequence<tuple_size_v<std::remove_cvref_t<Tup>>>{});
     }
-
     template<uZ I, typename G>
         requires std::same_as<std::remove_cvref_t<G>, applied_functor_t>
     friend constexpr auto get_stage(G&& g) {    // NOLINT(*std-forward*)
         return stage_t<std::add_pointer_t<G>, I>{.fptr = &g};
     }
-
     F op;
 
 private:
