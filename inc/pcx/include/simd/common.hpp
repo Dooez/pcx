@@ -3,7 +3,7 @@
 
 #include "pcx/include/simd/math.hpp"
 #include "pcx/include/simd/traits.hpp"
-#include "pcx/include/tuple.hpp"
+#include "pcx/include/tupi.hpp"
 
 #include <algorithm>
 #include <complex>
@@ -116,7 +116,7 @@ struct cxstore_t {
 
 template<uZ PackTo>
     requires power_of_two<PackTo>
-struct repack_t : tupi::compound_op_base {
+struct repack_t : tupi::detail_::compound_op_base {
     template<eval_cx_vec V>
         requires(PackTo <= V::width())
     PCX_AINLINE auto operator()(V vec) const {
@@ -209,7 +209,7 @@ static constexpr auto repack =
         using repacked_vec_t  = cx_vec<real_type, false, false, V::width(), PackTo>;
         using traits          = detail_::vec_traits<real_type, V::width()>;
         constexpr auto repack = traits::template repack<PackTo, V::pack_size()>;
-        return tupi::distribute(tupi::make_tuple(repack, vec.real_v(), vec.imag_v()), meta::types<repacked_vec_t>{});
+        return tupi::make_tuple(tupi::make_tuple(repack, vec.real_v(), vec.imag_v()), meta::types<repacked_vec_t>{});
       }
     | tupi::pipeline(tupi::apply | tupi::invoke, tupi::pass)
     | tupi::apply

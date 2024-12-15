@@ -1,5 +1,5 @@
 #pragma once
-#include "pcx/include/tuple.hpp"
+#include "pcx/include/tupi.hpp"
 
 #include <immintrin.h>
 
@@ -172,7 +172,7 @@ struct vec_traits<f64, 4>::repack_t<1, 2> {
     };
 };
 template<>
-struct vec_traits<f64, 4>::repack_t<1, 4> : tupi::compound_op_base {
+struct vec_traits<f64, 4>::repack_t<1, 4> : tupi::detail_::compound_op_base {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto [x, y] = repack_t<2, 4>{}(a, b);
         return repack_t<1, 2>{}(x, y);
@@ -187,7 +187,7 @@ struct vec_traits<f64, 4>::repack_t<1, 4> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<2, 4>{}(a, b);
-            return tupi::make_interim(x, y);
+            return tupi::make_tuple(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)
@@ -209,7 +209,7 @@ struct vec_traits<f64, 4>::repack_t<2, 1> {
     };
 };
 template<>
-struct vec_traits<f64, 4>::repack_t<4, 1> : tupi::compound_op_base {
+struct vec_traits<f64, 4>::repack_t<4, 1> : tupi::detail_::compound_op_base {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         auto [x, y] = repack_t<2, 1>{}(a, b);
         return repack_t<4, 2>{}(x, y);
@@ -224,7 +224,7 @@ struct vec_traits<f64, 4>::repack_t<4, 1> : tupi::compound_op_base {
             requires(I == 0)
         {
             auto [x, y] = repack_t<2, 1>{}(a, b);
-            return tupi::make_interim(x, y);
+            return tupi::make_tuple(x, y);
         }
         PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const
             requires(I == 1)

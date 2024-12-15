@@ -2,7 +2,7 @@
 #include "pcx/include/meta.hpp"
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
-#include "pcx/include/tuple.hpp"
+#include "pcx/include/tupi.hpp"
 #include "pcx/include/types.hpp"
 
 namespace pcx::simd {
@@ -524,7 +524,7 @@ private:
           {
             auto re = tupi::make_tuple(a.real_v(), b.real_v());
             auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
-            return tupi::distribute(re, im, meta::types<V>{});
+            return tupi::make_tuple(re, im, meta::types<V>{});
           }
         | tupi::pipeline(tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>, 
                          tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,

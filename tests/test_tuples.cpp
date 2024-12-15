@@ -1,4 +1,4 @@
-#include "pcx/include/tuple.hpp"
+#include "pcx/include/tupi.hpp"
 
 #include <complex>
 #include <print>
@@ -54,7 +54,7 @@ int main() {
         std::print("Post combine. {}.\n", x);
         return x + 1;
     };
-    auto pipelined_f = tupi::distribute                  //
+    auto pipelined_f = tupi::make_tuple                  //
                        | tupi::pipeline(proc2, proc2)    //
                        | tupi::apply                     //
                        | comb                            //
