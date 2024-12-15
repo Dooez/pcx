@@ -173,14 +173,19 @@ template<typename T>
     requires tuple_like<std::remove_cvref_t<T>>
 using index_sequence_for_tuple = std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>;
 
-template<typename... Args>
-PCX_AINLINE constexpr auto make_tuple(Args&&... args) {
-    return std::make_tuple(std::forward<Args>(args)...);
-}
-template<typename... Ts>
-PCX_AINLINE constexpr auto tuple_cat(Ts&&... tuples) {
-    return std::tuple_cat(std::forward<Ts>(tuples)...);
-}
+static constexpr struct {
+    template<typename... Args>
+    PCX_AINLINE constexpr static auto operator()(Args&&... args) {
+        return tuple<std::remove_cvref_t<Args>...>{std::forward<Args>(args)...};
+    }
+} make_tuple{};
+static constexpr struct {
+    template<typename... Args>
+    PCX_AINLINE constexpr static auto operator()(Args&&... args) {
+        return tuple<Args&&...>{std::forward<Args>(args)...};
+    }
+} forward_as_tuple{};
+
 namespace detail_ {
 template<uZ I>
 struct get_t {
@@ -192,6 +197,51 @@ struct get_t {
 }    // namespace detail_
 template<uZ I>
 inline constexpr auto get = detail_::get_t<I>{};
+
+namespace detail_ {
+template<typename... Tups>
+struct cat_t;
+template<typename... Ts, typename... Us, typename... Tups>
+struct cat_t<tuple<Ts...>, tuple<Us...>, Tups...> {
+    using type = cat_t<tuple<Ts..., Us...>, Tups...>::type;
+};
+template<typename... Ts>
+struct cat_t<tuple<Ts...>> {
+    using type = tuple<Ts...>;
+};
+template<any_tuple... Tups>
+using tuple_cat_t = cat_t<Tups...>::type;
+}    // namespace detail_
+
+static constexpr struct tuple_cat_t {
+    template<typename... Tups>
+        requires(any_tuple<std::remove_cvref_t<Tups>> && ...)
+    PCX_AINLINE constexpr static auto operator()(Tups&&... tups) {
+        auto tuptup          = forward_as_tuple(std::forward<Tups>(tups)...);
+        auto get_cat_element = [&]<uZ I>(uZc<I>) -> decltype(auto) {
+            return [&]<uZ ITup = 0, uZ K = 0, uZ L = 0>(this auto&& it,
+                                                        uZc<ITup> = {},
+                                                        uZc<K>    = {},
+                                                        uZc<L>    = {}) -> decltype(auto) {
+                if constexpr (K == I) {
+                    return get<L>(get<ITup>(tuptup));
+                } else {
+                    constexpr auto tup_size = tuple_size_v<std::remove_cvref_t<decltype(get<ITup>(tuptup))>>;
+                    if constexpr (L < tup_size - 1) {
+                        return std::forward<decltype(it)>(it)(uZc<ITup>{}, uZc<K + 1>{}, uZc<L + 1>{});
+                    } else {
+                        return std::forward<decltype(it)>(it)(uZc<ITup + 1>{}, uZc<K + 1>{}, uZc<0>{});
+                    }
+                }
+            }();
+        };
+        constexpr auto total_size = (tuple_size_v<Tups> + ...);
+        return [&]<uZ... Is>(std::index_sequence<Is...>) {
+            using cat_t = detail_::tuple_cat_t<std::remove_cvref_t<Tups>...>;
+            return cat_t{get_cat_element(uZc<Is>{})...};
+        }(std::make_index_sequence<total_size>{});
+    };
+} tuple_cat{};
 
 template<uZ TupleSize, typename T>
 PCX_AINLINE constexpr auto make_broadcast_tuple(T&& v) {
@@ -279,7 +329,7 @@ struct applied_functor_t : public compound_op_base {
                                    get_stage<I>(std::forward<G>(g))(std::forward<Args>(args)...));
                 }
             }(uZc<0>{}, get<Is>(std::forward<Tup>(args))...);
-        }(std::make_index_sequence<tuple_size_v<std::remove_cvref_t<Tup>>>{});
+        }(index_sequence_for_tuple<Tup>{});
     }
     template<uZ I, typename G>
         requires std::same_as<std::remove_cvref_t<G>, applied_functor_t>
@@ -637,8 +687,6 @@ struct distributed_t
 , std::conditional_t<(final_result<Ts> && ...), decltype([] {}), interim_result_base> {
     using tuple<Ts...>::tuple;
 };
-template<typename... Ts>
-distributed_t(Ts...) -> distributed_t<Ts...>;
 }    // namespace detail_
 }    // namespace pcx::tupi
 
@@ -675,7 +723,7 @@ namespace detail_ {
 struct distribute_t {
     template<typename... Args>
     static constexpr auto operator()(Args&&... args) {
-        return detail_::distributed_t{std::forward<Args>(args)...};
+        return detail_::distributed_t<std::remove_cvref_t<Args>...>{std::forward<Args>(args)...};
     }
     template<typename F, typename G>
         requires(!std::same_as<std::remove_cvref_t<G>, detail_::apply_t>)
