@@ -39,7 +39,6 @@ template<typename... Ts>
 struct is_tuple<tuple<Ts...>> : std::true_type {};
 template<typename T>
 inline constexpr auto is_tuple_v = is_tuple<T>::value;
-
 }    // namespace detail_
 template<typename T>
 concept any_tuple = detail_::is_tuple_v<T>;
@@ -109,7 +108,8 @@ struct call_mixin {
 
 template<uZ I>
 struct get_t : public pipe_mixin {
-    template<typename T>
+    template<tuple_like_cvref T>
+        requires(I < tuple_cvref_size_v<T>)
     PCX_AINLINE constexpr static auto operator()(T&& v) -> decltype(auto) {
         return std::get<I>(std::forward<T>(v));
     }
@@ -391,7 +391,7 @@ private:
 };
 struct pass_t {
     template<typename Arg>
-    PCX_AINLINE static auto operator()(Arg&& arg) {
+    PCX_AINLINE static auto operator()(Arg&& arg) -> decltype(auto) {
         return std::forward<Arg>(arg);
     }
     template<typename F>
@@ -467,7 +467,6 @@ struct pipelined_t
     friend constexpr auto get_stage(F&& f) {    // NOLINT(*std-forward*)
         return stage_t<std::add_pointer_t<F>, I>{.ref = &f};
     }
-
     using op_t = tuple<Fs...>;
     op_t ops;
 

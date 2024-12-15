@@ -15,16 +15,73 @@ An intemediate object that captures a functor to be combined with another functo
 
 ## *detail_::distributed_t*
 A tuple-like object.
-
-# Objects
+# Special objects
 ## pass
-`constexpr static auto operator()(T&& arg) -> T&&` forwards singular input value.
-`constexpr auto operator|(F&& f) const` constructs a compound functor that forwards any input arguments to `f`.
+```c++
+template<typename Arg>
+static auto operator()(Arg&& arg) -> decltype(auto)
+```
+Forwards the input argument.
+```c++
+template<typename F>
+    requires(!std::same_as<std::remove_cvref_t<F>, detail_::apply_t>)
+constexpr auto operator|(F&& f) const;
+```
+Returns a *detail_::compound_functor_t* that invokes `f`.
 
 ## apply
 `constexpr static auto operator()(F&& f, tuple_like auto&& args)` invokes `f` with elements of `args` as arguments.
 `constexpr auto operator|(F&& f) const` constructs a compound functor that accepts `tuple_like` argument and applies it to the captured functor.
 `constexpr friend auto operator|(F&& f, cosnt apply_t&)` constructs an object
+
+# Pipeable objects {#pipeable}
+Pipeable objects share `operator|()`
+```c++
+template<typename G, typename F>
+    requires(!std::same_as<std::remove_cvref_t<F>, apply_t>)
+constexpr auto operator|(this G&& g, F&& f) 
+```
+Constructs a combined functor from `g` and `f`. The resulting functor forwards input arguments to `g`,
+and forwards output of `g` to `f`.
+
+## get<uZ I>
+```c++
+template<tuple_like_cvref T>
+        requires(I < tuple_cvref_size_v<T>)
+constexpr static auto operator()(T&& v) -> decltype(auto)
+```
+Extract I'th element of tuple-like object.
+
+## make_tuple
+```c++
+template<typename... Args>
+constexpr static auto operator()(Args&&... args)
+
+```
+Constructs a tuple of values.
+
+## forward_as_tuple
+```c++
+template<typename... Args>
+constexpr static auto operator()(Args&&... args)
+
+```
+Constructs a tuple of references.
+
+## tuple_cat
+```c++
+template<typename... Tups>
+    requires(any_tuple<std::remove_cvref_t<Tups>> && ...)
+constexpr static auto operator()(Tups&&... tups)
+```
+Constructs a tuple that is concatenation of input arguments. The types of elemnts of ther resulting tuple
+corrsepond to the types of elements of argument tuples.
+
+## make_broadcast_tuple<uZ TupleSize>
+```c++
+static constexpr auto operator()(const auto& v) 
+```
+Construct a tuple that which elements are copies of the input argument. The size of ther resulting tuple is `TupleSize`.
 
 ## invoke
 `constexpr static auto operator()(F&& f, Args&&... args)` invokes `f` with `args`.
