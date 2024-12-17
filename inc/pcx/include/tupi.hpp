@@ -68,7 +68,6 @@ namespace detail_ {
 struct interim_result_base {};
 struct compound_op_base {};
 struct void_wrapper {};
-}    // namespace detail_
 
 template<typename T>
 concept compound_op = std::derived_from<T, detail_::compound_op_base>;
@@ -79,7 +78,6 @@ concept final_result = !std::derived_from<T, detail_::interim_result_base>;
 template<typename T>
 concept final_result_cvref = final_result<std::remove_cvref_t<T>>;
 
-namespace detail_ {
 template<typename F0, typename... Fs>
 struct compound_functor_t;
 struct apply_t;
@@ -357,7 +355,7 @@ private:
         constexpr auto operator()(Args&&... args) const {
             if constexpr (compound_op_cvref<tuple_element_t<0, ops_t>>) {
                 using res_t = decltype(get_stage<0>(get<0>(fptr->ops))(std::forward<Args>(args)...));
-                if constexpr (tupi::final_result<res_t>) {
+                if constexpr (final_result<res_t>) {
                     if constexpr (op_count == 1) {
                         return get_stage<0>(get<0>(fptr->ops))(std::forward<Args>(args)...);
                     } else {
@@ -379,7 +377,7 @@ private:
         constexpr auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) const {
             if constexpr (OpStage > 0 || compound_op_cvref<tuple_element_t<OpIdx, ops_t>>) {
                 using res_t = decltype(get_stage<OpStage>(get<OpIdx>(fptr->ops))(wr.result));
-                if constexpr (tupi::final_result_cvref<res_t>) {
+                if constexpr (final_result_cvref<res_t>) {
                     if constexpr (OpIdx == op_count - 1) {
                         return get_stage<OpStage>(get<OpIdx>(fptr->ops))(wr.result);
                     } else {
@@ -622,6 +620,13 @@ private:
 template<typename Fptr, typename IR>
 struct group_invoke_t::is_interim_wrapper<group_invoke_t::interim_wrapper<Fptr, IR>>
 : public std::true_type {};
+
+struct pipeline_t : public detail_::pipe_mixin {
+    template<typename... Fs>
+    static constexpr auto operator()(Fs&&... fs) {
+        return detail_::pipelined_t<std::remove_cvref_t<Fs>...>{.ops{std::forward<Fs>(fs)...}};
+    }
+};
 }    // namespace detail_
 
 inline constexpr auto apply = detail_::apply_t{};
@@ -641,9 +646,6 @@ inline constexpr auto group_invoke = detail_::group_invoke_t{};
  * @return Compound functor, accepting a return value of `distribute(args...)` 
  * with `sizeof...(args) == sizeof...(f)`.
  */
-template<typename... Fs>
-constexpr auto pipeline(Fs&&... f) {
-    return detail_::pipelined_t<std::remove_cvref_t<Fs>...>{.ops{std::forward<Fs>(f)...}};
-}
+inline constexpr auto pipeline = detail_::pipeline_t{};
 
 }    // namespace pcx::tupi

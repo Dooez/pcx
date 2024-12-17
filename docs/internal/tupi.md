@@ -1,7 +1,22 @@
- 
 Pcx uses a concept of compound operations and explicit pipelining.
-An operation consiting of multiple other operations is a compound operation, and the components of a compound op are called 'stages'.
-Explicitly pipelining operations means performing operation stages 
+An operation consiting of multiple other operations is a compound operation, 
+and the components of a compound operation are called 'stages'.
+Explicitly pipelining operations is performing stages of multiple pipelined opeartions
+one stage number at a time for all operations interleaved.
+
+# Concepts
+## any_tuple
+Concept is satisfied by any specialization of `tupi::tuple`.
+
+## tuple_like
+Concept requires `std::tuple_size_v<T>` to be definded and convertable to `uZ`
+and `get<I>(T)` to be valid for all `I < std::tuple_size_<T>`.
+
+## tuple_like_cvref
+```C++
+template<typename T>
+concepct tuple_like_cvref = tuple_like<std::remove_cvref_t<T>>;
+```
 
 # Classes
 ## *detail_::compound_functor_t*
@@ -13,9 +28,7 @@ A basic compound functor that captures another functors and provides compound in
 An intemediate object that captures a functor to be combined with another functor.
 `constexpr auto operator|(this F&& f, G&& g)` constructs a compound functor thaj calls `f` and applies the output to `g`.
 
-## *detail_::distributed_t*
-A tuple-like object.
-# Special objects
+# Special inline objects
 ## pass
 ```c++
 template<typename Arg>
@@ -31,26 +44,26 @@ Returns a *detail_::compound_functor_t* that invokes `f`. This is a recommended 
 that starts with a lambda lambda or any other functor not from `tupi` namespace.
 
 ## apply
+Functor of type `apply_t`.
 ```c++
 template<typename F, typename Tup>
     requires appliable<F, Tup>
 static auto operator()(F&& f, Tup&& arg) -> decltype(auto);
 ```
-invokes `f` with elements of `args` as arguments.
+Invokes `f` with elements of `args` as arguments.
 ```c++ (1)
 template<typename F>
 constexpr auto operator|(F&& f) const;
 ```
-Constructs a functor that accepts `tuple_like` objects and applies them to `f`.
 ```c++ (2)
 template<typename F>
 constexpr friend auto operator|(F&& f, apply_t);
 ```
-Constructs an object of type *detail_::to_apply_t* that captures `f` to be further combined using `operator|`.
+1) Constructs a functor that accepts [tuple_like](#tuple_like) objects and applies them to `f`.
+2) Constructs an object of type *detail_::to_apply_t* that captures `f` to be further combined using `operator|`.
 
-# Pipeable objects {#pipeable}
+# Pipeable inline objects
 Pipeable objects share `operator|` to be combined into a compound functor.
-
 ```c++
 template<typename G, typename F>
     requires(!std::same_as<std::remove_cvref_t<F>, apply_t>)
@@ -126,33 +139,28 @@ static constexpr auto operator()(F&& f);
    The returned value is a tuple with I'th elements being the result of invokation of `f` with I'th group.
 2) Constructs a compund functor that group invokes `f` (see `(1)`).
 
-
-`constexpr static auto operator()(F&& f, Args&&... args)` invokes `f` with `args`.
-`constexpr auto operator|(F&& f)` construct a compound functor that accepts a functor and variadic list of arguments and forwards the output to `f`.
-
-## distribute
-`constexpr static auto operator()(auto&&... args)` returns a `tuple_like` object that can be passed to the pipelined functor.
-`constexpr auto operator|(F&& f)` construct a compound functor that accepts arguments and passes *detail_::distributed_t* to `f`.
-
 ## pipeline
-A functor that pipelines composing compound functors to be executed stage-by-stage. 
-`constexpr static auto operator()(F&&... fs)` constructs a functor accepting and returning *detail_::distributed_t*.
-TODO: add `operator|()` that autoamically distributes the arguments.
-
-Example:
+```c++
+template<typename... Fs>
+static constexpr auto operator()(Fs&&... fs)
 ```
+Constructs a compound functor that invokes `fs` interleaving their stages.
+
+# Usage examples
+```c++
 auto x = tupi::pass | xstage0 | xstage1;
 auto y = tupi::pass | ystage0 | ystage1;
-auto p = tupi::distribute | tupi::pipeline(x, y);
-p(0, 1);
+auto p = tupi::make_tuple | tupi::pipeline(x, y);
+auto [a, b] = p(0, 1);
+auto [c ,d] = tupi::group_invoke(x, tupi::make_tuple(10, 11));
 ```
 will result in 
-1. xtmp = xstage0(0);
-2. ytmp = ystage0(1);
-3. xstage1(xtmp);
-4. ystage2(ytmp);
+1. atmp = xstage0(0);
+2. btmp = ystage0(1);
+3. a = xstage1(xtmp);
+4. b = ystage2(ytmp);
 
-## group_invoke
-`constexpr static auto operator()(F&& f, Args&&... args)`  Invokes `f` with argument sets `f(get<0>(args)...)`, `f(get<1>(args)...)`
-    Args are tuple-like objects of the same tuple size, each tuple representing a single input argument. 
-    Invocation with different argument sets are pipelined.
+5. ctmp = xstage0(10);
+6. dtmp = xstage0(11);
+7. c = xstage1(ctmp);
+8. d = xstage2(dtmp);
