@@ -216,7 +216,6 @@ struct broadcast_tuple {
 template<typename T, uZ TupleSize>
 using broadcast_tuple_t = detail_::broadcast_tuple<T, TupleSize>::type;
 
-
 namespace detail_ {
 template<typename... Ts>
 struct interim_tuple
@@ -251,12 +250,24 @@ struct apply_t {
         requires appliable<F, Tup>
     static auto operator()(F&& f, Tup&& arg) -> decltype(auto) {
         return [&]<uZ... Is>(std::index_sequence<Is...>) -> decltype(auto) {
-            return std::forward<F>(f)(get<Is>(std::forward<Tup>(arg))...);
+            if constexpr (compound_op_cvref<F>) {
+                [&]<uZ I, typename... IArgs>(this auto invoker, uZc<I>, IArgs&&... args) -> decltype(auto) {
+                    using res_t = decltype(get_stage<I>(std::forward<F>(f))(std::forward<IArgs>(args)...));
+                    if constexpr (final_result_cvref<res_t>) {
+                        return get_stage<I>(std::forward<F>(f))(std::forward<IArgs>(args)...);
+                    } else {
+                        return invoker(uZc<I + 1>{},
+                                       get_stage<I>(std::forward<F>(f))(std::forward<IArgs>(args)...));
+                    }
+                }(uZc<0>{}, get<Is>(std::forward<Tup>(arg))...);
+            } else {
+                return std::forward<F>(f)(get<Is>(std::forward<Tup>(arg))...);
+            }
         }(index_sequence_for_tuple<Tup>{});
-    };
+    }
     template<typename F>
-    constexpr friend auto operator|(F&& f, const apply_t&) {
-        return to_apply_t<F>{std::forward<F>(f)};
+    constexpr friend auto operator|(F&& f, apply_t) {
+        return to_apply_t<compound_functor_t<std::remove_cvref_t<F>>>{{.ops{std::forward<F>(f)}}};
     }
     template<typename F>
     constexpr auto operator|(F&& f) const {
@@ -406,7 +417,7 @@ struct invoke_t
 , public call_mixin {
     template<typename F, typename... Args>
         requires std::invocable<F, Args...>
-    PCX_AINLINE static constexpr auto operator()(F&& f, Args&&... args) {
+    PCX_AINLINE static constexpr auto operator()(F&& f, Args&&... args) -> decltype(auto) {
         return invoke_t{}.call(std::forward<F>(f), std::forward<Args>(args)...);
     }
     template<uZ I>
@@ -427,7 +438,7 @@ private:
     template<uZ I>
     struct stage_t {
         template<typename F, typename... Args>
-        constexpr static auto operator()(F&& f, Args&&... args) {
+        constexpr static auto operator()(F&& f, Args&&... args) -> decltype(auto) {
             if constexpr (compound_op_cvref<F>) {
                 using res_t = decltype(get_stage<I>(std::forward<F>(f))(std::forward<Args>(args)...));
                 if constexpr (final_result<res_t>) {
@@ -440,7 +451,7 @@ private:
             }
         }
         template<typename Fptr, typename IR>
-        constexpr static auto operator()(interim_wrapper<Fptr, IR> wrapper) {
+        constexpr static auto operator()(interim_wrapper<Fptr, IR> wrapper) -> decltype(auto) {
             using res_t = decltype(get_stage<I>(*wrapper.fptr)(wrapper.result));
             if constexpr (final_result<res_t>) {
                 return get_stage<I>(*wrapper.fptr)(wrapper.result);

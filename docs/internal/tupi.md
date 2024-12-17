@@ -27,15 +27,30 @@ template<typename F>
     requires(!std::same_as<std::remove_cvref_t<F>, detail_::apply_t>)
 constexpr auto operator|(F&& f) const;
 ```
-Returns a *detail_::compound_functor_t* that invokes `f`.
+Returns a *detail_::compound_functor_t* that invokes `f`. This is a recommended way to construct a compound functor 
+that starts with a lambda lambda or any other functor not from `tupi` namespace.
 
 ## apply
-`constexpr static auto operator()(F&& f, tuple_like auto&& args)` invokes `f` with elements of `args` as arguments.
-`constexpr auto operator|(F&& f) const` constructs a compound functor that accepts `tuple_like` argument and applies it to the captured functor.
-`constexpr friend auto operator|(F&& f, cosnt apply_t&)` constructs an object
+```c++
+template<typename F, typename Tup>
+    requires appliable<F, Tup>
+static auto operator()(F&& f, Tup&& arg) -> decltype(auto);
+```
+invokes `f` with elements of `args` as arguments.
+```c++ (1)
+template<typename F>
+constexpr auto operator|(F&& f) const;
+```
+Constructs a functor that accepts `tuple_like` objects and applies them to `f`.
+```c++ (2)
+template<typename F>
+constexpr friend auto operator|(F&& f, apply_t);
+```
+Constructs an object of type *detail_::to_apply_t* that captures `f` to be further combined using `operator|`.
 
 # Pipeable objects {#pipeable}
-Pipeable objects share `operator|()`
+Pipeable objects share `operator|` to be combined into a compound functor.
+
 ```c++
 template<typename G, typename F>
     requires(!std::same_as<std::remove_cvref_t<F>, apply_t>)
@@ -55,16 +70,14 @@ Extract I'th element of tuple-like object.
 ## make_tuple
 ```c++
 template<typename... Args>
-constexpr static auto operator()(Args&&... args)
-
+constexpr static auto operator()(Args&&... args);
 ```
 Constructs a tuple of values.
 
 ## forward_as_tuple
 ```c++
 template<typename... Args>
-constexpr static auto operator()(Args&&... args)
-
+constexpr static auto operator()(Args&&... args);
 ```
 Constructs a tuple of references.
 
@@ -72,18 +85,48 @@ Constructs a tuple of references.
 ```c++
 template<typename... Tups>
     requires(any_tuple<std::remove_cvref_t<Tups>> && ...)
-constexpr static auto operator()(Tups&&... tups)
+constexpr static auto operator()(Tups&&... tups);
 ```
-Constructs a tuple that is concatenation of input arguments. The types of elemnts of ther resulting tuple
+Constructs a tuple that is concatenation of input arguments. The types of elements of ther resulting tuple
 corrsepond to the types of elements of argument tuples.
 
 ## make_broadcast_tuple<uZ TupleSize>
 ```c++
-static constexpr auto operator()(const auto& v) 
+static constexpr auto operator()(const auto& v);
 ```
-Construct a tuple that which elements are copies of the input argument. The size of ther resulting tuple is `TupleSize`.
+Construct a tuple which elements are copies of the input argument. The size of ther resulting tuple is `TupleSize`.
+
+## make_flat_tuple
+```c++
+template<typename T>
+static constexpr auto operator(T&& tuple);
+```
+Constructs a flattened tuple of values, where any element of T that is a tuple or a tuple reference gets flattened, 
+and replaced by it's elements in the resulting tuple.
 
 ## invoke
+```c++
+template<typename F, typename... Args>
+    requires std::invocable<F, Args...>
+static constexpr auto operator()(F&& f, Args&&... args) -> decltype(auto);
+```
+Invokes `f` with arguments `args` and forwards the returned value.
+
+## group_invoke
+```c++ (1)
+template<typename F, tuple_like_cvref... Args>
+    requires([](auto s0, auto... s) { return ((s0 == s) && ...); }(tuple_cvref_size_v<Args>...))
+static constexpr auto operator()(F&& f, Args&&... args);
+```
+Invokes `f` mulptipel groups of arguments, with I'th group being I'th elements of `args`. 
+The returned value is a tuple with I'th elements being the result of invokation of `f` with I'th group.
+
+```c++ (2)
+template<typename F>
+static constexpr auto operator()(F&& f);
+```
+Constructs a compund functor that group invokes `f` (see `(1)`).
+
 `constexpr static auto operator()(F&& f, Args&&... args)` invokes `f` with `args`.
 `constexpr auto operator|(F&& f)` construct a compound functor that accepts a functor and variadic list of arguments and forwards the output to `f`.
 
