@@ -118,14 +118,14 @@ template<typename F, tuple_like_cvref... Args>
     requires([](auto s0, auto... s) { return ((s0 == s) && ...); }(tuple_cvref_size_v<Args>...))
 static constexpr auto operator()(F&& f, Args&&... args);
 ```
-Invokes `f` mulptipel groups of arguments, with I'th group being I'th elements of `args`. 
-The returned value is a tuple with I'th elements being the result of invokation of `f` with I'th group.
-
 ```c++ (2)
 template<typename F>
 static constexpr auto operator()(F&& f);
 ```
-Constructs a compund functor that group invokes `f` (see `(1)`).
+1) Invokes `f` with multiple groups of arguments, I'th group being I'th elements of `args`. 
+   The returned value is a tuple with I'th elements being the result of invokation of `f` with I'th group.
+2) Constructs a compund functor that group invokes `f` (see `(1)`).
+
 
 `constexpr static auto operator()(F&& f, Args&&... args)` invokes `f` with `args`.
 `constexpr auto operator|(F&& f)` construct a compound functor that accepts a functor and variadic list of arguments and forwards the output to `f`.
