@@ -315,8 +315,7 @@ struct subtransform {
         }
     };
 
-
-private:
+    // private:
     static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
 
     template<uZ NodeSizeL>
@@ -485,9 +484,14 @@ private:
     struct regroup_btfly_t {
         template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
-            auto tw_tup    = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
-            auto tw        = tupi::group_invoke(load_tw<NGroups>, tw_tup, half_node_tuple);
-            auto regrouped = tupi::group_invoke(regroup<16, NodeSize / NGroups>, lo, hi);
+            auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
+
+            constexpr auto ltw_regr = tupi::make_tuple
+                                      | tupi::pipeline(tupi::group_invoke(load_tw<NGroups>),
+                                                       tupi::group_invoke(regroup<16, NodeSize / NGroups>));
+            auto [tw, regrouped] = ltw_regr(tupi::forward_as_tuple(tw_tup, half_node_tuple),    //
+                                            tupi::forward_as_tuple(lo, hi));
+
             auto lo_re     = tupi::group_invoke(tupi::get<0>, regrouped);
             auto hi_re     = tupi::group_invoke(tupi::get<1>, regrouped);
             auto hi_tw     = tupi::group_invoke(simd::mul, hi_re, tw);

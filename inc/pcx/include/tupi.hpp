@@ -1,6 +1,7 @@
 #pragma once
 #include "pcx/include/meta.hpp"
 
+#include <algorithm>
 #include <tuple>
 #include <type_traits>
 
@@ -559,7 +560,7 @@ private:
         template<typename F, tuple_like_cvref... Tups>
             requires(I == 0)
         static constexpr auto operator()(F&& f, Tups&&... arg_tups) {    // NOLINT(*std-forward*)
-            constexpr auto group_count = (..., tuple_cvref_size_v<Tups>);
+            constexpr auto group_count = std::min({tuple_cvref_size_v<Tups>...});
             return [&]<uZ... Is>(std::index_sequence<Is...>) {
                 auto invoke_group = [&]<uZ IGrp>(uZc<IGrp>) -> decltype(auto) {
                     auto invoke_stage = [&]<typename... Args>(Args&&... args) -> decltype(auto) {
