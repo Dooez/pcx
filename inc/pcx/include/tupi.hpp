@@ -633,8 +633,8 @@ struct pipeline_t : public detail_::pipe_mixin {
 inline constexpr auto apply = detail_::apply_t{};
 /**
  * @brief Compound functor factory.
- * Example: `pass | [](auto&&... args){ /.../ }` will create a functor accepting `auto&&... args` 
- * If used as a functor will pass input argument.
+ * Example: `pass | [](auto&&... args){ /.../ }` will create a functor accepting `auto&&... args`.  
+ * When used as functor will forward a single input argument.
  */
 inline constexpr auto pass         = detail_::pass_t{};
 inline constexpr auto invoke       = detail_::invoke_t{};

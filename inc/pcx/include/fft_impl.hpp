@@ -486,11 +486,11 @@ struct subtransform {
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
             auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
 
-            constexpr auto ltw_regr = tupi::make_tuple
-                                      | tupi::pipeline(tupi::group_invoke(load_tw<NGroups>),
-                                                       tupi::group_invoke(regroup<16, NodeSize / NGroups>));
-            auto [tw, regrouped] = ltw_regr(tupi::forward_as_tuple(tw_tup, half_node_tuple),    //
-                                            tupi::forward_as_tuple(lo, hi));
+            constexpr auto regr_ltw = tupi::make_tuple
+                                      | tupi::pipeline(tupi::group_invoke(regroup<16, NodeSize / NGroups>),
+                                                       tupi::group_invoke(load_tw<NGroups>));
+            auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
+                                            tupi::forward_as_tuple(tw_tup, half_node_tuple));
 
             auto lo_re     = tupi::group_invoke(tupi::get<0>, regrouped);
             auto hi_re     = tupi::group_invoke(tupi::get<1>, regrouped);
