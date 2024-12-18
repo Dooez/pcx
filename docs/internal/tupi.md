@@ -4,6 +4,20 @@ and the components of a compound operation are called 'stages'.
 Explicitly pipelining operations is performing stages of multiple pipelined opeartions
 one stage number at a time for all operations interleaved.
 
+Special inline objects:
+[pass](#pass)
+[apply](#apply)
+Pipeable inline object
+[get](#get)                
+[make_tuple](#make_tuple)         
+[forward_as_tuple](#forward_asup)   
+[tuple_cat](#tuple_cat)          
+[make_broadcast_tuple](#make_broadcast_tuple) 
+[make_flat_tuple](#make_flat_tuple)      
+[invoke](#invoke)               
+[group_invoke](#group_invoke)       
+[pipeline](#pipeline)            
+
 # Concepts
 ## any_tuple
 Concept is satisfied by any specialization of `tupi::tuple`.
