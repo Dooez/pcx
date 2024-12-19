@@ -2,10 +2,12 @@
 #include "pcx/include/fft_impl.hpp"
 
 #include <complex>
+#include <cstddef>
 #include <print>
 #include <ranges>
 namespace stdv = std::views;
 
+// NOLINTBEGIN (*pointer-arithmetic*)
 
 using namespace pcx;
 
@@ -85,6 +87,27 @@ void bar8(std::complex<f32>* dest, auto&& tw) {
     }
 };
 
+
+template<uZ VecSize, uZ VecCount>    // 32 for avx512
+void naive_single_load(std::complex<f32>* data, std::complex<f32>* tw_ptr) {
+    // skip steps stat dont cross simd vector boundary
+
+    auto step     = VecSize / 2;
+    auto n_groups = VecCount;
+    while (step >= 1) {
+        for (uZ k = 0; k < n_groups; ++k) {
+            uZ start = k * step * 2;
+            for (uZ i = 0; i < step; ++i) {
+                pcxt::btfly(data + start + i, data + start + i + step, *tw_ptr);    //
+                ++tw_ptr;
+            }
+        }
+        step /= 2;
+        n_groups *= 2;
+    }
+}
+
+// NOLINTEND (*pointer-arithmetic*)
 int main() {
     constexpr auto tw = [] {
         auto arr = std::array<std::complex<f32>, 7>{};
@@ -95,7 +118,7 @@ int main() {
         return arr;
     }();
     auto data_bar = [] {
-        auto arr = std::array<std::complex<f32>, 16 * 8>{};
+        auto arr = std::array<std::complex<f32>, static_cast<std::size_t>(16 * 8)>{};
         for (auto [i, v]: stdv::enumerate(arr))
             // v = std::complex(i * i, -i * i * i);
             v = i;

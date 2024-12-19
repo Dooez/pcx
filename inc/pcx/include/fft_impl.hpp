@@ -514,7 +514,9 @@ struct subtransform {
     static constexpr auto load_tw =
         tupi::pass    
         | []<uZ IGroup>(const T* tw_ptr, uZc<IGroup>) {
-            return simd::cxload<Count>(tw_ptr + Count * (2 * IGroup));
+            // return simd::cxload<Count, Count>(tw_ptr + Count * (2 * IGroup));
+            auto tw = simd::cxload<1, Count>(tw_ptr + Count * (2 * IGroup));
+            return simd::repack<Count>(tw);
           }
         | tupi::group_invoke(vec_traits::upsample)    
         | tupi::apply                                                  
