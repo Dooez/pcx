@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <print>
 #include <ranges>
+#include <vector>
 namespace stdv = std::views;
 
 // NOLINTBEGIN (*pointer-arithmetic*)
@@ -40,8 +41,6 @@ void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
     *a        = a_c + b_tw;
     *b        = a_c - b_tw;
 }
-
-
 };    // namespace pcxt
 
 void foo(std::complex<f32>* dest, const std::array<std::complex<f32>, 7>& tw) {
@@ -88,24 +87,94 @@ void bar8(std::complex<f32>* dest, auto&& tw) {
 };
 
 
-template<uZ VecSize, uZ VecCount>    // 32 for avx512
-void naive_single_load(std::complex<f32>* data, std::complex<f32>* tw_ptr) {
-    // skip steps stat dont cross simd vector boundary
-
-    auto step     = VecSize / 2;
-    auto n_groups = VecCount;
+auto log2i(u64 num) -> uZ {
+    u64 order = 0;
+    for (u8 shift = 32; shift > 0; shift /= 2) {
+        if (num >> shift > 0) {
+            order += num >> shift > 0 ? shift : 0;
+            num >>= shift;
+        }
+    }
+    return order;
+}
+template<uZ VecSize, uZ VecCount, typename T>    // 32 for avx512
+void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
+    auto fft_size = 2;
+    auto step     = VecSize * VecCount / 2;
+    auto n_groups = 1;
     while (step >= 1) {
         for (uZ k = 0; k < n_groups; ++k) {
-            uZ start = k * step * 2;
+            uZ   start = k * step * 2;
+            // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
+            // auto tw    = pcx::detail_::wnk<T>(fft_size, rk);
             for (uZ i = 0; i < step; ++i) {
+                // pcxt::btfly(data + start + i, data + start + i + step, tw);    //
                 pcxt::btfly(data + start + i, data + start + i + step, *tw_ptr);    //
-                ++tw_ptr;
             }
+            ++tw_ptr;
         }
         step /= 2;
         n_groups *= 2;
+        fft_size *= 2;
     }
 }
+
+
+template<uZ VecSize, uZ VecCount>    // 32 for avx512
+auto make_tw_seq(uZ start_offset = 0, uZ start_size = 2) {
+    // skip steps that don't cross simd vector boundary
+    auto twvec    = std::vector<std::complex<f32>>();
+    auto fft_size = start_size;
+    uZ   n_tw     = 1;
+    // uZ   n_tw     = VecCount;
+    while (n_tw <= VecSize * VecCount / 2) {
+        for (auto i: stdv::iota(0U, n_tw)) {
+            auto rk = pcx::detail_::reverse_bit_order(start_offset + i, log2i(fft_size) - 1);
+            auto tw = pcx::detail_::wnk<f32>(fft_size, rk);
+            twvec.push_back(tw);
+        }
+        start_offset *= 2;
+        fft_size *= 2;
+        n_tw *= 2;
+    }
+    return twvec;
+}
+
+constexpr auto is_pow_of_two(uZ n) {
+    return n > 0 && (n & (n - 1)) == 0;
+}
+
+void bit_reverse_sort(stdr::random_access_range auto& range) {
+    auto rsize = stdr::size(range);
+    if (!is_pow_of_two(rsize))
+        throw std::invalid_argument("Range size is not a power of two.");
+    auto depth = log2i(rsize);
+    for (auto i: stdv::iota(0U, rsize)) {
+        auto irev = pcx::detail_::reverse_bit_order(i, depth);
+        if (i < irev)
+            std::swap(range[i], range[irev]);
+    }
+}
+
+template<typename T>
+struct std::formatter<std::complex<T>, char> {
+    std::formatter<T, char> m_fmt;
+    template<class ParseContext>
+    constexpr auto parse(ParseContext& ctx) -> ParseContext::iterator {
+        return m_fmt.parse(ctx);
+    }
+
+    template<class FmtContext>
+    FmtContext::iterator format(std::complex<T> cxv, FmtContext& ctx) const {
+        *ctx.out() = "(";
+        auto out   = m_fmt.format(cxv.real(), ctx);
+        *(out++)   = ",";
+        *out       = " ";
+        out        = m_fmt.format(cxv.imag(), ctx);
+        *(out++)   = ")";
+        return out;
+    }
+};
 
 // NOLINTEND (*pointer-arithmetic*)
 int main() {
@@ -128,12 +197,45 @@ int main() {
     auto data_foo = data_bar;
     foo(data_foo.data(), tw);
     bar8(data_bar.data(), tw);
-    for (auto [f, b]: stdv::zip(data_foo, data_bar)) {
-        auto v = f - b;
-        std::print("({}, {}) ", v.real(), v.imag());
-        std::print("({}, {}) ", f.real(), f.imag());
-        std::print("({}, {})\n", b.real(), b.imag());
+    // for (auto [f, b]: stdv::zip(data_foo, data_bar)) {
+    //     auto v = f - b;
+    //     std::print("({}, {}) ", v.real(), v.imag());
+    //     std::print("({}, {}) ", f.real(), f.imag());
+    //     std::print("({}, {})\n", b.real(), b.imag());
+    // }
+    // std::println();
+
+
+    using fX                 = f32;
+    constexpr auto vec_size  = 16;
+    constexpr auto vec_count = 8;
+    constexpr auto fft_size  = vec_size * vec_count;
+    constexpr auto freq_n    = 1;
+
+    auto twvec   = make_tw_seq<vec_size, vec_count>();
+    auto datavec = [=]() {
+        auto vec = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v]: stdv::enumerate(vec)) {
+            v = std::exp(std::complex<fX>(0, 1)                 //
+                         * static_cast<fX>(2)                   //
+                         * static_cast<fX>(std::numbers::pi)    //
+                         * static_cast<fX>(i)                   //
+                         * static_cast<fX>(freq_n)              //
+                         / static_cast<fX>(fft_size));
+        }
+        return vec;
+    }();
+    auto datavec2 = datavec;
+    naive_single_load<vec_size, vec_count>(datavec.data(), twvec.data());
+    bit_reverse_sort(datavec);
+
+    std::println();
+
+    for (auto v: datavec) {
+        std::print("{:.2f} ", (v));
     }
     std::println();
+
+
     return 0;
 }

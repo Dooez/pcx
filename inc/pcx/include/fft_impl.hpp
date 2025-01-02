@@ -19,10 +19,12 @@ namespace pcx::detail_ {
 template<typename T>
 inline auto wnk(uZ n, uZ k) -> std::complex<T> {
     constexpr auto pi = std::numbers::pi;
-    if (n == k * 4)
-        return {0, -1};
     if (n == k * 2)
         return {-1, 0};
+    if (n == k * 4)
+        return {0, -1};
+    if (n == k * 4 / 3)
+        return {0, 1};
     return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
 consteval auto log2i(u64 num) -> uZ {
