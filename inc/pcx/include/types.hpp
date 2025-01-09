@@ -132,17 +132,17 @@ struct cx_vec {
     vec_t m_real;
     vec_t m_imag;
 
-    PCX_AINLINE auto real() -> vec_t& {
-        return m_real;
+    PCX_AINLINE auto real(this auto&& v) -> decltype(auto) {
+        return v.m_real;
     }
-    PCX_AINLINE auto imag() -> vec_t& {
-        return m_imag;
+    PCX_AINLINE auto imag(this auto&& v) -> decltype(auto) {
+        return v.m_imag;
     }
-    PCX_AINLINE auto real_v() -> auto& {
-        return m_real.value;
+    PCX_AINLINE auto real_v(this auto&& v) -> decltype(auto) {
+        return v.m_real.value;
     }
-    PCX_AINLINE auto imag_v() -> auto& {
-        return m_imag.value;
+    PCX_AINLINE auto imag_v(this auto&& v) -> decltype(auto) {
+        return v.m_imag.value;
     }
 
     static consteval auto width() -> uZ {
@@ -184,7 +184,6 @@ struct cx_vec {
     friend auto get(const cx_vec& vec) {
         if constexpr (I == 0) {
             return vec.real();
-
         } else {
             return vec.imag();
         }

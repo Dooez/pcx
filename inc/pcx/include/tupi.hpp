@@ -110,7 +110,8 @@ struct get_t : public pipe_mixin {
     template<tuple_like_cvref T>
         requires(I < tuple_cvref_size_v<T>)
     PCX_AINLINE constexpr static auto operator()(T&& v) -> decltype(auto) {
-        return std::get<I>(std::forward<T>(v));
+        // return std::get<I>(std::forward<T>(v));
+        return get<I>(std::forward<T>(v));
     }
 };
 struct make_tuple_t : public pipe_mixin {
@@ -330,7 +331,7 @@ struct compound_functor_t
         return std::forward<F>(f).call(std::forward<Args>(args)...);
     };
     template<uZ I, typename G>
-        requires(std::same_as<std::remove_cvref_t<G>, compound_functor_t>)
+        requires(std::derived_from<std::remove_cvref_t<G>, compound_functor_t>)
     constexpr friend auto get_stage(G&& g) {    // NOLINT(*std-forward*)
         return stage_t<std::add_pointer_t<G>, I>{.fptr = &g};
     }
@@ -473,7 +474,7 @@ struct pipelined_t
         return std::forward<F>(f).call(std::forward<Tup>(args));
     }
     template<uZ I, typename F>
-        requires std::same_as<std::remove_cvref_t<F>, pipelined_t>
+        requires std::derived_from<std::remove_cvref_t<F>, pipelined_t>
     friend constexpr auto get_stage(F&& f) {    // NOLINT(*std-forward*)
         return stage_t<std::add_pointer_t<F>, I>{.ref = &f};
     }

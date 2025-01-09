@@ -151,7 +151,7 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
 
 
 template<uZ VecSize, uZ VecCount>    // 32 for avx512
-auto make_tw_seq(uZ start_offset = 0, uZ start_size = 2) {
+auto make_tw_vec(uZ start_offset = 0, uZ start_size = 2) {
     // skip steps that don't cross simd vector boundary
     auto twvec    = std::vector<std::complex<f32>>();
     auto fft_size = start_size;
@@ -242,7 +242,7 @@ int main() {
     constexpr auto fft_size  = vec_size * vec_count;
     constexpr auto freq_n    = 7;
 
-    auto twvec   = make_tw_seq<vec_size, vec_count>();
+    auto twvec   = make_tw_vec<vec_size, vec_count>();
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
         for (auto [i, v]: stdv::enumerate(vec)) {
@@ -257,7 +257,13 @@ int main() {
     }();
     auto datavec2 = datavec;
     naive_single_load<vec_size, vec_count>(datavec.data(), twvec.data());
-    bit_reverse_sort(datavec);
+    // bit_reverse_sort(datavec);
+    //
+    using fimpl    = pcx::detail_::subtransform<vec_count, f32, vec_size>;
+    auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
+    auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
+    fimpl::single_load<1, 1>(data_ptr, data_ptr, tw_ptr);
+
 
     std::println();
 
