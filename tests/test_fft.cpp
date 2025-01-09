@@ -97,6 +97,36 @@ auto log2i(u64 num) -> uZ {
     }
     return order;
 }
+template<typename T>
+struct is_std_complex : std::false_type {};
+template<typename T>
+struct is_std_complex<std::complex<T>> : std::true_type {};
+
+template<typename R>
+    requires stdr::random_access_range<R> && is_std_complex<stdr::range_value_t<R>>::value
+void naive_fft(R& data) {
+    auto rsize = stdr::size(data);
+    if (!is_pow_of_two(rsize))
+        throw std::invalid_argument("Data size is not a power of two.");
+    using cx_t    = stdr::range_value_t<R>;
+    auto fft_size = 2;
+    auto step     = rsize / 2;
+    auto n_groups = 1;
+    while (step >= 1) {
+        for (uZ k = 0; k < n_groups; ++k) {
+            uZ   start = k * step * 2;
+            auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
+            auto tw    = pcx::detail_::wnk<cx_t>(fft_size, rk);
+            for (uZ i = 0; i < step; ++i) {
+                pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
+            }
+        }
+        step /= 2;
+        n_groups *= 2;
+        fft_size *= 2;
+    }
+}
+
 template<uZ VecSize, uZ VecCount, typename T>    // 32 for avx512
 void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
     auto fft_size = 2;
@@ -104,7 +134,7 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
     auto n_groups = 1;
     while (step >= 1) {
         for (uZ k = 0; k < n_groups; ++k) {
-            uZ   start = k * step * 2;
+            uZ start = k * step * 2;
             // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
             // auto tw    = pcx::detail_::wnk<T>(fft_size, rk);
             for (uZ i = 0; i < step; ++i) {
@@ -210,7 +240,7 @@ int main() {
     constexpr auto vec_size  = 16;
     constexpr auto vec_count = 8;
     constexpr auto fft_size  = vec_size * vec_count;
-    constexpr auto freq_n    = 1;
+    constexpr auto freq_n    = 7;
 
     auto twvec   = make_tw_seq<vec_size, vec_count>();
     auto datavec = [=]() {
@@ -232,10 +262,8 @@ int main() {
     std::println();
 
     for (auto v: datavec) {
-        std::print("{:.2f} ", (v));
+        std::print("{:.2f} ", abs(v));
     }
     std::println();
-
-
     return 0;
 }

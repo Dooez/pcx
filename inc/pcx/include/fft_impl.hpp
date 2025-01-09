@@ -16,18 +16,7 @@ constexpr struct btfly_t {
 
 namespace pcx::detail_ {
 
-template<typename T>
-inline auto wnk(uZ n, uZ k) -> std::complex<T> {
-    constexpr auto pi = std::numbers::pi;
-    if (n == k * 2)
-        return {-1, 0};
-    if (n == k * 4)
-        return {0, -1};
-    if (n == k * 4 / 3)
-        return {0, 1};
-    return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
-}
-consteval auto log2i(u64 num) -> uZ {
+constexpr auto log2i(u64 num) -> uZ {
     u64 order = 0;
     for (u8 shift = 32; shift > 0; shift /= 2) {
         if (num >> shift > 0) {
@@ -59,6 +48,34 @@ constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
     num = (num & 0xAAAAAAAAAAAAAAAAU) >> 1U | (num & 0x5555555555555555U) << 1U;
     //NOLINTEND(*magic-numbers*)
     return num >> (64 - depth);
+}
+template<typename T = f64>
+inline auto wnk(uZ n, uZ k) -> std::complex<T> {
+    while (k > 0 && k % 2 == 0) {
+        k /= 2;
+        n /= 2;
+    }
+    constexpr auto pi = std::numbers::pi;
+    if (n == k * 2)
+        return {-1, 0};
+    if (n == k * 4)
+        return {0, -1};
+    if (k > n / 4)
+        return static_cast<std::complex<T>>(std::complex<f64>(0, -1) * wnk(n, k - n / 4));
+    return static_cast<std::complex<T>>(
+        std::exp(std::complex<f64>(0, -2 * pi * static_cast<f64>(k) / static_cast<f64>(n))));
+}
+/**
+ * @brief Returnes twiddle factor with k bit-reversed
+ */
+template<typename T = f64>
+inline auto wnk_br(uZ n, uZ k) -> std::complex<T> {
+    while (k % 2 == 0) {
+        k /= 2;
+        n /= 2;
+    }
+    k = reverse_bit_order(k, log2i(n));
+    return wnk<T>(n, k);
 }
 constexpr auto next_pow_2(u64 v) {
     v--;
