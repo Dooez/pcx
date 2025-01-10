@@ -114,6 +114,15 @@ struct get_t : public pipe_mixin {
         return get<I>(std::forward<T>(v));
     }
 };
+template<uZ I>
+struct get_copy_t : public pipe_mixin {
+    template<tuple_like_cvref T>
+        requires(I < tuple_cvref_size_v<T>)
+    PCX_AINLINE constexpr static auto operator()(T&& v) {
+        // return std::get<I>(std::forward<T>(v));
+        return get<I>(std::forward<T>(v));
+    }
+};
 struct make_tuple_t : public pipe_mixin {
     template<typename... Args>
     PCX_AINLINE constexpr static auto operator()(Args&&... args) {
@@ -191,7 +200,9 @@ struct make_flat_tuple_t : public pipe_mixin {
 }    // namespace detail_
 
 template<uZ I>
-inline constexpr auto get              = detail_::get_t<I>{};
+inline constexpr auto get = detail_::get_t<I>{};
+template<uZ I>
+inline constexpr auto get_copy         = detail_::get_copy_t<I>{};
 inline constexpr auto make_tuple       = detail_::make_tuple_t{};
 inline constexpr auto forward_as_tuple = detail_::forward_as_tuple_t{};
 inline constexpr auto tuple_cat        = detail_::tuple_cat_t{};

@@ -133,6 +133,8 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
     auto step     = VecSize * VecCount / 2;
     auto n_groups = 1;
     while (step >= 1) {
+        if (step == VecSize / 2)
+            return;
         for (uZ k = 0; k < n_groups; ++k) {
             uZ start = k * step * 2;
             // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
@@ -240,7 +242,7 @@ int main() {
     constexpr auto vec_size  = 16;
     constexpr auto vec_count = 8;
     constexpr auto fft_size  = vec_size * vec_count;
-    constexpr auto freq_n    = 7;
+    constexpr auto freq_n    = 64;
 
     auto twvec   = make_tw_vec<vec_size, vec_count>();
     auto datavec = [=]() {
@@ -265,11 +267,22 @@ int main() {
     fimpl::single_load<1, 1>(data_ptr, data_ptr, tw_ptr);
 
 
+    //
+    // for (auto v: datavec) {
+    //     std::print("{:.2f} ", abs(v));
+    // }
+    // std::println();
+    // for (auto v: datavec2) {
+    //     std::print("{:.2f} ", abs(v));
+    // }
     std::println();
 
-    for (auto v: datavec) {
-        std::print("{:.2f} ", abs(v));
+    for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
+        std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",
+                     i,
+                     abs(naive),
+                     abs(pcx),
+                     abs(naive - pcx));
     }
-    std::println();
     return 0;
 }

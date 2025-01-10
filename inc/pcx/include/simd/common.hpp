@@ -115,15 +115,15 @@ struct cxstore_t {
 
 template<uZ SrcPackSize, uZ Width = 0>
     requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
-inline constexpr auto cxbroadcast = detail_::cxbroadcast_t<SrcPackSize, Width>{};
+inline constexpr auto cxbroadcast = tupi::pass | detail_::cxbroadcast_t<SrcPackSize, Width>{};
 
 template<uZ SrcPackSize, uZ Width = 0>
     requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
-inline constexpr auto cxload = detail_::cxload_t<SrcPackSize, Width>{};
+inline constexpr auto cxload = tupi::pass | detail_::cxload_t<SrcPackSize, Width>{};
 
 template<uZ DestPackSize>
     requires power_of_two<DestPackSize>
-inline constexpr auto cxstore = detail_::cxstore_t<DestPackSize>{};
+inline constexpr auto cxstore = tupi::pass | detail_::cxstore_t<DestPackSize>{};
 
 // clang-format off
 template<uZ PackTo>
@@ -146,8 +146,8 @@ static constexpr auto repack =
       }
     ;
 // clang-format on
-
-inline constexpr struct {
+namespace detail_ {
+struct evaluate_t {
     template<tight_cx_vec V>
         requires(!eval_cx_vec<V>)
     PCX_AINLINE auto operator()(V vec) const {
@@ -170,7 +170,9 @@ inline constexpr struct {
     PCX_AINLINE auto operator()(V vec) const {
         return vec;
     }
-} evaluate;
+};
+}    // namespace detail_
+inline constexpr auto evaluate = tupi::pass | detail_::evaluate_t{};
 
 }    // namespace pcx::simd
 #endif
