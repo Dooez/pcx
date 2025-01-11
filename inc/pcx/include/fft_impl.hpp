@@ -542,9 +542,13 @@ struct subtransform {
         | []<uZ IGroup>(const T* tw_ptr, uZc<IGroup>) {
             // return simd::cxload<Count, Count>(tw_ptr + Count * (2 * IGroup));
             auto tw = simd::cxload<1, Count>(tw_ptr + Count * (2 * IGroup));
-            return simd::repack<Count>(tw);
+            // auto twr = simd::repack<Count>(tw);
+            return tw;
           }
-        | tupi::group_invoke([](auto v){return vec_traits::upsample(v.value);})    
+        | tupi::group_invoke([](auto v){
+                auto x = vec_traits::upsample(v.value);
+                return x;
+                })    
         | tupi::apply                                                  
         | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
 

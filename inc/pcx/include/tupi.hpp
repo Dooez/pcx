@@ -94,12 +94,16 @@ struct pipe_mixin {
 struct call_mixin {
     template<typename G, typename... Args>
     PCX_AINLINE constexpr auto call(this G&& g, Args&&... args) -> decltype(auto) {
-        return [&]<uZ I, typename... IArgs>(this auto invoker, uZc<I>, IArgs&&... args) -> decltype(auto) {
-            using res_t = decltype(get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(args)...));
+        return [&]<uZ I, typename... IArgs>(this auto invoker, uZc<I>, IArgs&&... iargs) -> decltype(auto) {
+            using res_t = decltype(get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(iargs)...));
             if constexpr (final_result_cvref<res_t>) {
-                return get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(args)...);
+                return get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(iargs)...);
             } else {
-                return invoker(uZc<I + 1>{}, get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(args)...));
+                auto i       = I;
+                auto x       = g;
+                auto stage   = get_stage<I>(std::forward<G>(g));
+                auto tmp_res = get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(iargs)...);
+                return invoker(uZc<I + 1>{}, tmp_res);
             }
         }(uZc<0>{}, std::forward<Args>(args)...);
     }
@@ -133,6 +137,13 @@ struct forward_as_tuple_t : public pipe_mixin {
     template<typename... Args>
     PCX_AINLINE constexpr static auto operator()(Args&&... args) {
         return tuple<Args&&...>{std::forward<Args>(args)...};
+    }
+};
+struct capture_args_tuple_t : public pipe_mixin {
+    template<typename... Args>
+    PCX_AINLINE constexpr static auto operator()(Args&&... args) {
+        auto x = tuple<Args...>{std::forward<Args>(args)...};
+        return x;
     }
 };
 
@@ -209,6 +220,7 @@ inline constexpr auto tuple_cat        = detail_::tuple_cat_t{};
 template<uZ TupleSize>
 inline constexpr auto make_broadcast_tuple = detail_::make_broadcast_tuple_t<TupleSize>{};
 inline constexpr auto make_flat_tuple      = detail_::make_flat_tuple_t{};
+inline constexpr auto capture_args_tuple   = detail_::capture_args_tuple_t{};
 
 namespace detail_ {
 template<typename T, uZ I>
@@ -389,23 +401,24 @@ private:
         template<uZ OpIdx, uZ OpStage, typename IR>
         constexpr auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) const {
             if constexpr (OpStage > 0 || compound_op_cvref<tuple_element_t<OpIdx, ops_t>>) {
-                using res_t = decltype(get_stage<OpStage>(get<OpIdx>(fptr->ops))(wr.result));
+                using res_t =
+                    decltype(get_stage<OpStage>(get<OpIdx>(fptr->ops))(static_cast<IR&&>(wr.result)));
                 if constexpr (final_result_cvref<res_t>) {
                     if constexpr (OpIdx == op_count - 1) {
-                        return get_stage<OpStage>(get<OpIdx>(fptr->ops))(wr.result);
+                        return get_stage<OpStage>(get<OpIdx>(fptr->ops))(static_cast<IR&&>(wr.result));
                     } else {
                         return wrap_interim<OpIdx + 1, 0>(
-                            get_stage<OpStage>(get<OpIdx>(fptr->ops))(wr.result));
+                            get_stage<OpStage>(get<OpIdx>(fptr->ops))(static_cast<IR&&>(wr.result)));
                     }
                 } else {
                     return wrap_interim<OpIdx, OpStage + 1>(
-                        get_stage<OpStage>(get<OpIdx>(fptr->ops))(wr.result));
+                        get_stage<OpStage>(get<OpIdx>(fptr->ops))(static_cast<IR&&>(wr.result)));
                 }
             } else {
                 if constexpr (OpIdx == op_count - 1) {
-                    return get<OpIdx>(fptr->ops)(wr.result);
+                    return get<OpIdx>(fptr->ops)(static_cast<IR&&>(wr.result));
                 } else {
-                    return wrap_interim<OpIdx + 1, 0>(get<OpIdx>(fptr->ops)(wr.result));
+                    return wrap_interim<OpIdx + 1, 0>(get<OpIdx>(fptr->ops)(static_cast<IR&&>(wr.result)));
                 }
             }
         };
@@ -413,8 +426,8 @@ private:
 };
 struct pass_t {
     template<typename Arg>
-    PCX_AINLINE static auto operator()(Arg&& arg) -> decltype(auto) {
-        return std::forward<Arg>(arg);
+    PCX_AINLINE static auto operator()(Arg&& arg) -> Arg {
+        return arg;
     }
     template<typename F>
         requires(!std::same_as<std::remove_cvref_t<F>, detail_::apply_t>)
@@ -463,11 +476,12 @@ private:
         }
         template<typename Fptr, typename IR>
         constexpr static auto operator()(interim_wrapper<Fptr, IR> wrapper) -> decltype(auto) {
-            using res_t = decltype(get_stage<I>(*wrapper.fptr)(wrapper.result));
+            using res_t = decltype(get_stage<I>(*wrapper.fptr)(static_cast<IR&&>(wrapper.result)));
             if constexpr (final_result<res_t>) {
-                return get_stage<I>(*wrapper.fptr)(wrapper.result);
+                return get_stage<I>(*wrapper.fptr)(static_cast<IR&&>(wrapper.result));
             } else {
-                return wrap_interim(wrapper.fptr, get_stage<I>(*wrapper.fptr)(wrapper.result));
+                return wrap_interim(wrapper.fptr,
+                                    get_stage<I>(*wrapper.fptr)(static_cast<IR&&>(wrapper.result)));
             }
         }
     };
@@ -536,8 +550,8 @@ struct group_invoke_t
     static constexpr auto operator()(F&& f) {
         // clang-format off
         return pass_t{}                                          
-               | [f = std::forward<F>(f)](auto&&... args){
-                   return std::forward_as_tuple(f, std::forward<decltype(args)>(args)...);
+               | [f = std::forward<F>(f)]<typename... Args>(Args&&... args){
+                   return capture_args_tuple(f, std::forward<Args>(args)...);
                  }
                | apply_t{}    //
                | group_invoke_t{};
@@ -560,8 +574,8 @@ private:
         Fptr fptr;
         IR   result;
     };
-    template<typename T>
-    struct is_interim_wrapper : public std::false_type {};
+    // template<typename T>
+    // struct is_interim_wrapper : public std::false_type {};
     template<typename Fptr, typename IR>
     static auto wrap_interim(Fptr fptr, IR&& result) {
         return interim_wrapper<Fptr, IR>{.fptr = fptr, .result = std::forward<IR>(result)};
@@ -575,7 +589,9 @@ private:
             constexpr auto group_count = std::min({tuple_cvref_size_v<Tups>...});
             return [&]<uZ... Is>(std::index_sequence<Is...>) {
                 auto invoke_group = [&]<uZ IGrp>(uZc<IGrp>) -> decltype(auto) {
+                    auto igrp         = IGrp;
                     auto invoke_stage = [&]<typename... Args>(Args&&... args) -> decltype(auto) {
+                        auto igrp = IGrp;
                         if constexpr (compound_op_cvref<F>) {
                             return get_stage<0>(std::forward<F>(f))(std::forward<Args>(args)...);
                         } else {
@@ -630,9 +646,9 @@ private:
         }
     };
 };
-template<typename Fptr, typename IR>
-struct group_invoke_t::is_interim_wrapper<group_invoke_t::interim_wrapper<Fptr, IR>>
-: public std::true_type {};
+// template<typename Fptr, typename IR>
+// struct group_invoke_t::is_interim_wrapper<group_invoke_t::interim_wrapper<Fptr, IR>>
+// : public std::true_type {};
 
 struct pipeline_t : public detail_::pipe_mixin {
     template<typename... Fs>
