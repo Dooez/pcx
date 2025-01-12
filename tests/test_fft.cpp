@@ -133,8 +133,8 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
     auto step     = VecSize * VecCount / 2;
     auto n_groups = 1;
     while (step >= 1) {
-        if (step == VecSize / 2)
-            return;
+        // if (step == VecSize / 16)
+        //     return;
         for (uZ k = 0; k < n_groups; ++k) {
             uZ start = k * step * 2;
             // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
@@ -280,9 +280,9 @@ int main() {
     for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
         std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",
                      i,
-                     abs(naive),
-                     abs(pcx),
-                     abs(naive - pcx));
+                     (naive),
+                     (pcx),
+                     (naive - pcx));
     }
     return 0;
 }

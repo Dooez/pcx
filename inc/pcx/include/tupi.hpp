@@ -139,6 +139,18 @@ struct forward_as_tuple_t : public pipe_mixin {
         return tuple<Args&&...>{std::forward<Args>(args)...};
     }
 };
+
+template<typename T>
+struct capture {
+    using type = T;
+};
+template<typename T>
+struct capture<T&&> {
+    using type = T;
+};
+template<typename T>
+using capture_t = capture<T>::type;
+
 struct capture_args_tuple_t : public pipe_mixin {
     template<typename... Args>
     PCX_AINLINE constexpr static auto operator()(Args&&... args) {
@@ -377,7 +389,7 @@ private:
 
         template<typename... Args>
             requires(I == 0)
-        constexpr auto operator()(Args&&... args) const {
+        constexpr auto operator()(Args&&... args) const -> decltype(auto) {
             if constexpr (compound_op_cvref<tuple_element_t<0, ops_t>>) {
                 using res_t = decltype(get_stage<0>(get<0>(fptr->ops))(std::forward<Args>(args)...));
                 if constexpr (final_result<res_t>) {
@@ -399,7 +411,7 @@ private:
             }
         };
         template<uZ OpIdx, uZ OpStage, typename IR>
-        constexpr auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) const {
+        constexpr auto operator()(interim_wrapper<OpIdx, OpStage, IR> wr) const -> decltype(auto) {
             if constexpr (OpStage > 0 || compound_op_cvref<tuple_element_t<OpIdx, ops_t>>) {
                 using res_t =
                     decltype(get_stage<OpStage>(get<OpIdx>(fptr->ops))(static_cast<IR&&>(wr.result)));
@@ -456,8 +468,8 @@ private:
         IR   result;
     };
     template<typename Fptr, typename IR>
-    static constexpr auto wrap_interim(Fptr fptr, IR res) {
-        return interim_wrapper<Fptr, IR>{.fptr = fptr, .result = res};
+    static constexpr auto wrap_interim(Fptr fptr, IR&& result) {
+        return interim_wrapper<Fptr, IR>{.fptr = fptr, .result = std::forward<IR>(result)};
     }
     template<uZ I>
     struct stage_t {
@@ -534,9 +546,11 @@ private:
                      && ...);
                 using ret_t = std::conditional_t<
                     final,
-                    tuple<decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(std::forward<Tup>(args))))...>,
-                    interim_tuple<decltype(invoke_stage(get<OpIs>(ref->ops),
-                                                        get<OpIs>(std::forward<Tup>(args))))...>>;
+                    tuple<detail_::capture_t<    //
+                        decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(std::forward<Tup>(args))))>...>,
+                    interim_tuple<detail_::capture_t<    //
+                        decltype(invoke_stage(get<OpIs>(ref->ops), get<OpIs>(std::forward<Tup>(args))))>...>>;
+
                 return ret_t{invoke_stage(get<OpIs>(ref->ops), get<OpIs>(std::forward<Tup>(args)))...};
             }(std::make_index_sequence<op_count>{});
         }

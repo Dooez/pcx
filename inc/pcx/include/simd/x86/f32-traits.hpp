@@ -140,6 +140,9 @@ struct vec_traits<f32, 4> {
             auto a = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(vec.data())));
             return _mm_unpacklo_ps(a, a);
         }
+        PCX_AINLINE auto operator()(impl_vec v) const -> impl_vec {
+            return v;
+        }
     } upsample{};
 
     template<uZ To, uZ From>
@@ -274,6 +277,9 @@ struct vec_traits<f32, 8> {
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
             return tupi::make_tuple(_mm256_permutevar8x32_ps(_mm256_castps128_ps256(vec), idx4));
+        }
+        PCX_AINLINE auto operator()(impl_vec v) const -> impl_vec {
+            return v;
         }
     } up_stage0{};
     static constexpr struct {
@@ -426,9 +432,9 @@ struct vec_traits<f32, 8>::repack_t<4, 1> {
 template<>
 struct vec_traits<f32, 8>::repack_t<8, 1>
 : public decltype(tupi::pass                                //
-                  | vec_traits<f32, 8>::repack_t<8, 4>{}    //
+                  | vec_traits<f32, 8>::repack_t<4, 1>{}    //
                   | tupi::apply                             //
-                  | vec_traits<f32, 8>::repack_t<4, 1>{}) {};
+                  | vec_traits<f32, 8>::repack_t<8, 4>{}) {};
 
 #ifdef PCX_AVX512
 template<>
@@ -485,16 +491,20 @@ struct vec_traits<f32, 16> {
         PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec v) const -> impl_vec {
             auto v128 = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(v.data())));
             auto vs   = _mm512_zextps128_ps512(v128);
-            return _mm512_permutevar_ps(vs, idx2);
+            return _mm512_permutexvar_ps(idx2, vs);
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec v) const -> impl_vec {
             auto vs = _mm512_zextps128_ps512(v);
-            return _mm512_permutevar_ps(vs, idx4);
+            return _mm512_permutexvar_ps(idx4, vs);
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 8>::impl_vec v) const -> impl_vec {
             auto vs = _mm512_zextps256_ps512(v);
-            return _mm512_permutevar_ps(vs, idx8);
+            return _mm512_permutexvar_ps(idx8, vs);
         }
+        PCX_AINLINE auto operator()(impl_vec v) const -> impl_vec {
+            return v;
+        }
+
     } upsample{};
 
     template<uZ To, uZ From>
