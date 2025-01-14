@@ -439,7 +439,7 @@ private:
 struct pass_t {
     template<typename Arg>
     PCX_AINLINE static auto operator()(Arg&& arg) -> Arg {
-        return arg;
+        return std::forward<Arg>(arg);
     }
     template<typename F>
         requires(!std::same_as<std::remove_cvref_t<F>, detail_::apply_t>)

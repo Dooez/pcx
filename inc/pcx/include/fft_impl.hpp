@@ -441,7 +441,7 @@ struct subtransform {
                 return f(lo, hi, uZc<NGroups * 2>{});
             }
         }(data_lo, data_hi);
-        auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
+        auto btfly_res_1 = tupi::group_invoke(regroup<1>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
         auto res_eval    = tupi::group_invoke(simd::evaluate, res);
         auto res_rep     = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
@@ -477,12 +477,13 @@ struct subtransform {
         auto data_hi = [&btfly_res_0]<uZ... Is>(std::index_sequence<Is...>) {
             return tupi::make_tuple(get<Is * 2 + 1>(btfly_res_0)...);
         }(half_node_idxs);
-        auto [lo, hi] = [&tw_ptr]<uZ NGroups = 2> PCX_LAINLINE(this auto f,
+        constexpr auto stop_cnt = 16;
+        auto [lo, hi]           = [&tw_ptr]<uZ NGroups = 2> PCX_LAINLINE(this auto f,
                                                                auto      data_lo,
                                                                auto      data_hi,
                                                                uZc<NGroups> = {}) {
             if constexpr (NGroups == Width) {
-                // if constexpr (NGroups == 4) {
+                // if constexpr (NGroups == stop_cnt) {
                 return regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
             } else {
                 auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
@@ -490,10 +491,12 @@ struct subtransform {
                 return f(lo, hi, uZc<NGroups * 2>{});
             }
         }(data_lo, data_hi);
-        auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
+        // auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
+        // auto btfly_res_1 = tupi::group_invoke(regroup<Width / stop_cnt>    //
+        auto btfly_res_1 = tupi::group_invoke(regroup_old<1, Width>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
-        // auto res      = tupi::make_flat_tuple(btfly_res_0);
-        // auto res      = tupi::make_flat_tuple(tupi::make_tuple(lo, hi));
+        // auto res = tupi::make_flat_tuple(btfly_res_0);
+        // auto res = tupi::make_flat_tuple(tupi::make_tuple(lo, hi));
         // auto res_eval = tupi::group_invoke(simd::evaluate, res);
         // auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
         auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
@@ -509,7 +512,9 @@ struct subtransform {
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
             auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
 
-            auto regrouped = tupi::group_invoke(regroup<Width, Width / NGroups>, lo, hi);
+            auto n_groups = NGroups;
+            // auto regrouped = tupi::group_invoke(regroup<Width, Width / NGroups>, lo, hi);
+            auto regrouped = tupi::group_invoke(regroup<Width / NGroups>, lo, hi);
             auto tw        = tupi::group_invoke(load_tw<NGroups>, tw_tup, half_node_tuple);
             // constexpr auto regr_ltw =
             //     tupi::make_tuple
@@ -526,7 +531,12 @@ struct subtransform {
             // auto btfly_res = tupi::group_invoke(simd::btfly, lo_re, hi_re);
             auto new_lo = tupi::group_invoke(tupi::get_copy<0>, btfly_res);
             auto new_hi = tupi::group_invoke(tupi::get_copy<1>, btfly_res);
+
+            // auto new_reg = tupi::group_invoke(regroup<Width / NGroups, Width>, new_lo, new_hi);
+            // auto new_rlo = tupi::group_invoke(tupi::get_copy<0>, new_reg);
+            // auto new_rhi = tupi::group_invoke(tupi::get_copy<1>, new_reg);
             return tupi::make_tuple(new_lo, new_hi);
+            // return tupi::make_tuple(new_rlo, new_rhi);
         }
 
     private:
@@ -555,10 +565,10 @@ struct subtransform {
         | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
 
     template<uZ GroupTo, uZ GroupFrom>
-    static constexpr auto regroup = 
+    static constexpr auto regroup_old = 
         tupi::pass 
         | []<simd::any_cx_vec V>(V a, V b) 
-            requires(GroupTo <= V::width()) && (GroupFrom <= V::width()) 
+            requires(GroupTo <= V::width()) //&& (GroupFrom <= V::width()) 
           {
             auto re = tupi::make_tuple(a.real_v(), b.real_v());
             auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
@@ -566,6 +576,24 @@ struct subtransform {
           }
         | tupi::pipeline(tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>, 
                          tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,
+                         tupi::pass)
+        | tupi::apply
+        | []<typename V>(auto re, auto im, meta::types<V>){
+            return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    
+                                    V{.m_real = get<1>(re), .m_imag = get<1>(im)});
+          };
+    template<uZ GroupTo>//, uZ GroupFrom>
+    static constexpr auto regroup = 
+        tupi::pass 
+        | []<simd::any_cx_vec V>(V a, V b) 
+            requires(GroupTo <= V::width()) //&& (GroupFrom <= V::width()) 
+          {
+            auto re = tupi::make_tuple(a.real_v(), b.real_v());
+            auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
+            return tupi::make_tuple(re, im, meta::types<V>{});
+          }
+        | tupi::pipeline(tupi::apply | vec_traits::template split<GroupTo>, 
+                         tupi::apply | vec_traits::template split<GroupTo>,
                          tupi::pass)
         | tupi::apply
         | []<typename V>(auto re, auto im, meta::types<V>){
