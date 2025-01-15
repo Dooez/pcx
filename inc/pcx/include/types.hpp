@@ -104,7 +104,7 @@ struct vec_traits {
     };
     template<uZ To, uZ From>
         requires(To <= Width && From <= Width)
-    constexpr static auto repack = rapack_t<To, From>{};
+    constexpr static auto repack = repack_t<To, From>{};
 
     /**
      * @brief Splits two vectors in half by chunks of `ChunkSize` and returns vectors of interleaved even and odd chunks.
