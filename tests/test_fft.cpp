@@ -274,7 +274,7 @@ int main() {
     constexpr auto vec_size  = 16;
     constexpr auto vec_count = 8;
     constexpr auto fft_size  = vec_size * vec_count;
-    constexpr auto freq_n    = 3 * fft_size / 4;
+    constexpr auto freq_n    = 5;
 
     auto twvec   = make_tw_vec<vec_size, vec_count>();
     auto datavec = [=]() {

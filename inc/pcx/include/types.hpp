@@ -61,6 +61,11 @@ namespace simd {
 namespace detail_ {
 template<typename T>
 struct max_vec_width;
+
+/**
+ * @brief A structure with common operations over simd vectors.
+ * 
+ */
 template<typename T, uZ Width>
 struct vec_traits {
     struct impl_vec;
@@ -77,12 +82,51 @@ struct vec_traits {
     static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
 
+    /**
+     * @brief Extends a lower size simd vector by duplicating it's elements.
+     * 
+     * Example:
+     * Width == 8
+     * vec_traits<T, 4> v == [0 1 2 3]
+     * result == [0 0 1 1 2 2 3 3]
+     */
+    constexpr static struct {
+        static auto operator()(vec_traits<T, Width>::impl_vec v) -> impl_vec;
+        static auto operator()(vec_traits<T, Width / 2>::impl_vec v) -> impl_vec;
+        // . . .
+        // static auto operator()(vec_traits<T, 2>::impl_vec) -> impl_vec;
+    } upsample;
+
     template<uZ To, uZ From>
+        requires(To <= Width && From <= Width)
     struct repack_t {
         static auto operator()(impl_vec a, impl_vec b);    // -> tupi::tuple<impl_vec, impl_vec>;
     };
+    template<uZ To, uZ From>
+        requires(To <= Width && From <= Width)
+    constexpr static auto repack = rapack_t<To, From>{};
 
-    struct tup_width;
+    /**
+     * @brief Splits two vectors in half by chunks of `ChunkSize` and returns vectors of interleaved even and odd chunks.
+     *
+     * Example:
+     * Width == 8
+     * ChunkSize == 2
+     * a = [0 0 1 1 2 2 3 3]
+     * b = [4 4 5 5 6 6 7 7]
+     * result<0> = [0 0 4 4 2 2 6 6]
+     * result<1> = [1 1 5 5 3 3 7 7]
+     */
+    template<uZ ChunkSize>
+        requires(ChunkSize <= Width)
+    struct split_interleave_t {
+        static auto operator()(impl_vec a, impl_vec b);    // -> tupi::tuple<impl_vec, impl_vec>;
+    };
+    template<uZ ChunkSize>
+        requires(ChunkSize <= Width)
+    constexpr static auto split_interleave = split_interleave_t<ChunkSize>{};
+
+    struct tup_width;    // tupi::broadcast_tuple_t<impl_vec, Width>
     static auto bit_reverse(tup_width tup) -> tup_width;
 };
 }    // namespace detail_

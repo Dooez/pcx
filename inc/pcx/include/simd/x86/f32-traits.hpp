@@ -19,7 +19,9 @@ struct vec_traits;
 
 template<>
 struct vec_traits<f32, 2> {
-    using impl_vec = std::array<f32, 2>;
+    using impl_vec            = std::array<f32, 2>;
+    static constexpr uZ width = 2;
+
     PCX_AINLINE static auto set1(f32 value) -> impl_vec {
         return {value, value};
     }
@@ -58,8 +60,15 @@ struct vec_traits<f32, 2> {
         return {-a[0] * b[0] - c[0], -a[1] * b[1] - c[1]};
     }
 
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    struct split_interleave_t;
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    static constexpr auto split_interleave = split_interleave_t<ChunkSize>{};
+
     template<uZ To, uZ From>
-        requires(To <= 2 && From <= 2)
+        requires(To <= width && From <= width)
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
@@ -68,14 +77,14 @@ struct vec_traits<f32, 2> {
         };
     };
     template<uZ To, uZ From>
-        requires(To <= 2 && From <= 2)
+        requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
 
-    using sort_tup = tupi::broadcast_tuple_t<impl_vec, 2>;
-    PCX_AINLINE static auto bit_reverse(sort_tup tup) {
+    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
+    PCX_AINLINE static auto bit_reverse(tup_width tup) {
         auto first  = tupi::get<0>(tup);
         auto second = tupi::get<1>(tup);
-        return sort_tup{
+        return tup_width{
             {first[0], second[0]},
             {first[1], second[1]},
         };
@@ -96,8 +105,23 @@ struct vec_traits<f32, 2>::repack_t<2, 1> {
     };
 };
 template<>
+struct vec_traits<f32, 2>::split_interleave_t<1> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto x = impl_vec{a[0], b[0]};
+        auto y = impl_vec{a[1], b[1]};
+        return tupi::make_tuple(x, y);
+    }
+};
+template<>
+struct vec_traits<f32, 2>::split_interleave_t<2> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return tupi::make_tuple(a, b);
+    }
+};
+template<>
 struct vec_traits<f32, 4> {
-    using impl_vec = __m128;
+    using impl_vec                = __m128;
+    static constexpr uZ     width = 4;
     PCX_AINLINE static auto set1(f32 value) {
         return _mm_set1_ps(value);
     }
@@ -145,8 +169,30 @@ struct vec_traits<f32, 4> {
         }
     } upsample{};
 
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    struct split_interleave_t;
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    static constexpr auto split_interleave = split_interleave_t<ChunkSize>{};
+
+    struct sil1_helper_0 {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            auto x = _mm_shuffle_ps(a, b, 0b10001000);
+            auto y = _mm_shuffle_ps(a, b, 0b11011101);
+            return tupi::make_tuple(x, y);
+        }
+    };
+    struct sil1_helper_1 {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            auto x = _mm_shuffle_ps(a, a, 0b11011000);
+            auto y = _mm_shuffle_ps(b, b, 0b11011000);
+            return tupi::make_tuple(x, y);
+        }
+    };
+
     template<uZ To, uZ From>
-        requires(To <= 4 && From <= 4)
+        requires(To <= width && From <= width)
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
@@ -155,11 +201,11 @@ struct vec_traits<f32, 4> {
         };
     };
     template<uZ To, uZ From>
-        requires(To <= 4 && From <= 4)
+        requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
 
-    using tup4 = tupi::broadcast_tuple_t<impl_vec, 8>;
-    PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
+    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
+    PCX_AINLINE static auto bit_reverse(tup_width tup) noexcept {
         constexpr auto unpck1lo = [](impl_vec a, impl_vec b) noexcept { return _mm_unpacklo_ps(a, b); };
         constexpr auto unpck1hi = [](impl_vec a, impl_vec b) noexcept { return _mm_unpackhi_ps(a, b); };
         constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
@@ -183,6 +229,27 @@ struct vec_traits<f32, 4> {
         }(res2, std::index_sequence<0, 2>{});
         return resort;
     }
+};
+
+template<>
+struct vec_traits<f32, 4>::split_interleave_t<1>
+: public decltype(tupi::pass           //
+                  | sil1_helper_0{}    //
+                  | tupi::apply        //
+                  | sil1_helper_1{}) {};
+template<>
+struct vec_traits<f32, 4>::split_interleave_t<2> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto x = _mm_unpacklo_pd(a, b);
+        auto y = _mm_unpackhi_pd(a, b);
+        return tupi::make_tuple(x, y);
+    };
+};
+template<>
+struct vec_traits<f32, 4>::split_interleave_t<4> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return tupi::make_tuple(a, b);
+    };
 };
 template<>
 struct vec_traits<f32, 4>::repack_t<1, 4> {
@@ -230,7 +297,9 @@ struct vec_traits<f32, 4>::repack_t<4, 1>
 
 template<>
 struct vec_traits<f32, 8> {
-    using impl_vec = __m256;
+    using impl_vec            = __m256;
+    static constexpr uZ width = 8;
+
     PCX_AINLINE static auto set1(f32 value) {
         return _mm256_set1_ps(value);
     }
@@ -292,8 +361,30 @@ struct vec_traits<f32, 8> {
     } up_stage1{};
     static constexpr auto upsample = tupi::pass | up_stage0 | tupi::apply | up_stage1;
 
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    struct split_interleave_t;
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    static constexpr auto split_interleave = split_interleave_t<ChunkSize>{};
+
+    struct sil1_helper_0 {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            auto x = _mm256_shuffle_ps(a, b, 0b10001000);
+            auto y = _mm256_shuffle_ps(a, b, 0b11011101);
+            return tupi::make_tuple(x, y);
+        }
+    };
+    struct sil1_helper_1 {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            auto x = _mm256_shuffle_ps(a, a, 0b11011000);
+            auto y = _mm256_shuffle_ps(b, b, 0b11011000);
+            return tupi::make_tuple(x, y);
+        }
+    };
+
     template<uZ To, uZ From>
-        requires(To <= 8 && From <= 8)
+        requires(To <= width && From <= width)
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
@@ -302,11 +393,11 @@ struct vec_traits<f32, 8> {
         }
     };
     template<uZ To, uZ From>
-        requires(To <= 8 && From <= 8)
+        requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
 
-    using tup8 = tupi::broadcast_tuple_t<impl_vec, 8>;
-    PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
+    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
+    PCX_AINLINE static auto bit_reverse(tup_width tup) noexcept {
         constexpr auto unpck1lo = [](impl_vec a, impl_vec b) noexcept { return _mm256_unpacklo_ps(a, b); };
         constexpr auto unpck1hi = [](impl_vec a, impl_vec b) noexcept { return _mm256_unpackhi_ps(a, b); };
         constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
@@ -436,6 +527,37 @@ struct vec_traits<f32, 8>::repack_t<8, 1>
                   | tupi::apply                             //
                   | vec_traits<f32, 8>::repack_t<8, 4>{}) {};
 
+template<>
+struct vec_traits<f32, 8>::split_interleave_t<1>
+: public decltype(tupi::pass           //
+                  | sil1_helper_0{}    //
+                  | tupi::apply        //
+                  | sil1_helper_1{}) {};
+template<>
+struct vec_traits<f32, 8>::split_interleave_t<2> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto ad = _mm256_castps_pd(a);
+        auto bd = _mm256_castps_pd(b);
+        auto x  = _mm256_castpd_ps(_mm256_unpacklo_pd(ad, bd));
+        auto y  = _mm256_castpd_ps(_mm256_unpackhi_pd(ad, bd));
+        return tupi::make_tuple(x, y);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::split_interleave_t<4> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto x = _mm256_permute2f128_ps(a, b, 0b00100000);
+        auto y = _mm256_permute2f128_ps(a, b, 0b00110001);
+        return tupi::make_tuple(x, y);
+    }
+};
+template<>
+struct vec_traits<f32, 8>::split_interleave_t<8> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return tupi::make_tuple(a, b);
+    }
+};
+
 #ifdef PCX_AVX512
 template<>
 struct max_vec_width<f32> {
@@ -444,7 +566,8 @@ struct max_vec_width<f32> {
 
 template<>
 struct vec_traits<f32, 16> {
-    using impl_vec = __m512;
+    using impl_vec            = __m512;
+    static constexpr uZ width = 16;
 
     PCX_AINLINE static auto set1(f32 value) {
         return _mm512_set1_ps(value);
@@ -504,18 +627,17 @@ struct vec_traits<f32, 16> {
         PCX_AINLINE auto operator()(impl_vec v) const -> impl_vec {
             return v;
         }
-
     } upsample{};
 
-    template<uZ Size>
-        requires(Size <= 16)
-    struct split_t;
-    template<uZ Size>
-        requires(Size <= 16)
-    static constexpr auto split = split_t<Size>{};
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    struct split_interleave_t;
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    static constexpr auto split_interleave = split_interleave_t<ChunkSize>{};
 
     template<uZ To, uZ From>
-        requires(To <= 16 && From <= 16)
+        requires(To <= width && From <= width)
     struct repack_t;
     template<uZ P>
     struct repack_t<P, P> {
@@ -524,11 +646,11 @@ struct vec_traits<f32, 16> {
         }
     };
     template<uZ To, uZ From>
-        requires(To <= 16 && From <= 16)
+        requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
 
-    using tup16 = tupi::broadcast_tuple_t<impl_vec, 16>;
-    PCX_AINLINE static auto bit_reverse(tup16 tup) {
+    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
+    PCX_AINLINE static auto bit_reverse(tup_width tup) {
         constexpr auto unpck1lo = [](impl_vec a, impl_vec b) { return _mm512_unpacklo_ps(a, b); };
         constexpr auto unpck1hi = [](impl_vec a, impl_vec b) { return _mm512_unpackhi_ps(a, b); };
         constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
@@ -757,7 +879,7 @@ struct vec_traits<f32, 16>::repack_t<16, 1> {
     }
 };
 template<>
-struct vec_traits<f32, 16>::split_t<1> {
+struct vec_traits<f32, 16>::split_interleave_t<1> {
     const static inline auto idx0 = _mm512_setr_epi32( 0,16, 2,18, 4,20, 6,22, 8,24,10,26,12,28,14,30);
     const static inline auto idx1 = _mm512_setr_epi32( 1,17, 3,19, 5,21, 7,23, 9,25,11,27,13,29,15,31);
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -767,7 +889,7 @@ struct vec_traits<f32, 16>::split_t<1> {
     }
 };
 template<>
-struct vec_traits<f32, 16>::split_t<2> {
+struct vec_traits<f32, 16>::split_interleave_t<2> {
     const static inline auto idx0 = _mm512_setr_epi32( 0, 1,16,17, 4, 5,20,21, 8, 9,24,25,12,13,28,29);
     const static inline auto idx1 = _mm512_setr_epi32( 2, 3,18,19, 6, 7,22,23,10,11,26,27,14,15,30,31);
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -777,7 +899,7 @@ struct vec_traits<f32, 16>::split_t<2> {
     }
 };
 template<>
-struct vec_traits<f32, 16>::split_t<4> {
+struct vec_traits<f32, 16>::split_interleave_t<4> {
     const static inline auto idx0 = _mm512_setr_epi32( 0, 1, 2, 3,16,17,18,19, 8, 9,10,11,24,25,26,27);
     const static inline auto idx1 = _mm512_setr_epi32( 4, 5, 6, 7,20,21,22,23,12,13,14,15,28,29,30,31);
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -787,7 +909,7 @@ struct vec_traits<f32, 16>::split_t<4> {
     }
 };
 template<>
-struct vec_traits<f32, 16>::split_t<8> {
+struct vec_traits<f32, 16>::split_interleave_t<8> {
     const static inline auto idx0 = _mm512_setr_epi32( 0, 1, 2, 3, 4, 5, 6, 7,16,17,18,19,20,21,22,23);
     const static inline auto idx1 = _mm512_setr_epi32( 8, 9,10,11,12,13,14,15,24,25,26,27,28,29,30,31);
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -797,7 +919,7 @@ struct vec_traits<f32, 16>::split_t<8> {
     }
 };
 template<>
-struct vec_traits<f32, 16>::split_t<16> {
+struct vec_traits<f32, 16>::split_interleave_t<16> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         return tupi::make_tuple(a, b);
     }
