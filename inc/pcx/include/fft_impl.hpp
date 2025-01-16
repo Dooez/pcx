@@ -342,7 +342,7 @@ struct subtransform {
 
     template<uZ NodeSizeL, bool LowK = false>
     PCX_AINLINE static auto iterate_lo_k(uZ max_size, uZ& size, auto data_ptr, auto tw_ptr) {
-        static constexpr auto single_load_size = NodeSizeL * Width;
+        constexpr auto single_load_size = NodeSizeL * Width;
 
         using btfly_node = btfly_node_dit<NodeSizeL, T, Width>;
 
@@ -351,28 +351,32 @@ struct subtransform {
             .pack_src  = simd::max_width<T>,
             .reverse   = false,
         };
+        auto group_size        = max_size / size;
+        auto make_data_ptr_tup = [=] PCX_LAINLINE(uZ group_idx) {
+            return [stride = group_size / NodeSizeL]<uZ... Is> PCX_LAINLINE(auto data_ptr,    //
+                                                                            std::index_sequence<Is...>) {
+                return tupi::make_tuple((data_ptr + stride * Is)...);
+            }(data_ptr + group_idx * group_size * 2, std::make_index_sequence<NodeSizeL>{});
+        };
 
-        auto data_stride = max_size / size;
-        for (auto i: stdv::iota(0U, data_stride / single_load_size)) {
-            auto data =
-                []<uZ... Is> PCX_LAINLINE(auto data_ptr, auto stride, std::index_sequence<Is...>) {
-                    return tupi::make_tuple((data_ptr + stride * Is)...);
-                }(data_ptr + i * data_stride * 2 * single_load_size,
-                  data_stride,
-                  std::make_index_sequence<NodeSizeL>{});
-            btfly_node::template perform_lo_k<settings>(data);
+        if constexpr (LowK) {
+            for (auto i: stdv::iota(0U, group_size / single_load_size)) {
+                auto data = make_data_ptr_tup(i);
+                btfly_node::template perform_lo_k<settings>(data);
+            }
         }
-        for (auto k: stdv::iota(1U, size / 2)) {
+        constexpr auto start = LowK ? 1UZ : 0UZ;
+        for (auto k: stdv::iota(start, size / 2)) {
             auto tw = []<uZ... Is> PCX_LAINLINE(auto tw_ptr, std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + Is * 2)...);
             }(tw_ptr, std::make_index_sequence<NodeSizeL - 1>{});
             tw_ptr += 2 * (NodeSizeL - 1);
-            for (auto i: stdv::iota(0U, data_stride / single_load_size)) {
+            for (auto i: stdv::iota(0U, group_size / single_load_size)) {
                 auto data =
                     []<uZ... Is> PCX_LAINLINE(auto data_ptr, auto stride, std::index_sequence<Is...>) {
                         return tupi::make_tuple((data_ptr + stride * Is)...);
-                    }(data_ptr + i * data_stride * 2 * single_load_size,
-                      data_stride,
+                    }(data_ptr + i * group_size * 2 * single_load_size,
+                      group_size,
                       std::make_index_sequence<NodeSizeL>{});
                 btfly_node::template perform<settings>(data, tw);
             }
