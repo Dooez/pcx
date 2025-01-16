@@ -233,6 +233,13 @@ struct std::formatter<std::complex<T>, char> {
     }
 };
 
+void foo_single_load(f32* data_ptr, f32* tw_lok_ptr) {
+    constexpr auto vec_size  = 16;
+    constexpr auto vec_count = 8;
+    using fimpl              = pcx::detail_::subtransform<vec_count, f32, vec_size>;
+    fimpl::single_load<1, 16, true>(data_ptr, data_ptr, tw_lok_ptr);
+}
+
 // NOLINTEND (*pointer-arithmetic*)
 int main() {
     constexpr auto tw = [] {
