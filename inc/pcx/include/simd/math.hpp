@@ -119,19 +119,19 @@ namespace detail_ {
 inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
-        return detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value);
+        return tupi::make_tuple(detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value));
     }
     template<iZ Lrot, iZ Rrot>
-    PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) {
-        return imag_unit_t<(Lrot + Rrot) % 4>{};
+    PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) const {
+        return tupi::make_tuple(imag_unit_t<(Lrot + Rrot) % 4>{});
     }
     template<iZ Rot>
-    PCX_AINLINE auto operator()(imag_unit_t<Rot>, tight_cx_vec auto Rhs) {
-        return mul_by_j<Rot>(Rhs);
+    PCX_AINLINE auto operator()(imag_unit_t<Rot>, tight_cx_vec auto Rhs) const {
+        return tupi::make_tuple(mul_by_j<Rot>(Rhs));
     }
     template<iZ Rot>
-    PCX_AINLINE auto operator()(tight_cx_vec auto Lhs, imag_unit_t<Rot>) {
-        return mul_by_j<Rot>(Lhs);
+    PCX_AINLINE auto operator()(tight_cx_vec auto Lhs, imag_unit_t<Rot>) const {
+        return tupi::make_tuple(mul_by_j<Rot>(Lhs));
     }
 
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
@@ -152,7 +152,7 @@ inline constexpr struct {
     }
 } mul_stage_0;
 constexpr inline struct {
-    PCX_AINLINE auto operator()(auto&& v) -> decltype(auto) {
+    PCX_AINLINE auto operator()(auto&& v) const {
         return std::forward<decltype(v)>(v);
     }
     template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>

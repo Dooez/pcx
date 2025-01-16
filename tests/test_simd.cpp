@@ -17,15 +17,15 @@ auto operator*(simd::any_cx_vec auto lhs, simd::any_cx_vec auto rhs) {
 auto operator/(simd::any_cx_vec auto lhs, simd::any_cx_vec auto rhs) {
     return simd::div(lhs, rhs);
 }
-template<uZ I, typename T>
+template<iZ I, typename T>
 auto mul_by_j(std::complex<T> v) {
     if constexpr (I % 4 == 0) {
         return v;
-    } else if constexpr (I % 4 == 1) {
+    } else if constexpr (I % 4 == 1 || I % 4 == -3) {
         return v * std::complex<T>(0, 1);
-    } else if constexpr (I % 4 == 2) {
+    } else if constexpr (I % 4 == 2 || I % 4 == -2) {
         return -v;
-    } else if constexpr (I % 4 == 3) {
+    } else if constexpr (I % 4 == 3 || I % 4 == -1) {
         return v * std::complex<T>(0, -1);
     }
 }
@@ -60,7 +60,7 @@ constexpr auto base_unary_ops = tupi::make_tuple(
     foo_op([](auto v) { return conj(v); }, [](auto descr) { return std::format("conj( {} )", descr); }),
     foo_op([](auto v) { return mul_by_j<1>(v); }, [](auto descr) { return std::format("1j•{}", descr); }),
     foo_op([](auto v) { return mul_by_j<2>(v); }, [](auto descr) { return std::format("2j•{}", descr); }),
-    foo_op([](auto v) { return mul_by_j<3>(v); }, [](auto descr) { return std::format("3j•{}", descr); }));
+    foo_op([](auto v) { return mul_by_j<-1>(v); }, [](auto descr) { return std::format("-1j•{}", descr); }));
 
 constexpr auto base_binary_ops = tupi::make_tuple(    //
     foo_op([](auto lhs, auto rhs) { return lhs + rhs; },

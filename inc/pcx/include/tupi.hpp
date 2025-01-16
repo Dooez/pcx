@@ -193,7 +193,7 @@ struct tuple_cat_t : public pipe_mixin {
                 }
             }();
         };
-        constexpr auto total_size = (tuple_size_v<Tups> + ...);
+        constexpr auto total_size = (tuple_cvref_size_v<Tups> + ...);
         return [&]<uZ... Is>(std::index_sequence<Is...>) {
             using cat_t = detail_::tuple_cat_result_t<std::remove_cvref_t<Tups>...>;
             return cat_t{get_cat_element(uZc<Is>{})...};
