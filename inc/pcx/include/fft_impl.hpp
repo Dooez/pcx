@@ -144,8 +144,9 @@ struct btfly_node_dit {
                     return f(tmp, get_tw, uZc<Size * 2>{});
                 }
             }(data, get_tw);
-        auto res_eval = tupi::group_invoke(simd::evaluate, res);
-        auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
+        // auto res_eval = tupi::group_invoke(simd::evaluate, res);
+        // auto res_rep  = tupi::group_invoke(simd::repack<DestPackSize>, res_eval);
+        auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
         tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
     }
     template<uZ DestPackSize, uZ SrcPackSize>
@@ -240,6 +241,19 @@ struct btfly_node_dit {
         }(lo, hi, std::make_index_sequence<NodeSize / Stride>{});
     }
 
+    PCX_AINLINE static auto make_tw_getter_lo_k(tw_t tw) {
+        return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
+            return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
+                static_assert(NodeSize >= Size);
+                constexpr auto repeats = NodeSize / Size;
+                constexpr auto start   = Size / 2 - 1;
+                // return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
+                return tupi::tuple_cat(
+                    tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw))...);    // no offset for low k
+            }(std::make_index_sequence<Size / 2>{});
+            //
+        };
+    }
     PCX_AINLINE static auto make_tw_getter(tw_t tw) {
         return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
             return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
@@ -247,6 +261,8 @@ struct btfly_node_dit {
                 constexpr auto repeats = NodeSize / Size;
                 constexpr auto start   = Size / 2 - 1;
                 return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
+                // return tupi::tuple_cat(
+                //     tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw))...);    // no offset for low k
             }(std::make_index_sequence<Size / 2>{});
             //
         };
@@ -301,7 +317,6 @@ struct subtransform {
     using btfly_node = btfly_node_dit<NodeSize, T, Width>;
     using vec_traits = simd::detail_::vec_traits<T, Width>;
 
-
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
     static void perform(uZ size, uZ max_size, T* dest_ptr, const T* tw_ptr) {
         constexpr auto single_load_size = NodeSize * Width;
@@ -313,12 +328,13 @@ struct subtransform {
 
                 [&]<uZ... Is>(std::index_sequence<Is...>) {
                     auto try_iter = [&]<uZ I>(uZc<I>) {
+                        auto si = size;
                         auto sz = (size * powi(2, I));
                         if (max_size / (size * powi(2, I)) == single_load_size) {
-                            fft_iteration<powi(2, I + 1), DestPackSize, Width, LowK>(max_size,
-                                                                                     size,
-                                                                                     dest_ptr,
-                                                                                     tw_ptr);
+                            fft_iteration<powi(2, I + 1), Width, Width, LowK>(max_size,
+                                                                              size,
+                                                                              dest_ptr,
+                                                                              tw_ptr);
                             return true;
                         }
                         return false;
@@ -333,10 +349,10 @@ struct subtransform {
                     auto try_iter = [&]<uZ I>(uZc<I>) {
                         auto sz = (size * powi(2, I));
                         if (max_size / (size * powi(2, I)) == single_load_size) {
-                            fft_iteration<powi(2, I + 1), DestPackSize, SrcPackSize, LowK>(max_size,
-                                                                                           size,
-                                                                                           dest_ptr,
-                                                                                           tw_ptr);
+                            fft_iteration<powi(2, I + 1), Width, SrcPackSize, LowK>(max_size,
+                                                                                    size,
+                                                                                    dest_ptr,
+                                                                                    tw_ptr);
                             return true;
                         }
                         return false;
@@ -348,37 +364,55 @@ struct subtransform {
                 }(std::make_index_sequence<log2i(NodeSize)>{});
             }
         } else {
-            while (max_size / size >= single_load_size * NodeSize)
-                fft_iteration<NodeSize, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
-
-            [&]<uZ... Is>(std::index_sequence<Is...>) {
-                auto try_iter = [&]<uZ I>(uZc<I>) {
-                    auto sz = (size * powi(2, I));
-                    if (max_size / (size * powi(2, I)) == single_load_size) {
-                        fft_iteration<powi(2, I + 1), DestPackSize, Width, LowK>(max_size,
-                                                                                 size,
-                                                                                 dest_ptr,
-                                                                                 tw_ptr);
-                        return true;
-                    }
-                    return false;
-                };
-                (try_iter(uZc<Is>{}) || ...);
-                // ((max_size / (size * powi(2, Is + 1)) == single_load_size
-                //   && (fft_iteration<powi(2, Is + 1), LowK>(max_size, size, dest_ptr, tw_ptr), true))
-                //  || ...);
-            }(std::make_index_sequence<log2i(NodeSize)>{});
+            // while (max_size / size >= single_load_size * NodeSize)
+            //     fft_iteration<NodeSize, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
+            //
+            // [&]<uZ... Is>(std::index_sequence<Is...>) {
+            //     auto try_iter = [&]<uZ I>(uZc<I>) {
+            //         auto sz = (size * powi(2, I));
+            //         if (max_size / (size * powi(2, I)) == single_load_size) {
+            //             fft_iteration<powi(2, I + 1), DestPackSize, Width, LowK>(max_size,
+            //                                                                      size,
+            //                                                                      dest_ptr,
+            //                                                                      tw_ptr);
+            //             return true;
+            //         }
+            //         return false;
+            //     };
+            //     (try_iter(uZc<Is>{}) || ...);
+            //     // ((max_size / (size * powi(2, Is + 1)) == single_load_size
+            //     //   && (fft_iteration<powi(2, Is + 1), LowK>(max_size, size, dest_ptr, tw_ptr), true))
+            //     //  || ...);
+            // }(std::make_index_sequence<log2i(NodeSize)>{});
         }
 
-        assert(max_size / size == single_load_size / 2);
-        // single_load<DestPackSize, DestPackSize, LowK>(dest_ptr, dest_ptr, tw_ptr);
+        // assert(max_size / size == single_load_size / 2);
+        for (auto i: stdv::iota(0U, max_size / Width)) {
+            auto ptr = dest_ptr + i * Width * 2;
+            auto rd  = (simd::cxload<Width, Width> | simd::repack<1>)(ptr);
+            simd::cxstore<1>(ptr, rd);
+        }
+        return;
+
+        if constexpr (LowK) {
+            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
+        }
+        constexpr auto start = LowK ? 1UZ : 0UZ;
+        for (auto i: stdv::iota(start, max_size / single_load_size)) {
+            auto dest = dest_ptr + i * single_load_size;
+            single_load<DestPackSize, Width, false>(dest, dest, tw_ptr);
+            // auto data = make_data_tup(k, i);
+            // btfly_node::template perform<settings>(data, tw);
+        }
     };
 
     // private:
     static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
 
-    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK = false>
+    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration(uZ max_fft_size, uZ& fft_size, auto data_ptr, auto& tw_ptr) {
+        auto           pdest            = PackDest;
+        auto           psrc             = PackSrc;
         constexpr auto single_load_size = NodeSizeL * Width;
         auto           node_size        = NodeSizeL;    // TMP
 
@@ -429,7 +463,7 @@ struct subtransform {
         fft_size *= NodeSizeL;
     }
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK = false>
-    PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, const T* tw_ptr) {
+    PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, auto& tw_ptr) {
         auto data = []<uZ... Is>(auto data_ptr, std::index_sequence<Is...>) {
             return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(data_ptr + Width * 2 * Is)...);
         }(src_ptr, std::make_index_sequence<NodeSize>{});

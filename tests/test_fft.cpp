@@ -152,7 +152,66 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
         fft_size *= 2;
     }
 }
+constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
+    auto res = (pow % 2) == 1 ? num : 1UL;
+    if (pow > 1) {
+        auto half_pow = powi(num, pow / 2UL);
+        res *= half_pow * half_pow;
+    }
+    return res;
+}
+auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
+    auto tw_vec = std::vector<std::complex<f32>>();
+    tw_vec.reserve(4096);
+    auto insert_tw = [&](uZ size, uZ i) {
+        auto rk = pcx::detail_::reverse_bit_order(i, log2i(size) - 1);
+        auto tw = pcx::detail_::wnk<f32>(size, rk);
+        tw_vec.push_back(tw);
+    };
+    auto vec_size         = 16;
+    auto single_load_size = vec_size * node_size;
+    auto size             = 2UZ;
+    while (fft_size / size >= single_load_size * node_size) {
+        for (auto i: stdv::iota(0U, size / 2)) {
+            for (auto ns: stdv::iota(0U, log2i(node_size))) {
+                for (auto k: stdv::iota(0U, powi(2, ns))) {
+                    insert_tw(size * powi(2, ns), k + i * powi(2, ns));
+                }
+            }
+        }
+        size *= node_size;
+    }
+    for (uZ tp: stdv::iota(0U, log2i(node_size))) {
+        if (fft_size / (size * powi(2, tp)) != single_load_size) {
+            continue;
+        }
+        auto local_node = powi(2, tp);
+        for (auto i: stdv::iota(0U, size / 2)) {
+            for (auto ns: stdv::iota(0U, log2i(local_node))) {
+                for (auto k: stdv::iota(0U, powi(2, ns))) {
+                    insert_tw(size * powi(2, ns), k + i * powi(2, ns));
+                }
+            }
+        }
+    }
+    return tw_vec;
 
+    // [&]<uZ... Is>(std::index_sequence<Is...>) {
+    //     auto try_iter = [&]<uZ I>(uZc<I>) {
+    //         auto si = size;
+    //         auto sz = (size * powi(2, I));
+    //         if (max_size / (size * powi(2, I)) == single_load_size) {
+    //             fft_iteration<powi(2, I + 1), Width, Width, LowK>(max_size,
+    //                                                               size,
+    //                                                               dest_ptr,
+    //                                                               tw_ptr);
+    //             return true;
+    //         }
+    //         return false;
+    //     };
+    //     (try_iter(uZc<Is>{}) || ...);
+    //
+}
 auto make_tw_vec(uZ fft_size) {
     auto twvec        = std::vector<std::complex<f32>>();
     auto current_size = 2;
@@ -325,8 +384,8 @@ int main() {
     // }
     {
         using fX      = f32;
-        uZ   fft_size = 1024;
-        uZ   freq_n   = 2;
+        uZ   fft_size = 256;
+        uZ   freq_n   = fft_size / 2;
         auto datavec  = [=]() {
             auto vec = std::vector<std::complex<fX>>(fft_size);
             for (auto [i, v]: stdv::enumerate(vec)) {
@@ -346,19 +405,26 @@ int main() {
         constexpr auto vec_count = 8;
 
         using fimpl = pcx::detail_::subtransform<vec_count, f32, vec_size>;
-        auto twvec  = make_tw_vec(fft_size);
+        auto twvec  = make_tw_vec2(fft_size);
         // template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
         auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
         auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
         fimpl::perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
-        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
-            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                         i,
-                         (naive),
-                         (pcx),
-                         (naive - pcx));
-            // }
+        auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
+                                           [](auto v) { return std::get<0>(v) != std::get<1>(v); });
+
+        if (subtform_error) {
+            for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
+                std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                             i,
+                             (naive),
+                             (pcx),
+                             (naive - pcx));
+                // }
+            }
+            return -1;
         }
+        std::println("subtform successful");
     }
     return 0;
 }
