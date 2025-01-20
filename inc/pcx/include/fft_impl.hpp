@@ -392,7 +392,7 @@ struct subtransform {
             auto rd  = (simd::cxload<Width, Width> | simd::repack<1>)(ptr);
             simd::cxstore<1>(ptr, rd);
         }
-        return;
+        // return;
 
         if constexpr (LowK) {
             single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
@@ -522,6 +522,9 @@ struct subtransform {
     struct regroup_btfly_t {
         template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
+            auto ng = NGroups;
+            auto ns = NodeSize;
+
             auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
             // auto regrouped = tupi::group_invoke(regroup<Width / NGroups>, lo, hi);
             // auto tw        = tupi::group_invoke(load_tw<NGroups>, tw_tup, half_node_tuple);
@@ -532,6 +535,7 @@ struct subtransform {
             auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
                                             tupi::forward_as_tuple(tw_tup, half_node_tuple));
 
+            auto twx       = tw;
             auto lo_re     = tupi::group_invoke(tupi::get<0>, regrouped);
             auto hi_re     = tupi::group_invoke(tupi::get<1>, regrouped);
             auto hi_tw     = tupi::group_invoke(simd::mul, hi_re, tw);
@@ -555,6 +559,8 @@ struct subtransform {
         tupi::pass    
         | []<uZ IGroup>(const T* tw_ptr, uZc<IGroup>) {
             // return simd::cxload<Count, Count>(tw_ptr + Count * (2 * IGroup));
+            auto count = Count;
+            auto igroup = IGroup;
             auto tw = simd::cxload<1, Count>(tw_ptr + Count * (2 * IGroup));
             auto twr = simd::repack<Count>(tw);
             return twr;

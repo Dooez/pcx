@@ -117,7 +117,10 @@ void naive_fft(R& data) {
     auto n_groups = 1;
     while (step >= 1) {
         if (step == 16 * 8 / 2) {
-            return;
+            // return;
+        }
+        if (step == 2) {
+            // return;
         }
         for (uZ k = 0; k < n_groups; ++k) {
             uZ   start = k * step * 2;
@@ -185,13 +188,39 @@ auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
         if (fft_size / (size * powi(2, tp)) != single_load_size) {
             continue;
         }
-        auto local_node = powi(2, tp);
+        auto local_node = powi(2, tp + 1);
         for (auto i: stdv::iota(0U, size / 2)) {
-            for (auto ns: stdv::iota(0U, log2i(local_node))) {
-                for (auto k: stdv::iota(0U, powi(2, ns))) {
-                    insert_tw(size * powi(2, ns), k + i * powi(2, ns));
+            for (auto pow2: stdv::iota(0U, log2i(local_node))) {
+                for (auto k: stdv::iota(0U, powi(2, pow2))) {
+                    insert_tw(size * powi(2, pow2), k + i * powi(2, pow2));
                 }
             }
+        }
+    }
+    // return tw_vec;
+    // for (auto i_sl: stdv::iota(0U, fft_size / single_load_size)) {
+    //     for (auto pow2: stdv::iota(0U, log2i(single_load_size))) {
+    //         auto size_mult = powi(2, pow2);
+    //         for (auto k: stdv::iota(0U, size_mult)) {
+    //             insert_tw(size * size_mult, k + i_sl * size_mult);
+    //         }
+    //     }
+    // }
+    for (auto i_sl: stdv::iota(0U, fft_size / single_load_size)) {
+        auto start_offset = i_sl * single_load_size;
+        auto fft_size     = size;
+        uZ   n_tw         = 1;
+        // uZ   n_tw     = VecCount;
+        while (n_tw <= single_load_size / 2) {
+            for (auto i: stdv::iota(0U, n_tw)) {
+                auto rk = pcx::detail_::reverse_bit_order(start_offset + i, log2i(fft_size) - 1);
+                auto tw = pcx::detail_::wnk<f32>(fft_size, rk);
+                // auto tw = pcx::detail_::wnk_br<f32>(fft_size, start_offset + i);
+                tw_vec.push_back(tw);
+            }
+            start_offset *= 2;
+            fft_size *= 2;
+            n_tw *= 2;
         }
     }
     return tw_vec;
