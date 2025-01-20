@@ -387,20 +387,24 @@ struct subtransform {
         }
 
         // assert(max_size / size == single_load_size / 2);
-        for (auto i: stdv::iota(0U, max_size / Width)) {
-            auto ptr = dest_ptr + i * Width * 2;
-            auto rd  = (simd::cxload<Width, Width> | simd::repack<1>)(ptr);
-            simd::cxstore<1>(ptr, rd);
+        constexpr auto skip_single_load = false;
+        if (skip_single_load) {
+            for (auto i: stdv::iota(0U, max_size / Width)) {
+                auto ptr = dest_ptr + i * Width * 2;
+                auto rd  = (simd::cxload<Width, Width> | simd::repack<1>)(ptr);
+                simd::cxstore<1>(ptr, rd);
+            }
+            return;
         }
-        // return;
 
         if constexpr (LowK) {
             single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
         }
         constexpr auto start = LowK ? 1UZ : 0UZ;
         for (auto i: stdv::iota(start, max_size / single_load_size)) {
-            auto dest = dest_ptr + i * single_load_size;
+            auto dest = dest_ptr + i * single_load_size * 2;
             single_load<DestPackSize, Width, false>(dest, dest, tw_ptr);
+            // return;
             // auto data = make_data_tup(k, i);
             // btfly_node::template perform<settings>(data, tw);
         }
@@ -462,7 +466,7 @@ struct subtransform {
         }
         fft_size *= NodeSizeL;
     }
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK = false>
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
     PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, auto& tw_ptr) {
         auto data = []<uZ... Is>(auto data_ptr, std::index_sequence<Is...>) {
             return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(data_ptr + Width * 2 * Is)...);
@@ -501,7 +505,11 @@ struct subtransform {
                                                                auto      data_hi,
                                                                uZc<NGroups> = {}) {
             if constexpr (NGroups == Width) {
-                return regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
+                auto tmp = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
+                if constexpr (!LowK)
+                    tw_ptr += NGroups * 2 * NodeSize / 2;
+                return tmp;
+
             } else {
                 auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
                 if constexpr (!LowK)
