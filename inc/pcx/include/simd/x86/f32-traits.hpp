@@ -60,6 +60,12 @@ struct vec_traits<f32, 2> {
         return {-a[0] * b[0] - c[0], -a[1] * b[1] - c[1]};
     }
 
+    constexpr static struct {
+        static auto operator()(impl_vec v) -> impl_vec {
+            return v;
+        };
+    } upsample;
+
     template<uZ ChunkSize>
         requires(ChunkSize <= width)
     struct split_interleave_t;

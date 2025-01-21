@@ -92,7 +92,7 @@ struct vec_traits {
      */
     constexpr static struct {
         static auto operator()(vec_traits<T, Width>::impl_vec v) -> impl_vec;
-        static auto operator()(vec_traits<T, Width / 2>::impl_vec v) -> impl_vec;
+        // static auto operator()(vec_traits<T, Width / 2>::impl_vec v) -> impl_vec;
         // . . .
         // static auto operator()(vec_traits<T, 2>::impl_vec) -> impl_vec;
     } upsample;

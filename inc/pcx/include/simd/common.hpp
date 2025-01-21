@@ -17,7 +17,7 @@ struct broadcast_t {
         requires(Width <= max_width<T>)
     PCX_AINLINE auto operator()(const T* src) const {
         constexpr auto real_width = Width == 0 ? max_width<T> : Width;
-        return vec<T, real_width>{vec_traits<f32, real_width>::set1(*src)};
+        return vec<T, real_width>{vec_traits<T, real_width>::set1(*src)};
     }
 };
 template<uZ Width>
@@ -27,7 +27,7 @@ struct load_t {
         requires(Width <= max_width<T>)
     PCX_AINLINE auto operator()(const T* src) const {
         constexpr auto real_width = Width == 0 ? max_width<T> : Width;
-        return vec<T, real_width>{vec_traits<f32, real_width>::load(src)};
+        return vec<T, real_width>{vec_traits<T, real_width>::load(src)};
     }
 };
 }    // namespace detail_
@@ -50,25 +50,24 @@ namespace detail_ {
 template<uZ SrcPackSize, uZ Width>
     requires power_of_two<SrcPackSize> && (Width == 0 || power_of_two<Width>)
 struct cxbroadcast_t {
-    PCX_AINLINE auto operator()(const f32* src) const
-        requires(Width <= max_width<f32>)
-    {
-        constexpr auto real_width = Width == 0 ? max_width<f32> : Width;
-        using cx_vec_t            = cx_vec<f32, false, false, real_width>;
+    template<typename T>
+    PCX_AINLINE auto bcast_impl(const T* src) const {
+        constexpr auto real_width = Width == 0 ? max_width<T> : Width;
+        using cx_vec_t            = cx_vec<T, false, false, real_width>;
         return cx_vec_t{
             .m_real = broadcast<real_width>(src),
             .m_imag = broadcast<real_width>(src + SrcPackSize),    //NOLINT(*pointer*)
         };
     }
+    PCX_AINLINE auto operator()(const f32* src) const
+        requires(Width <= max_width<f32>)
+    {
+        return bcast_impl(src);
+    }
     PCX_AINLINE auto operator()(const f64* src) const
         requires(Width <= max_width<f64>)
     {
-        constexpr auto real_width = Width == 0 ? max_width<f64> : Width;
-        using cx_vec_t            = cx_vec<f64, false, false, real_width>;
-        return cx_vec_t{
-            .m_real = broadcast<real_width>(src),
-            .m_imag = broadcast<real_width>(src + SrcPackSize),    //NOLINT(*pointer*)
-        };
+        return bcast_impl(src);
     }
 };
 
