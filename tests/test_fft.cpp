@@ -1,4 +1,6 @@
 // #define PCX_AVX512
+#include "test_fft.h"
+
 #include "pcx/include/fft_impl.hpp"
 
 #include <complex>
@@ -15,6 +17,25 @@ constexpr auto is_pow_of_two(uZ n) {
     return n > 0 && (n & (n - 1)) == 0;
 }
 
+template<typename T>
+struct std::formatter<std::complex<T>, char> {
+    std::formatter<T, char> m_fmt;
+    template<class ParseContext>
+    constexpr auto parse(ParseContext& ctx) -> ParseContext::iterator {
+        return m_fmt.parse(ctx);
+    }
+
+    template<class FmtContext>
+    FmtContext::iterator format(std::complex<T> cxv, FmtContext& ctx) const {
+        *ctx.out() = "(";
+        auto out   = m_fmt.format(cxv.real(), ctx);
+        *(out++)   = ",";
+        *out       = " ";
+        out        = m_fmt.format(cxv.imag(), ctx);
+        *(out++)   = ")";
+        return out;
+    }
+};
 namespace pcxt {
 
 template<typename T>
@@ -46,51 +67,16 @@ void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
 }
 };    // namespace pcxt
 
-void foo(std::complex<f32>* dest, const std::array<std::complex<f32>, 7>& tw) {
-    auto dest_r     = reinterpret_cast<f32*>(dest);
-    using node_t    = detail_::btfly_node_dit<8, float, 16>;
-    auto dest_tuple = []<uZ... Is>(auto* dest, std::index_sequence<Is...>) {
-        return pcx::tupi::make_tuple((dest + 16 * 2 * Is)...);
-    }(dest_r, std::make_index_sequence<8>());
-    auto tw_tuple = []<uZ... Is>(auto&& tw, std::index_sequence<Is...>) {
-        return tupi::make_tuple(         //
-            simd::repack<16>(            //
-                simd::cxbroadcast<1>(    //
-                    reinterpret_cast<const f32*>(&tw[Is])))...);
-    }(tw, std::make_index_sequence<7>{});
-
-    constexpr auto settings = node_t::settings{
-        .pack_dest = 1,
-        .pack_src  = 1,
-        .reverse   = false,
-    };
-    node_t::perform<settings>(dest_tuple, tw_tuple);
-};
-
-template<uZ VecSize = 16>
-void bar8(std::complex<f32>* dest, auto&& tw) {
-    for (auto i: stdv::iota(0U, VecSize)) {
-        auto* start = dest + i;
-
-        pcxt::btfly(start + 0 * VecSize, start + 4 * VecSize, tw[0]);
-        pcxt::btfly(start + 1 * VecSize, start + 5 * VecSize, tw[0]);
-        pcxt::btfly(start + 2 * VecSize, start + 6 * VecSize, tw[0]);
-        pcxt::btfly(start + 3 * VecSize, start + 7 * VecSize, tw[0]);
-
-        pcxt::btfly(start + 0 * VecSize, start + 2 * VecSize, tw[1]);
-        pcxt::btfly(start + 1 * VecSize, start + 3 * VecSize, tw[1]);
-        pcxt::btfly(start + 4 * VecSize, start + 6 * VecSize, tw[2]);
-        pcxt::btfly(start + 5 * VecSize, start + 7 * VecSize, tw[2]);
-        //
-        pcxt::btfly(start + 0 * VecSize, start + 1 * VecSize, tw[3]);
-        pcxt::btfly(start + 2 * VecSize, start + 3 * VecSize, tw[4]);
-        pcxt::btfly(start + 4 * VecSize, start + 5 * VecSize, tw[5]);
-        pcxt::btfly(start + 6 * VecSize, start + 7 * VecSize, tw[6]);
+constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
+    auto res = (pow % 2) == 1 ? num : 1UL;
+    if (pow > 1) {
+        auto half_pow = powi(num, pow / 2UL);
+        res *= half_pow * half_pow;
     }
-};
+    return res;
+}
 
-
-auto log2i(u64 num) -> uZ {
+constexpr auto log2i(u64 num) -> uZ {
     u64 order = 0;
     for (u8 shift = 32; shift > 0; shift /= 2) {
         if (num >> shift > 0) {
@@ -138,6 +124,23 @@ void naive_fft(R& data) {
         fft_size *= 2;
     }
 }
+template<uZ To, uZ From, typename R>
+    requires stdr::random_access_range<R> && is_std_complex<stdr::range_value_t<R>>::value
+void repack(R& data) {
+    auto rsize = stdr::size(data);
+    if (!is_pow_of_two(rsize))
+        throw std::invalid_argument("Data size is not a power of two.");
+    using cx_t     = stdr::range_value_t<R>;
+    using T        = cx_t::value_type;
+    auto* data_ptr = reitnerpret_cast<T*>(data.begin());
+
+    constexpr auto vec_width = simd::max_width<T>;
+    for (auto i: stdv::iota(0U, data.size() / vec_width)) {
+        auto ptr = data_ptr + i * vec_width * 2;
+        auto x   = simd::cxload<From, vec_width>(ptr);
+        simd::cxstore<To>(ptr, simd::repack<To>(x));
+    }
+}
 
 template<uZ VecSize, uZ VecCount, typename T>    // 32 for avx512
 void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
@@ -158,20 +161,12 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
         fft_size *= 2;
     }
 }
-constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
-    auto res = (pow % 2) == 1 ? num : 1UL;
-    if (pow > 1) {
-        auto half_pow = powi(num, pow / 2UL);
-        res *= half_pow * half_pow;
-    }
-    return res;
-}
+template<typename fX = f32>
 auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
-    auto tw_vec = std::vector<std::complex<f32>>();
-    tw_vec.reserve(4096);
+    auto tw_vec    = std::vector<std::complex<fX>>();
     auto insert_tw = [&](uZ size, uZ i) {
         auto rk = pcx::detail_::reverse_bit_order(i, log2i(size) - 1);
-        auto tw = pcx::detail_::wnk<f32>(size, rk);
+        auto tw = pcx::detail_::wnk<fX>(size, rk);
         tw_vec.push_back(tw);
     };
     auto vec_size         = 16;
@@ -202,15 +197,6 @@ auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
         size *= local_node;
         break;
     }
-    // return tw_vec;
-    // for (auto i_sl: stdv::iota(0U, fft_size / single_load_size)) {
-    //     for (auto pow2: stdv::iota(0U, log2i(single_load_size))) {
-    //         auto size_mult = powi(2, pow2);
-    //         for (auto k: stdv::iota(0U, size_mult)) {
-    //             insert_tw(size * size_mult, k + i_sl * size_mult);
-    //         }
-    //     }
-    // }
     for (auto i_sl: stdv::iota(0U, fft_size / single_load_size)) {
         auto start_offset = i_sl;
         auto fft_size     = size;
@@ -218,10 +204,7 @@ auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
         // uZ   n_tw     = VecCount;
         while (n_tw <= single_load_size / 2) {
             for (auto i: stdv::iota(0U, n_tw)) {
-                auto rk = pcx::detail_::reverse_bit_order(start_offset + i, log2i(fft_size) - 1);
-                auto tw = pcx::detail_::wnk<f32>(fft_size, rk);
-                // auto tw = pcx::detail_::wnk_br<f32>(fft_size, start_offset + i);
-                tw_vec.push_back(tw);
+                insert_tw(fft_size, start_offset + i);
             }
             start_offset *= 2;
             fft_size *= 2;
@@ -229,39 +212,6 @@ auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
         }
     }
     return tw_vec;
-
-    // [&]<uZ... Is>(std::index_sequence<Is...>) {
-    //     auto try_iter = [&]<uZ I>(uZc<I>) {
-    //         auto si = size;
-    //         auto sz = (size * powi(2, I));
-    //         if (max_size / (size * powi(2, I)) == single_load_size) {
-    //             fft_iteration<powi(2, I + 1), Width, Width, LowK>(max_size,
-    //                                                               size,
-    //                                                               dest_ptr,
-    //                                                               tw_ptr);
-    //             return true;
-    //         }
-    //         return false;
-    //     };
-    //     (try_iter(uZc<Is>{}) || ...);
-    //
-}
-auto make_tw_vec(uZ fft_size) {
-    auto twvec        = std::vector<std::complex<f32>>();
-    auto current_size = 2;
-    uZ   n_tw         = 1;
-    // uZ   n_tw     = VecCount;
-    while (n_tw <= fft_size / 2) {
-        for (auto i: stdv::iota(0U, n_tw)) {
-            auto rk = pcx::detail_::reverse_bit_order(i, log2i(current_size) - 1);
-            auto tw = pcx::detail_::wnk<f32>(current_size, rk);
-            // auto tw = pcx::detail_::wnk_br<f32>(fft_size, start_offset + i);
-            twvec.push_back(tw);
-        }
-        current_size *= 2;
-        n_tw *= 2;
-    }
-    return twvec;
 }
 
 template<uZ VecSize, uZ VecCount>    // 32 for avx512
@@ -275,7 +225,6 @@ auto make_tw_vec_single_load(uZ start_offset = 0, uZ start_size = 2) {
         for (auto i: stdv::iota(0U, n_tw)) {
             auto rk = pcx::detail_::reverse_bit_order(start_offset + i, log2i(fft_size) - 1);
             auto tw = pcx::detail_::wnk<f32>(fft_size, rk);
-            // auto tw = pcx::detail_::wnk_br<f32>(fft_size, start_offset + i);
             twvec.push_back(tw);
         }
         start_offset *= 2;
@@ -310,156 +259,110 @@ void bit_reverse_sort(stdr::random_access_range auto& range) {
     }
 }
 
-template<typename T>
-struct std::formatter<std::complex<T>, char> {
-    std::formatter<T, char> m_fmt;
-    template<class ParseContext>
-    constexpr auto parse(ParseContext& ctx) -> ParseContext::iterator {
-        return m_fmt.parse(ctx);
-    }
 
-    template<class FmtContext>
-    FmtContext::iterator format(std::complex<T> cxv, FmtContext& ctx) const {
-        *ctx.out() = "(";
-        auto out   = m_fmt.format(cxv.real(), ctx);
-        *(out++)   = ",";
-        *out       = " ";
-        out        = m_fmt.format(cxv.imag(), ctx);
-        *(out++)   = ")";
-        return out;
-    }
-};
+// void foo_single_load(f32* data_ptr, f32* tw_lok_ptr) {
+//     constexpr auto vec_size  = 16;
+//     constexpr auto vec_count = 8;
+//     using fimpl              = pcx::detail_::subtransform<vec_count, f32, vec_size>;
+//     fimpl::single_load<1, 16, true>(data_ptr, data_ptr, tw_lok_ptr);
+// }
 
-void foo_single_load(f32* data_ptr, f32* tw_lok_ptr) {
+int test_single_load(uZ fft_size) {
+    using fX                 = f32;
     constexpr auto vec_size  = 16;
     constexpr auto vec_count = 8;
-    using fimpl              = pcx::detail_::subtransform<vec_count, f32, vec_size>;
-    fimpl::single_load<1, 16, true>(data_ptr, data_ptr, tw_lok_ptr);
+    // constexpr auto fft_size  = vec_size * vec_count;
+    auto freq_n = fft_size / 2;
+
+    auto twvec   = make_tw_vec_single_load<vec_size, vec_count>();
+    auto datavec = [=]() {
+        auto vec = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v]: stdv::enumerate(vec)) {
+            v = std::exp(std::complex<fX>(0, 1)                 //
+                         * static_cast<fX>(2)                   //
+                         * static_cast<fX>(std::numbers::pi)    //
+                         * static_cast<fX>(i)                   //
+                         * static_cast<fX>(freq_n)              //
+                         / static_cast<fX>(fft_size));
+        }
+        return vec;
+    }();
+    auto datavec2 = datavec;
+    naive_single_load<vec_size, vec_count>(datavec.data(), twvec.data());
+    //
+    auto twvec_lo_k  = make_tw_vec_lo_k<vec_size, vec_count>();
+    using fimpl      = pcx::detail_::subtransform<vec_count, f32, vec_size>;
+    auto* data_ptr   = reinterpret_cast<fX*>(datavec2.data());
+    auto* tw_ptr     = reinterpret_cast<fX*>(twvec.data());
+    auto* tw_lok_ptr = reinterpret_cast<fX*>(twvec_lo_k.data());
+    fimpl::single_load<1, 1, false>(data_ptr, data_ptr, tw_ptr);
+    // fimpl::single_load<1, 1, true>(data_ptr, data_ptr, tw_lok_ptr);
+
+    // bit_reverse_sort(datavec);
+    // bit_reverse_sort(datavec2);
+    std::println();
+
+    auto single_load_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
+                                          [](auto v) { return std::get<0>(v) != std::get<1>(v); });
+
+    if (single_load_error) {
+        std::println("Error in single load.");
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
+            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                         i,
+                         (naive),
+                         (pcx),
+                         (naive - pcx));
+        }
+        return -1;
+    }
+    std::println("Successful single load");
+    return 0;
+};
+int test_subtranform(uZ fft_size) {
+    using fX     = f32;
+    uZ   freq_n  = fft_size / 2;
+    auto datavec = [=]() {
+        auto vec = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v]: stdv::enumerate(vec)) {
+            v = std::exp(std::complex<fX>(0, 1)                 //
+                         * static_cast<fX>(2)                   //
+                         * static_cast<fX>(std::numbers::pi)    //
+                         * static_cast<fX>(i)                   //
+                         * static_cast<fX>(freq_n)              //
+                         / static_cast<fX>(fft_size));
+        }
+        return vec;
+    }();
+    auto datavec2 = datavec;
+    naive_fft(datavec);
+
+    constexpr auto vec_size  = 16;
+    constexpr auto vec_count = 8;
+
+    using fimpl = pcx::detail_::subtransform<vec_count, f32, vec_size>;
+    auto twvec  = make_tw_vec2(fft_size);
+    // template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
+    auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
+    auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
+    fimpl::perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
+                                       [](auto v) { return std::get<0>(v) != std::get<1>(v); });
+
+    if (subtform_error) {
+        std::println("error during subtform of size {}", fft_size);
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
+            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                         i,
+                         (naive),
+                         (pcx),
+                         (naive - pcx));
+            // }
+        }
+        return -1;
+    }
+    std::println("successful during subtform of size {}", fft_size);
+    return 0;
 }
 
 // NOLINTEND (*pointer-arithmetic*)
-int main() {
-    constexpr auto tw = [] {
-        auto arr = std::array<std::complex<f32>, 7>{};
-        for (auto [i, v]: stdv::enumerate(arr)) {
-            // v = std::complex(i, -7 + i);
-            v = 1;
-        }
-        return arr;
-    }();
-    auto data_bar = [] {
-        auto arr = std::array<std::complex<f32>, static_cast<std::size_t>(16 * 8)>{};
-        for (auto [i, v]: stdv::enumerate(arr))
-            // v = std::complex(i * i, -i * i * i);
-            v = i;
-
-        return arr;
-    }();
-    auto data_foo = data_bar;
-    // foo(data_foo.data(), tw);
-    // bar8(data_bar.data(), tw);
-    // for (auto [f, b]: stdv::zip(data_foo, data_bar)) {
-    //     auto v = f - b;
-    //     std::print("({}, {}) ", v.real(), v.imag());
-    //     std::print("({}, {}) ", f.real(), f.imag());
-    //     std::print("({}, {})\n", b.real(), b.imag());
-    // }
-    // std::println();
-
-    {
-        // using fX                 = f32;
-        // constexpr auto vec_size  = 16;
-        // constexpr auto vec_count = 8;
-        // constexpr auto fft_size  = vec_size * vec_count;
-        // constexpr auto freq_n    = fft_size / 2;
-        //
-        // auto twvec   = make_tw_vec_single_load<vec_size, vec_count>();
-        // auto datavec = [=]() {
-        //     auto vec = std::vector<std::complex<fX>>(fft_size);
-        //     for (auto [i, v]: stdv::enumerate(vec)) {
-        //         v = std::exp(std::complex<fX>(0, 1)                 //
-        //                      * static_cast<fX>(2)                   //
-        //                      * static_cast<fX>(std::numbers::pi)    //
-        //                      * static_cast<fX>(i)                   //
-        //                      * static_cast<fX>(freq_n)              //
-        //                      / static_cast<fX>(fft_size));
-        //     }
-        //     return vec;
-        // }();
-        // auto datavec2 = datavec;
-        // naive_single_load<vec_size, vec_count>(datavec.data(), twvec.data());
-        // //
-        // auto twvec_lo_k  = make_tw_vec_lo_k<vec_size, vec_count>();
-        // using fimpl      = pcx::detail_::subtransform<vec_count, f32, vec_size>;
-        // auto* data_ptr   = reinterpret_cast<fX*>(datavec2.data());
-        // auto* tw_ptr     = reinterpret_cast<fX*>(twvec.data());
-        // auto* tw_lok_ptr = reinterpret_cast<fX*>(twvec_lo_k.data());
-        // fimpl::single_load<1, 1>(data_ptr, data_ptr, tw_ptr);
-        // // fimpl::single_load<1, 1, true>(data_ptr, data_ptr, tw_lok_ptr);
-        //
-        // // bit_reverse_sort(datavec);
-        // // bit_reverse_sort(datavec2);
-        // std::println();
-        //
-        // auto single_load_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
-        //                                       [](auto v) { return std::get<0>(v) != std::get<1>(v); });
-        //
-        // if (single_load_error) {
-        //     std::println("Error in single load.");
-        //     return -1;
-        // }
-        // std::println("Single load ok");
-        // // for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
-        // //     std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-        // //                  i,
-        // //                  (naive),
-        // //                  (pcx),
-        // //                  (naive - pcx));
-        // // }
-    }
-    {
-        using fX      = f32;
-        uZ   fft_size = 2048;
-        uZ   freq_n   = fft_size / 2;
-        auto datavec  = [=]() {
-            auto vec = std::vector<std::complex<fX>>(fft_size);
-            for (auto [i, v]: stdv::enumerate(vec)) {
-                v = std::exp(std::complex<fX>(0, 1)                 //
-                             * static_cast<fX>(2)                   //
-                             * static_cast<fX>(std::numbers::pi)    //
-                             * static_cast<fX>(i)                   //
-                             * static_cast<fX>(freq_n)              //
-                             / static_cast<fX>(fft_size));
-            }
-            return vec;
-        }();
-        auto datavec2 = datavec;
-        naive_fft(datavec);
-
-        constexpr auto vec_size  = 16;
-        constexpr auto vec_count = 8;
-
-        using fimpl = pcx::detail_::subtransform<vec_count, f32, vec_size>;
-        auto twvec  = make_tw_vec2(fft_size);
-        // template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
-        auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
-        auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
-        fimpl::perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
-        auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
-                                           [](auto v) { return std::get<0>(v) != std::get<1>(v); });
-
-        if (subtform_error) {
-            for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
-                std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                             i,
-                             (naive),
-                             (pcx),
-                             (naive - pcx));
-                // }
-            }
-            return -1;
-        }
-        std::println("subtform successful");
-    }
-    return 0;
-}
