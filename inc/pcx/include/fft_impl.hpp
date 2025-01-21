@@ -524,8 +524,8 @@ struct subtransform {
             auto ns = NodeSize;    // TMP
 
             auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
-            // auto regrouped = tupi::group_invoke(regroup<Width / NGroups>, lo, hi);
-            // auto tw        = tupi::group_invoke(load_tw<NGroups>, tw_tup, half_node_tuple);
+            // auto regrouped = tupi::group_invoke(split_regroup<Width / NGroups>, lo, hi);
+            // auto           tw = tupi::group_invoke(load_tw<NGroups>, tw_tup, half_node_tuple);
             constexpr auto regr_ltw =
                 tupi::make_tuple
                 | tupi::pipeline(tupi::apply | tupi::group_invoke(split_regroup<Width / NGroups>),

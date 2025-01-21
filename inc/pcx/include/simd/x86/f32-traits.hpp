@@ -296,10 +296,10 @@ struct vec_traits<f32, 4>::repack_t<2, 1> {
 
 template<>
 struct vec_traits<f32, 4>::repack_t<4, 1>
-: public decltype(tupi::pass                                //
-                  | vec_traits<f32, 4>::repack_t<2, 1>{}    //
-                  | tupi::apply                             //
-                  | vec_traits<f32, 4>::repack_t<4, 2>{}) {};
+: public decltype(tupi::pass            //
+                  | repack_t<2, 1>{}    //
+                  | tupi::apply         //
+                  | repack_t<4, 2>{}) {};
 
 template<>
 struct vec_traits<f32, 8> {
@@ -344,24 +344,25 @@ struct vec_traits<f32, 8> {
     }
 
     static constexpr struct up_stage0_t {
-        static inline const auto idx4 = _mm256_set_epi32(0, 0, 1, 1, 2, 2, 3, 3);
+        static inline const auto idx4 = _mm256_setr_epi32(0, 0, 1, 1, 2, 2, 3, 3);
         PCX_AINLINE auto         operator()(vec_traits<f32, 2>::impl_vec vec) const {
             auto a = _mm256_set1_ps(vec[0]);
             auto b = _mm_set1_ps(vec[1]);
             return tupi::make_tuple(a, b, uZc<2>{});
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 4>::impl_vec vec) const {
-            return tupi::make_tuple(_mm256_permutevar8x32_ps(_mm256_castps128_ps256(vec), idx4));
+            auto x = _mm256_permutevar8x32_ps(_mm256_castps128_ps256(vec), idx4);
+            return tupi::make_tuple(x);
         }
-        PCX_AINLINE auto operator()(impl_vec v) const -> impl_vec {
-            return v;
+        PCX_AINLINE auto operator()(impl_vec v) const {
+            return tupi::make_tuple(v);
         }
     } up_stage0{};
     static constexpr struct {
-        PCX_AINLINE auto operator()(impl_vec v) {
+        PCX_AINLINE auto operator()(impl_vec v) const {
             return v;
         }
-        PCX_AINLINE auto operator()(auto a, auto b, uZc<2>) {
+        PCX_AINLINE auto operator()(auto a, auto b, uZc<2>) const {
             return _mm256_insertf128_ps(a, b, 0b1);
         }
     } up_stage1{};
