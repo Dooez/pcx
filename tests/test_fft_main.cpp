@@ -6,12 +6,7 @@
 int main() {
     // int test_single_load(uZ fft_size);
     // int test_subtranform(uZ fft_size);
-    uZ fft_size = 256;
-    while (fft_size < 8192UZ * 2) {
-        // test_subtranform(fft_size);
-        fft_size *= 2;
-    }
-    std::println();
+    std::println("testing f32:");
     // test_single_load<16, 16>();
     // test_single_load<16, 8>();
     // test_single_load<16, 4>();
@@ -24,17 +19,29 @@ int main() {
     // test_single_load<4, 8>();
     // test_single_load<4, 4>();
     // test_single_load<4, 2>();
-
     std::println();
+    uZ fft_size = 256;
+    while (fft_size < 8192UZ * 2) {
+        // test_subtranform_f32(fft_size);
+        fft_size *= 2;
+    }
+
+    std::println("\ntesting f64:");
     // test_single_load<8, 8, f64>();
     // test_single_load<8, 4, f64>();
     // test_single_load<8, 2, f64>();
     // test_single_load<4, 8, f64>();
     // test_single_load<4, 4, f64>();
     // test_single_load<4, 2, f64>();
-    test_single_load<2, 8, f64>();
-    test_single_load<2, 4, f64>();
-    test_single_load<2, 2, f64>();
+    // test_single_load<2, 8, f64>();
+    // test_single_load<2, 4, f64>();
+    // test_single_load<2, 2, f64>();
+    std::println();
+    fft_size = 256;
+    while (fft_size < 8192UZ * 2) {
+        test_subtranform_f64(fft_size);
+        fft_size *= 2;
+    }
 
     return 0;
 }

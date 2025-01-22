@@ -170,4 +170,5 @@ int test_single_load() {
 };
 
 int test_single_load(uZ fft_size);
-int test_subtranform(uZ fft_size);
+int test_subtranform_f32(uZ fft_size);
+int test_subtranform_f64(uZ fft_size);

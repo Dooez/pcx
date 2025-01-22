@@ -28,12 +28,15 @@ void naive_fft(R& data) {
     auto rsize = stdr::size(data);
     if (!is_pow_of_two(rsize))
         throw std::invalid_argument("Data size is not a power of two.");
-    using cx_t    = stdr::range_value_t<R>;
+    using cx_t              = stdr::range_value_t<R>;
+    using T                 = cx_t::value_type;
+    constexpr auto vec_with = pcx::simd::max_width<T>;
+
     auto fft_size = 2;
     auto step     = rsize / 2;
     auto n_groups = 1;
     while (step >= 1) {
-        if (step == 16 * 8 / 2) {
+        if (step == vec_with * 8) {
             // return;
         }
         if (step == 8) {
@@ -45,7 +48,7 @@ void naive_fft(R& data) {
         for (uZ k = 0; k < n_groups; ++k) {
             uZ   start = k * step * 2;
             auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
-            auto tw    = pcx::detail_::wnk<f32>(fft_size, rk);
+            auto tw    = pcx::detail_::wnk<T>(fft_size, rk);
             for (uZ i = 0; i < step; ++i) {
                 pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
             }
@@ -73,7 +76,7 @@ void repack(R& data) {
     }
 }
 
-template<typename fX = f32>
+template<typename fX>
 auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
     auto tw_vec    = std::vector<std::complex<fX>>();
     auto insert_tw = [&](uZ size, uZ i) {
@@ -81,9 +84,9 @@ auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
         auto tw = pcx::detail_::wnk<fX>(size, rk);
         tw_vec.push_back(tw);
     };
-    auto vec_size         = 16;
-    auto single_load_size = vec_size * node_size;
-    auto size             = 2UZ;
+    constexpr auto vec_size         = pcx::simd::max_width<fX>;
+    auto           single_load_size = vec_size * node_size;
+    auto           size             = 2UZ;
     while (fft_size / size >= single_load_size * node_size) {
         for (auto i: stdv::iota(0U, size / 2)) {
             for (auto ns: stdv::iota(0U, log2i(node_size))) {
@@ -126,20 +129,6 @@ auto make_tw_vec2(uZ fft_size, uZ node_size = 8) {
     return tw_vec;
 }
 
-template<uZ VecSize, uZ VecCount>    // 32 for avx512
-auto make_tw_vec_lo_k() {
-    // skip steps that don't cross simd vector boundary
-    auto twvec    = std::vector<std::complex<f32>>();
-    auto fft_size = VecSize * VecCount;
-    uZ   n_tw     = VecSize * VecCount / 2;
-    for (auto i: stdv::iota(0U, n_tw)) {
-        auto rk = pcx::detail_::reverse_bit_order(i, log2i(fft_size) - 1);
-        auto tw = pcx::detail_::wnk<f32>(fft_size, rk);
-        twvec.push_back(tw);
-    }
-    return twvec;
-}
-
 void bit_reverse_sort(stdr::random_access_range auto& range) {
     auto rsize = stdr::size(range);
     if (!is_pow_of_two(rsize))
@@ -152,17 +141,8 @@ void bit_reverse_sort(stdr::random_access_range auto& range) {
     }
 }
 
-
-// void foo_single_load(f32* data_ptr, f32* tw_lok_ptr) {
-//     constexpr auto vec_size  = 16;
-//     constexpr auto vec_count = 8;
-//     using fimpl              = pcx::detail_::subtransform<vec_count, f32, vec_size>;
-//     fimpl::single_load<1, 16, true>(data_ptr, data_ptr, tw_lok_ptr);
-// }
-
-
+template<typename fX>
 int test_subtranform(uZ fft_size) {
-    using fX     = f32;
     uZ   freq_n  = fft_size / 2;
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
@@ -179,15 +159,15 @@ int test_subtranform(uZ fft_size) {
     auto datavec2 = datavec;
     naive_fft(datavec);
 
-    constexpr auto vec_size  = 16;
+    constexpr auto vec_width = pcx::simd::max_width<fX>;
     constexpr auto vec_count = 8;
 
-    using fimpl = pcx::detail_::subtransform<vec_count, f32, vec_size>;
-    auto twvec  = make_tw_vec2(fft_size);
+    using fimpl = pcx::detail_::subtransform<vec_count, fX, vec_width>;
+    auto twvec  = make_tw_vec2<fX>(fft_size);
     // template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
-    fimpl::perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
@@ -205,6 +185,12 @@ int test_subtranform(uZ fft_size) {
     }
     std::println("successful during subtform of size {}", fft_size);
     return 0;
+}
+int test_subtranform_f32(uZ fft_size) {
+    return test_subtranform<f32>(fft_size);
+}
+int test_subtranform_f64(uZ fft_size) {
+    return test_subtranform<f64>(fft_size);
 }
 
 // NOLINTEND (*pointer-arithmetic*)
