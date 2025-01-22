@@ -99,6 +99,20 @@ struct vec_traits<f64, 2>::repack_t<2, 1> {
         return repack_t<1, 2>{}(a, b);
     };
 };
+template<>
+struct vec_traits<f64, 2>::split_interleave_t<1> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto x = _mm_movelh_ps(a, b);
+        auto y = _mm_unpackhi_pd(a, b);
+        return tupi::make_tuple(x, y);
+    }
+};
+template<>
+struct vec_traits<f64, 2>::split_interleave_t<2> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return tupi::make_tuple(a, b);
+    }
+};
 
 template<>
 struct vec_traits<f64, 4> {
@@ -213,7 +227,7 @@ struct vec_traits<f64, 4>::repack_t<1, 2> {
 };
 template<>
 struct vec_traits<f64, 4>::repack_t<1, 4>
-: public decltype(tupi::pass | repack_t<1, 2>{} | tupi::apply | repack_t<2, 4>{}) {};
+: public decltype(tupi::pass | repack_t<2, 4>{} | tupi::apply | repack_t<1, 2>{}) {};
 template<>
 struct vec_traits<f64, 4>::repack_t<4, 2> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
@@ -229,6 +243,29 @@ struct vec_traits<f64, 4>::repack_t<2, 1> {
 template<>
 struct vec_traits<f64, 4>::repack_t<4, 1>
 : public decltype(tupi::pass | repack_t<2, 1>{} | tupi::apply | repack_t<4, 2>{}) {};
+template<>
+struct vec_traits<f64, 4>::split_interleave_t<1> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto x = _mm256_unpacklo_pd(a, b);
+        auto y = _mm256_unpackhi_pd(a, b);
+        return tupi::make_tuple(x, y);
+    }
+};
+
+template<>
+struct vec_traits<f64, 4>::split_interleave_t<2> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        auto x = _mm256_permute2f128_pd(a, b, 0b00100000);
+        auto y = _mm256_permute2f128_pd(a, b, 0b00110001);
+        return tupi::make_tuple(x, y);
+    }
+};
+template<>
+struct vec_traits<f64, 4>::split_interleave_t<4> {
+    PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+        return tupi::make_tuple(a, b);
+    }
+};
 
 #ifdef PCX_AVX512
 template<>

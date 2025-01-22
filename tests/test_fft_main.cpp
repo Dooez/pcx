@@ -29,9 +29,12 @@ int main() {
     // test_single_load<8, 8, f64>();
     // test_single_load<8, 4, f64>();
     // test_single_load<8, 2, f64>();
-    test_single_load<4, 8, f64>();
-    test_single_load<4, 4, f64>();
-    test_single_load<4, 2, f64>();
+    // test_single_load<4, 8, f64>();
+    // test_single_load<4, 4, f64>();
+    // test_single_load<4, 2, f64>();
+    test_single_load<2, 8, f64>();
+    test_single_load<2, 4, f64>();
+    test_single_load<2, 2, f64>();
 
     return 0;
 }
