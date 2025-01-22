@@ -73,7 +73,7 @@ constexpr auto log2i(u64 num) -> uZ {
     return order;
 }
 
-template<uZ VecSize, uZ VecCount, typename fX = f32>    // 32 for avx512
+template<uZ VecSize, uZ VecCount, typename fX>
 auto make_tw_vec_single_load(uZ start_offset = 0, uZ start_size = 2) {
     auto twvec    = std::vector<std::complex<fX>>();
     auto fft_size = start_size;
@@ -112,7 +112,7 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
         fft_size *= 2;
     }
 }
-template<uZ VecSize, uZ VecCount, typename fX = f32, bool LowK = false>
+template<uZ VecSize, uZ VecCount, typename fX, bool LowK = false>
 int test_single_load() {
     constexpr auto fft_size = VecSize * VecCount;
     auto           freq_n   = fft_size / 2;
