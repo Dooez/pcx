@@ -22,7 +22,23 @@ int main() {
     std::println();
     uZ fft_size = 256;
     while (fft_size < 8192UZ * 2) {
-        // test_subtranform_f32(fft_size);
+        if (fft_size > 16 * 16)
+            test_subtranform<f32, 16, 16>(fft_size);
+        test_subtranform<f32, 8, 16>(fft_size);
+        test_subtranform<f32, 4, 16>(fft_size);
+        test_subtranform<f32, 2, 16>(fft_size);
+        test_subtranform<f32, 16, 8>(fft_size);
+        test_subtranform<f32, 8, 8>(fft_size);
+        test_subtranform<f32, 4, 8>(fft_size);
+        test_subtranform<f32, 2, 8>(fft_size);
+        test_subtranform<f32, 16, 4>(fft_size);
+        test_subtranform<f32, 8, 4>(fft_size);
+        test_subtranform<f32, 4, 4>(fft_size);
+        test_subtranform<f32, 2, 4>(fft_size);
+        test_subtranform<f32, 16, 2>(fft_size);
+        test_subtranform<f32, 8, 2>(fft_size);
+        test_subtranform<f32, 4, 2>(fft_size);
+        test_subtranform<f32, 2, 2>(fft_size);
         fft_size *= 2;
     }
 
@@ -37,9 +53,21 @@ int main() {
     // test_single_load<2, 4, f64>();
     // test_single_load<2, 2, f64>();
     std::println();
-    fft_size = 256;
+    fft_size = 128;
     while (fft_size < 8192UZ * 2) {
-        test_subtranform_f64(fft_size);
+        if (fft_size > 8 * 16)
+            test_subtranform<f64, 8, 16>(fft_size);
+        test_subtranform<f64, 4, 16>(fft_size);
+        test_subtranform<f64, 2, 16>(fft_size);
+        test_subtranform<f64, 8, 8>(fft_size);
+        test_subtranform<f64, 4, 8>(fft_size);
+        test_subtranform<f64, 2, 8>(fft_size);
+        test_subtranform<f64, 8, 4>(fft_size);
+        test_subtranform<f64, 4, 4>(fft_size);
+        test_subtranform<f64, 2, 4>(fft_size);
+        test_subtranform<f64, 8, 2>(fft_size);
+        test_subtranform<f64, 4, 2>(fft_size);
+        test_subtranform<f64, 2, 2>(fft_size);
         fft_size *= 2;
     }
 

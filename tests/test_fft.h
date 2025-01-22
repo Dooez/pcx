@@ -168,7 +168,60 @@ int test_single_load() {
     // }
     return 0;
 };
+template<typename fX>
+void naive_fft(std::vector<std::complex<fX>>& data);
+template<typename fX>
+auto make_tw_vec(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>>;
 
-int test_single_load(uZ fft_size);
-int test_subtranform_f32(uZ fft_size);
-int test_subtranform_f64(uZ fft_size);
+// void bit_reverse_sort(stdr::random_access_range auto& range) {
+//     auto rsize = stdr::size(range);
+//     if (!is_pow_of_two(rsize))
+//         throw std::invalid_argument("Range size is not a power of two.");
+//     auto depth = log2i(rsize);
+//     for (auto i: stdv::iota(0U, rsize)) {
+//         auto irev = pcx::detail_::reverse_bit_order(i, depth);
+//         if (i < irev)
+//             std::swap(range[i], range[irev]);
+//     }
+// }
+template<typename fX, uZ Width, uZ NodeSize>
+int test_subtranform(uZ fft_size) {
+    uZ   freq_n  = fft_size / 2;
+    auto datavec = [=]() {
+        auto vec = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v]: stdv::enumerate(vec)) {
+            v = std::exp(std::complex<fX>(0, 1)                 //
+                         * static_cast<fX>(2)                   //
+                         * static_cast<fX>(std::numbers::pi)    //
+                         * static_cast<fX>(i)                   //
+                         * static_cast<fX>(freq_n)              //
+                         / static_cast<fX>(fft_size));
+        }
+        return vec;
+    }();
+    auto datavec2 = datavec;
+    naive_fft(datavec);
+
+    using fimpl    = pcx::detail_::subtransform<NodeSize, fX, Width>;
+    auto  twvec    = make_tw_vec<fX>(fft_size, Width, NodeSize);
+    auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
+    auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
+    fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
+                                       [](auto v) { return std::get<0>(v) != std::get<1>(v); });
+
+    if (subtform_error) {
+        std::println("error during subtform of size {}", fft_size);
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
+            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                         i,
+                         (naive),
+                         (pcx),
+                         (naive - pcx));
+            // }
+        }
+        return -1;
+    }
+    std::println("successful during subtform of size {}", fft_size);
+    return 0;
+}
