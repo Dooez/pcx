@@ -105,6 +105,8 @@ struct btfly_node_dit {
     using dest_t = tupi::broadcast_tuple_t<T*, NodeSize>;
     using src_t  = tupi::broadcast_tuple_t<const T*, NodeSize>;
     using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize - 1>;
+    using ctw_t  = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
+
 
     template<settings S>
     PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const tw_t& tw) {
@@ -257,6 +259,23 @@ struct btfly_node_dit {
                 constexpr auto start   = Size / 2 - 1;
                 return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
             }(std::make_index_sequence<Size / 2>{});
+            //
+        };
+    }
+    PCX_AINLINE static auto make_ctw_getter(ctw_t tw) {
+        return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
+            return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
+                static_assert(Size <= NodeSize);
+                constexpr auto repeats = NodeSize / Size;
+                if constexpr (Size == 2) {
+                    return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<0>(tw)));
+                } else {
+                    constexpr auto start = Size / 4 - 1;
+                    return tupi::tuple_cat(tupi::tuple_cat(
+                        tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw)),
+                        tupi::make_broadcast_tuple<repeats>(mul_by_j<-1>(tupi::get<start + Itw>(tw))))...);
+                }
+            }(std::make_index_sequence<Size / 4>{});
             //
         };
     }

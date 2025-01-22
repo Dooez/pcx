@@ -100,6 +100,9 @@ auto make_subtform_tw(uZ max_size,      //
                 auto l_start = start_idx * powi(2, pow2);
                 for (auto k: stdv::iota(0U, powi(2, pow2))) {
                     auto l_i = l_start + i * powi(2, pow2) + k;
+                    // if (k % 2 == 1){
+                    //      continue;
+                    // }
                     insert_tw(size * powi(2, pow2 + 1), l_i);
                 }
             }
@@ -117,6 +120,9 @@ auto make_subtform_tw(uZ max_size,      //
                 auto l_start = start_idx * powi(2, pow2);
                 for (auto k: stdv::iota(0U, powi(2, pow2))) {
                     auto l_i = l_start + i * powi(2, pow2) + k;
+                    // if (k % 2 == 1){
+                    //      continue;
+                    // }
                     insert_tw(size * powi(2, pow2 + 1), l_i);
                 }
             }
@@ -130,6 +136,9 @@ auto make_subtform_tw(uZ max_size,      //
 
         for (auto i_node: stdv::iota(0U, log2i(node_size))) {
             for (auto k: stdv::iota(0U, powi(2, i_node))) {
+                // if (k % 2 == 1){
+                //      continue;
+                // }
                 insert_tw(fft_size, start_offset + k);
             }
             start_offset *= 2;
