@@ -24,6 +24,30 @@ struct std::formatter<std::complex<T>, char> {
         return out;
     }
 };
+static auto get_type_name(pcx::meta::types<f32>) {
+    return std::string_view("f32");
+}
+static auto get_type_name(pcx::meta::types<f64>) {
+    return std::string_view("f64");
+}
+template<typename T>
+struct std::formatter<pcx::meta::types<T>> {
+    template<class ParseContext>
+    constexpr auto parse(ParseContext& ctx) -> ParseContext::iterator {
+        auto it = ctx.begin();
+        if (it == ctx.end())
+            return it;
+        if (it != ctx.end() && *it != '}')
+            throw std::format_error("Invalid format args for pcx::meta::types<T>.");
+
+        return it;
+    }
+
+    template<class FmtContext>
+    FmtContext::iterator format(pcx::meta::types<T> mt, FmtContext& ctx) const {
+        return std::ranges::copy(get_type_name(mt), ctx.out()).out;
+    }
+};
 namespace pcxt {
 template<typename T>
 auto cmul(std::complex<T> a, std::complex<T> b) {
@@ -211,7 +235,12 @@ int test_subtranform(uZ fft_size) {
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
     if (subtform_error) {
-        std::println("error during subtform of size {}", fft_size);
+        std::println(
+            "Error during subtform of size {} of type {} with vector width {:>2} and node size {:>2}.",
+            fft_size,
+            pcx::meta::types<fX>{},
+            Width,
+            NodeSize);
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
             std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
                          i,
@@ -222,6 +251,10 @@ int test_subtranform(uZ fft_size) {
         }
         return -1;
     }
-    std::println("successful during subtform of size {}", fft_size);
+    std::println("Successful subtform of size {} of type {} with width {:>2} and node size {:>2}.",
+                 fft_size,
+                 pcx::meta::types<fX>{},
+                 Width,
+                 NodeSize);
     return 0;
 }
