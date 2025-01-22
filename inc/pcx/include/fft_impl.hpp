@@ -270,7 +270,7 @@ struct btfly_node_dit {
                 if constexpr (Size == 2) {
                     return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<0>(tw)));
                 } else {
-                    constexpr auto start = Size / 4 - 1;
+                    constexpr auto start = Size / 4;
                     return tupi::tuple_cat(tupi::tuple_cat(
                         tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw)),
                         tupi::make_broadcast_tuple<repeats>(mul_by_j<-1>(tupi::get<start + Itw>(tw))))...);
