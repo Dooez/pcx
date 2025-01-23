@@ -362,43 +362,50 @@ struct subtransform {
         constexpr auto single_load_size = NodeSize * Width;
         if constexpr (SrcPackSize != Width) {
             if (max_size / size >= single_load_size * NodeSize) {
+                auto stw_ptr = tw_ptr;
                 fft_iteration<NodeSize, Width, SrcPackSize, LowK>(max_size, size, dest_ptr, tw_ptr);
-                while (max_size / size >= single_load_size * NodeSize)
+                while (max_size / size >= single_load_size * NodeSize) {
+                    //
+                    auto x = 123;
+                    //
+                    x++;
                     fft_iteration<NodeSize, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
+                }
 
-                [&]<uZ... Is>(std::index_sequence<Is...>) {
-                    auto try_iter = [&]<uZ I>(uZc<I>) {
-                        auto si = size;
-                        auto sz = (size * powi(2, I));
-                        if (max_size / (size * powi(2, I)) == single_load_size) {
+                if (true)
+                    [&]<uZ... Is>(std::index_sequence<Is...>) {
+                        auto try_iter = [&]<uZ I>(uZc<I>) {
+                            auto           si          = size;
+                            auto           sz          = (size * powi(2, I));
+                            constexpr auto node_size_l = powi(2, I + 1);
+                            if (max_size / (size * powi(2, I)) != single_load_size)
+                                return false;
                             if constexpr (LowK)
-                                tw_ptr += size;
-                            fft_iteration<powi(2, I + 1), Width, Width, LowK>(max_size,
-                                                                              size,
-                                                                              dest_ptr,
-                                                                              tw_ptr);
+                                tw_ptr += size / 2;
+                            fft_iteration<node_size_l, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
+                            if constexpr (LowK)
+                                tw_ptr += size / 2;
                             return true;
-                        }
-                        return false;
-                    };
-                    (try_iter(uZc<Is>{}) || ...);
-                    // ((max_size / (size * powi(2, Is + 1)) == single_load_size
-                    //   && (fft_iteration<powi(2, Is + 1), LowK>(max_size, size, dest_ptr, tw_ptr), true))
-                    //  || ...);
-                }(std::make_index_sequence<log2i(NodeSize)>{});
+                        };
+                        (try_iter(uZc<Is>{}) || ...);
+                        // ((max_size / (size * powi(2, Is + 1)) == single_load_size
+                        //   && (fft_iteration<powi(2, Is + 1), LowK>(max_size, size, dest_ptr, tw_ptr), true))
+                        //  || ...);
+                    }(std::make_index_sequence<log2i(NodeSize)>{});
             } else {
-                return;
+                // return;
                 [&]<uZ... Is>(std::index_sequence<Is...>) {
                     auto try_iter = [&]<uZ I>(uZc<I>) {
                         auto sz = (size * powi(2, I));
-                        if (max_size / (size * powi(2, I)) == single_load_size) {
-                            fft_iteration<powi(2, I + 1), Width, SrcPackSize, LowK>(max_size,
-                                                                                    size,
-                                                                                    dest_ptr,
-                                                                                    tw_ptr);
-                            return true;
-                        }
-                        return false;
+                        if (max_size / (size * powi(2, I)) != single_load_size)
+                            return false;
+                        fft_iteration<powi(2, I + 1), Width, SrcPackSize, LowK>(max_size,
+                                                                                size,
+                                                                                dest_ptr,
+                                                                                tw_ptr);
+                        if constexpr (LowK)
+                            tw_ptr += size;
+                        return true;
                     };
                     (try_iter(uZc<Is>{}) || ...);
                     // ((max_size / (size * powi(2, Is + 1)) == single_load_size
@@ -440,10 +447,10 @@ struct subtransform {
             return;
         }
 
-        if constexpr (LowK) {
-            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
-        }
-        constexpr auto start = LowK ? 1UZ : 0UZ;
+        // if constexpr (LowK) {
+        //     single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
+        // }
+        constexpr auto start = LowK ? 0UZ : 0UZ;
         for (auto i: stdv::iota(start, max_size / single_load_size)) {
             auto dest = dest_ptr + i * single_load_size * 2;
             single_load<DestPackSize, Width, false>(dest, dest, tw_ptr);
@@ -455,8 +462,6 @@ struct subtransform {
 
     template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration(uZ max_fft_size, uZ& fft_size, auto data_ptr, auto& tw_ptr) {
-        constexpr auto single_load_size = NodeSizeL * Width;
-
         auto pdest     = PackDest;     // TMP
         auto psrc      = PackSrc;      // TMP
         auto node_size = NodeSizeL;    // TMP
@@ -488,26 +493,23 @@ struct subtransform {
         };
 
         constexpr auto n_tw = NodeSizeL / 2;
-        if constexpr (LowK) {
-            for (auto i: stdv::iota(0U, group_size / single_load_size * 2)) {
-                auto data = make_data_tup(0, i);
-                btfly_node::template perform_lo_k<settings>(data);
-            }
-            l_tw_ptr += n_tw * 2;
-        }
-        constexpr auto start = LowK ? 1UZ : 0UZ;
+        // if constexpr (LowK) {
+        //     for (auto i: stdv::iota(0U, group_size / single_load_size * 2)) {
+        //         auto data = make_data_tup(0, i);
+        //         btfly_node::template perform_lo_k<settings>(data);
+        //     }
+        //     l_tw_ptr += n_tw * 2;
+        // }
+        // constexpr auto start = LowK ? 1UZ : 0UZ;
+        constexpr auto start = LowK ? 0UZ : 0UZ;
         for (auto k: stdv::iota(start, fft_size / 2)) {
             auto tw = [l_tw_ptr]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
             }(std::make_index_sequence<n_tw>{});
             l_tw_ptr += n_tw * 2;
-            for (auto i: stdv::iota(0U, group_size / single_load_size * 2)) {
+            for (auto i: stdv::iota(0U, group_size / (NodeSizeL * Width) * 2)) {
                 auto data = make_data_tup(k, i);
-                // if constexpr (LowK) {
-                //     btfly_node::template perform_lo_k<settings>(data, tw);
-                // } else {
                 btfly_node::template perform<settings>(data, tw);
-                // }
             }
         }
         fft_size *= NodeSizeL;
@@ -530,6 +532,7 @@ struct subtransform {
             };
         auto btfly_res_0 = [&]() {
             if constexpr (LowK) {
+                tw_ptr += NodeSize;
                 return btfly0(data_rep, btfly_node::const_tw_getter);
             } else {
                 auto tw0 = []<uZ... Is>(auto tw_ptr, std::index_sequence<Is...>) {
@@ -554,14 +557,13 @@ struct subtransform {
                                                                uZc<NGroups> = {}) {
             if constexpr (NGroups == Width) {
                 auto tmp = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
-                if constexpr (!LowK)
-                    tw_ptr += NGroups * 2 * NodeSize / 2;
+                // if constexpr (!LowK)
+                tw_ptr += NGroups * 2 * NodeSize / 2;
                 return tmp;
-
             } else {
                 auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
-                if constexpr (!LowK)
-                    tw_ptr += NGroups * 2 * NodeSize / 2;
+                // if constexpr (!LowK)
+                tw_ptr += NGroups * 2 * NodeSize / 2;
                 return f(lo, hi, uZc<NGroups * 2>{});
             }
         }(data_lo, data_hi);

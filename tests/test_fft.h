@@ -266,7 +266,7 @@ int test_subtranform(uZ fft_size) {
     naive_fft(datavec);
 
     using fimpl = pcx::detail_::subtransform<NodeSize, fX, Width>;
-    // auto  twvec    = make_tw_vec<fX>(fft_size, Width, NodeSize);
+    // auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize);
     auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
@@ -282,12 +282,13 @@ int test_subtranform(uZ fft_size) {
             pcx::meta::types<fX>{},
             Width,
             NodeSize);
-        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999)) {
-            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                         i,
-                         (naive),
-                         (pcx),
-                         (naive - pcx));
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
+            if (naive != pcx)
+                std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                             i,
+                             (naive),
+                             (pcx),
+                             (naive - pcx));
             // }
         }
         return -1;
