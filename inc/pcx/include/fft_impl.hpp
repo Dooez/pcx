@@ -104,16 +104,25 @@ struct btfly_node_dit {
 
     using dest_t = tupi::broadcast_tuple_t<T*, NodeSize>;
     using src_t  = tupi::broadcast_tuple_t<const T*, NodeSize>;
-    using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize - 1>;
-    using ctw_t  = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
+    // using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize - 1>;
+    using ctw_t = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
+    // using lok_tw_t = tupi::broadcast_tuple_t<cx_vec, std::max(NodeSize / 4, 1UZ)>;
 
 
+    // template<settings S>
+    // PCX_AINLINE static void perform_lo_k(const dest_t& dest, const src_t& src, const lok_tw_t& tw) {
+    //     if constexpr (S.reverse) {
+    //         rev_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter_lok(tw));
+    //     } else {
+    //         fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter_lok(tw));
+    //     }
+    // }
     template<settings S>
-    PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const tw_t& tw) {
+    PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const ctw_t& tw) {
         if constexpr (S.reverse) {
-            rev_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
+            rev_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter(tw));
         } else {
-            fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
+            fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter(tw));
         }
     }
     template<settings S>
@@ -124,13 +133,17 @@ struct btfly_node_dit {
             fwd_impl<S.pack_dest, S.pack_src>(dest, src, const_tw_getter);
         }
     }
+    // template<settings S>
+    // PCX_AINLINE static void perform_lo_k(const dest_t& dest, const lok_tw_t& tw) {
+    //     perform_lo_k<S>(dest, dest, tw);
+    // }
     template<settings S>
-    PCX_AINLINE static void perform(const dest_t& dest, const tw_t& tw) {
+    PCX_AINLINE static void perform(const dest_t& dest, const ctw_t& tw) {
         perform<S>(dest, dest, tw);
     }
     template<settings S>
     PCX_AINLINE static void perform_lo_k(const dest_t& dest) {
-        preform_lo_k<S>(dest, dest);
+        perform_lo_k<S>(dest, dest);
     }
 
     template<uZ DestPackSize, uZ SrcPackSize>
@@ -238,37 +251,52 @@ struct btfly_node_dit {
         }(lo, hi, std::make_index_sequence<NodeSize / Stride>{});
     }
 
-    PCX_AINLINE static auto make_tw_getter_lo_k(tw_t tw) {
-        return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
-            return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
-                static_assert(NodeSize >= Size);
-                constexpr auto repeats = NodeSize / Size;
-                constexpr auto start   = Size / 2 - 1;
-                // return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
-                return tupi::tuple_cat(
-                    tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw))...);    // no offset for low k
-            }(std::make_index_sequence<Size / 2>{});
-            //
-        };
-    }
-    PCX_AINLINE static auto make_tw_getter(tw_t tw) {
-        return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
-            return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
-                static_assert(NodeSize >= Size);
-                constexpr auto repeats = NodeSize / Size;
-                constexpr auto start   = Size / 2 - 1;
-                return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
-            }(std::make_index_sequence<Size / 2>{});
-            //
-        };
-    }
+    // PCX_AINLINE static auto make_tw_getter_lo_k(tw_t tw) {
+    //     return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
+    //         return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
+    //             static_assert(NodeSize >= Size);
+    //             constexpr auto repeats = NodeSize / Size;
+    //             constexpr auto start   = Size / 2 - 1;
+    //             // return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
+    //             return tupi::tuple_cat(
+    //                 tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw))...);    // no offset for low k
+    //         }(std::make_index_sequence<Size / 2>{});
+    //         //
+    //     };
+    // }
+    // PCX_AINLINE static auto make_tw_getter(tw_t tw) {
+    //     return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
+    //         return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
+    //             static_assert(NodeSize >= Size);
+    //             constexpr auto repeats = NodeSize / Size;
+    //             constexpr auto start   = Size / 2 - 1;
+    //             return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
+    //         }(std::make_index_sequence<Size / 2>{});
+    //         //
+    //     };
+    // }
+    // PCX_AINLINE static auto make_ctw_getter_lok(lok_tw_t tw) {
+    //     return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
+    //         return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
+    //             static_assert(Size <= NodeSize);
+    //             constexpr auto repeats = NodeSize / Size;
+    //             if constexpr (Size == 2) {
+    //                 return tupi::make_broadcast_tuple<repeats>(tupi::get<0>(tw));
+    //             } else {
+    //                 return tupi::tuple_cat(tupi::tuple_cat(
+    //                     tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw)),
+    //                     tupi::make_broadcast_tuple<repeats>(mul_by_j<-1>(tupi::get<Itw>(tw))))...);
+    //             }
+    //         }(std::make_index_sequence<Size / 4>{});
+    //     };
+    // }
     PCX_AINLINE static auto make_ctw_getter(ctw_t tw) {
         return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
             return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
                 static_assert(Size <= NodeSize);
                 constexpr auto repeats = NodeSize / Size;
                 if constexpr (Size == 2) {
-                    return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<0>(tw)));
+                    return tupi::make_broadcast_tuple<repeats>(tupi::get<0>(tw));
                 } else {
                     constexpr auto start = Size / 4;
                     return tupi::tuple_cat(tupi::tuple_cat(
@@ -343,6 +371,8 @@ struct subtransform {
                         auto si = size;
                         auto sz = (size * powi(2, I));
                         if (max_size / (size * powi(2, I)) == single_load_size) {
+                            if constexpr (LowK)
+                                tw_ptr += size;
                             fft_iteration<powi(2, I + 1), Width, Width, LowK>(max_size,
                                                                               size,
                                                                               dest_ptr,
@@ -357,6 +387,7 @@ struct subtransform {
                     //  || ...);
                 }(std::make_index_sequence<log2i(NodeSize)>{});
             } else {
+                return;
                 [&]<uZ... Is>(std::index_sequence<Is...>) {
                     auto try_iter = [&]<uZ I>(uZc<I>) {
                         auto sz = (size * powi(2, I));
@@ -399,7 +430,7 @@ struct subtransform {
         }
 
         // assert(max_size / size == single_load_size / 2);
-        constexpr auto skip_single_load = false;
+        constexpr auto skip_single_load = true;
         if (skip_single_load) {
             for (auto i: stdv::iota(0U, max_size / Width)) {
                 auto ptr = dest_ptr + i * Width * 2;
@@ -424,10 +455,11 @@ struct subtransform {
 
     template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration(uZ max_fft_size, uZ& fft_size, auto data_ptr, auto& tw_ptr) {
-        auto           pdest            = PackDest;
-        auto           psrc             = PackSrc;
         constexpr auto single_load_size = NodeSizeL * Width;
-        auto           node_size        = NodeSizeL;    // TMP
+
+        auto pdest     = PackDest;     // TMP
+        auto psrc      = PackSrc;      // TMP
+        auto node_size = NodeSizeL;    // TMP
 
         auto  tw_ptr_copy = tw_ptr;
         auto& l_tw_ptr    = [&] -> auto& {
@@ -455,22 +487,27 @@ struct subtransform {
             }(data_ptr + k * k_stride + i * Width * 2, std::make_index_sequence<NodeSizeL>{});
         };
 
+        constexpr auto n_tw = NodeSizeL / 2;
         if constexpr (LowK) {
             for (auto i: stdv::iota(0U, group_size / single_load_size * 2)) {
                 auto data = make_data_tup(0, i);
                 btfly_node::template perform_lo_k<settings>(data);
             }
-            l_tw_ptr += 2 * (NodeSizeL - 1);
+            l_tw_ptr += n_tw * 2;
         }
         constexpr auto start = LowK ? 1UZ : 0UZ;
         for (auto k: stdv::iota(start, fft_size / 2)) {
             auto tw = [l_tw_ptr]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-            }(std::make_index_sequence<NodeSizeL - 1>{});
-            l_tw_ptr += 2 * (NodeSizeL - 1);
+            }(std::make_index_sequence<n_tw>{});
+            l_tw_ptr += n_tw * 2;
             for (auto i: stdv::iota(0U, group_size / single_load_size * 2)) {
                 auto data = make_data_tup(k, i);
+                // if constexpr (LowK) {
+                //     btfly_node::template perform_lo_k<settings>(data, tw);
+                // } else {
                 btfly_node::template perform<settings>(data, tw);
+                // }
             }
         }
         fft_size *= NodeSizeL;

@@ -233,6 +233,8 @@ template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data);
 template<typename fX>
 auto make_tw_vec(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>>;
+template<typename fX>
+auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>>;
 
 // void bit_reverse_sort(stdr::random_access_range auto& range) {
 //     auto rsize = stdr::size(range);
@@ -263,11 +265,13 @@ int test_subtranform(uZ fft_size) {
     auto datavec2 = datavec;
     naive_fft(datavec);
 
-    using fimpl    = pcx::detail_::subtransform<NodeSize, fX, Width>;
-    auto  twvec    = make_tw_vec<fX>(fft_size, Width, NodeSize);
+    using fimpl = pcx::detail_::subtransform<NodeSize, fX, Width>;
+    // auto  twvec    = make_tw_vec<fX>(fft_size, Width, NodeSize);
+    auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
-    fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    // fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    fimpl::template perform<1, 1, true>(2, fft_size, data_ptr, tw_ptr);
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
