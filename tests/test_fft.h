@@ -97,22 +97,56 @@ constexpr auto log2i(u64 num) -> uZ {
     return order;
 }
 
-template<uZ VecSize, uZ VecCount, typename fX>
-auto make_tw_vec_single_load(uZ start_offset = 0, uZ start_size = 2) {
-    auto twvec    = std::vector<std::complex<fX>>();
-    auto fft_size = start_size;
-    uZ   n_tw     = 1;
-    while (n_tw <= VecSize * VecCount / 2) {
-        for (auto i: stdv::iota(0U, n_tw)) {
-            auto rk = pcx::detail_::reverse_bit_order(start_offset + i, log2i(fft_size) - 1);
-            auto tw = pcx::detail_::wnk<fX>(fft_size, rk);
-            twvec.push_back(tw);
+template<typename fX>
+auto make_tw_vec_single_load(uZ start_offset,    // = 0
+                             uZ start_size,      // = 1
+                             uZ vec_width,
+                             uZ node_size) {
+    auto tw_vec    = std::vector<std::complex<fX>>();
+    auto insert_tw = [&](uZ size, uZ i) {
+        auto rk = pcx::detail_::reverse_bit_order(i, log2i(size) - 1);
+        auto tw = pcx::detail_::wnk<fX>(size, rk);
+        tw_vec.push_back(tw);
+    };
+    // auto fft_size = start_size;
+    // uZ   n_tw     = 1;
+    // while (n_tw <= VecSize * VecCount / 2) {
+    //     for (auto i: stdv::iota(0U, n_tw)) {
+    //         auto rk = pcx::detail_::reverse_bit_order(start_offset + i, log2i(fft_size) - 1);
+    //         auto tw = pcx::detail_::wnk<fX>(fft_size, rk);
+    //         twvec.push_back(tw);
+    //     }
+    //     start_offset *= 2;
+    //     fft_size *= 2;
+    //     n_tw *= 2;
+    // }
+    // return twvec;
+    //
+    auto fft_size = start_size * 2;
+    for (auto i_node: stdv::iota(0U, log2i(node_size))) {
+        for (auto k: stdv::iota(0U, powi(2, i_node))) {
+            if (k % 2 == 1) {
+                continue;
+            }
+            insert_tw(fft_size, start_offset + k);
         }
         start_offset *= 2;
         fft_size *= 2;
-        n_tw *= 2;
     }
-    return twvec;
+    uZ tw_per_vec = 2;
+    while (tw_per_vec <= vec_width) {
+        uZ tw_idx = start_offset;
+        for (auto i_vec: stdv::iota(0U, node_size / 2)) {
+            for (auto i_tw: stdv::iota(0U, tw_per_vec)) {
+                insert_tw(fft_size, tw_idx);
+                ++tw_idx;
+            }
+        }
+        start_offset *= 2;
+        tw_per_vec *= 2;
+        fft_size *= 2;
+    }
+    return tw_vec;
 }
 
 template<uZ VecSize, uZ VecCount, typename T>    // 32 for avx512
@@ -125,23 +159,26 @@ void naive_single_load(std::complex<T>* data, const std::complex<T>* tw_ptr) {
         // if (fft_size == VecCount * 2)
         //     return;
         for (uZ k = 0; k < n_groups; ++k) {
-            uZ start = k * step * 2;
+            uZ   start = k * step * 2;
+            auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
+            auto tw    = pcx::detail_::wnk<T>(fft_size, rk);
             for (uZ i = 0; i < step; ++i) {
-                pcxt::btfly(data + start + i, data + start + i + step, *tw_ptr);    //
+                // pcxt::btfly(data + start + i, data + start + i + step, *tw_ptr);    //
+                pcxt::btfly(data + start + i, data + start + i + step, tw);    //
             }
-            ++tw_ptr;
+            // ++tw_ptr;
         }
         step /= 2;
         n_groups *= 2;
         fft_size *= 2;
     }
 }
-template<uZ VecSize, uZ VecCount, typename fX, bool LowK = false>
+template<typename fX, uZ Width, uZ NodeSize, bool LowK = false>
 int test_single_load() {
-    constexpr auto fft_size = VecSize * VecCount;
+    constexpr auto fft_size = Width * NodeSize;
     auto           freq_n   = fft_size / 2;
 
-    auto twvec   = make_tw_vec_single_load<VecSize, VecCount, fX>();
+    auto twvec   = make_tw_vec_single_load<fX>(0, 1, Width, NodeSize);
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
         for (auto [i, v]: stdv::enumerate(vec)) {
@@ -155,10 +192,10 @@ int test_single_load() {
         return vec;
     }();
     auto datavec2 = datavec;
-    naive_single_load<VecSize, VecCount>(datavec.data(), twvec.data());
+    naive_single_load<Width, NodeSize>(datavec.data(), twvec.data());
     //
     // auto twvec_lo_k  = make_tw_vec_lo_k<vec_size, vec_count>();
-    using fimpl    = pcx::detail_::subtransform<VecCount, fX, VecSize>;
+    using fimpl    = pcx::detail_::subtransform<NodeSize, fX, Width>;
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
     // auto* tw_lok_ptr = reinterpret_cast<fX*>(twvec_lo_k.data());
@@ -171,7 +208,7 @@ int test_single_load() {
                                           [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
     if (single_load_error) {
-        std::println("Error in single load for {} simd vectors of width {}.", VecCount, VecSize);
+        std::println("Error in single load for {} simd vectors of width {}.", NodeSize, Width);
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
             std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
                          i,
@@ -182,7 +219,7 @@ int test_single_load() {
         return -1;
     }
 
-    std::println("Successful single load for {} simd vectors of width {}.", VecCount, VecSize);
+    std::println("Successful single load for {} simd vectors of width {}.", NodeSize, Width);
     // for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
     //     std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
     //                  i,

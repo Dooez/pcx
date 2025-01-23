@@ -497,9 +497,11 @@ struct subtransform {
             } else {
                 auto tw0 = []<uZ... Is>(auto tw_ptr, std::index_sequence<Is...>) {
                     return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
-                }(tw_ptr, std::make_index_sequence<NodeSize - 1>{});
-                tw_ptr += 2 * (NodeSize - 1);
-                return btfly0(data_rep, btfly_node::make_tw_getter(tw0));
+                    // }(tw_ptr, std::make_index_sequence<NodeSize - 1>{});
+                }(tw_ptr, std::make_index_sequence<NodeSize / 2>{});
+                // tw_ptr += 2 * (NodeSize - 1);
+                tw_ptr += NodeSize;
+                return btfly0(data_rep, btfly_node::make_ctw_getter(tw0));
             }
         }();
 
