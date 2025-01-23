@@ -23,7 +23,7 @@ int main() {
         auto passed = (ns_passed(uZc<NodeSizes>{}) && ...);
         return passed;
     };
-    constexpr auto node_sizes = std::index_sequence<4>{};
+    constexpr auto node_sizes = std::index_sequence<8>{};
     constexpr auto f64_widths = std::index_sequence<8>{};
     constexpr auto f32_widths = std::index_sequence<4>{};
     // constexpr auto node_sizes = std::index_sequence<2, 4, 8>{};

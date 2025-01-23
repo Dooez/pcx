@@ -35,8 +35,8 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
     auto fft_size  = 2;
     auto step      = rsize / 2;
     auto n_groups  = 1;
-    auto node_size = 4U;
-    while (step >= 1) {
+    auto node_size = 2U;
+    while (false && step >= 1) {
         if (step * 2 / node_size <= vec_width * node_size) {
             break;
         }
@@ -68,7 +68,7 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
     }
     // return;
     while (step >= 1) {
-        if (step == vec_width * node_size / 2) {
+        if (step == vec_width * node_size * 2) {
             break;
         }
         if (step < vec_width) {

@@ -371,6 +371,7 @@ struct subtransform {
                     x++;
                     fft_iteration<NodeSize, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
                 }
+                auto twd = tw_ptr - stw_ptr;
 
                 if (true)
                     [&]<uZ... Is>(std::index_sequence<Is...>) {
