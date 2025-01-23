@@ -23,7 +23,7 @@ int main() {
         auto passed = (ns_passed(uZc<NodeSizes>{}) && ...);
         return passed;
     };
-    constexpr auto node_sizes = std::index_sequence<8>{};
+    constexpr auto node_sizes = std::index_sequence<2>{};
     constexpr auto f64_widths = std::index_sequence<8>{};
     constexpr auto f32_widths = std::index_sequence<4>{};
     // constexpr auto node_sizes = std::index_sequence<2, 4, 8>{};
@@ -38,8 +38,8 @@ int main() {
     // if (!exec_sl_test(node_sizes, f32_widths, f32t))
     //     return -1;
     std::println();
-    uZ fft_size = 4096;
-    while (fft_size < 8192UZ * 4) {
+    uZ fft_size = 512;
+    while (fft_size <= 8192UZ * 4) {
         if (!exec_test(node_sizes, f32_widths, f32t, fft_size))
             return -1;
         fft_size *= 2;

@@ -60,14 +60,14 @@ auto cmul(std::complex<T> a, std::complex<T> b) {
     // auto rva = simd::repack<vec_t::width()>(va);
     // auto rvb = simd::repack<vec_t::width()>(vb);
     using ct = std::complex<T>;
-    // if (b == ct{1, 0})
-    //     return a;
-    // if (b == ct{-1, 0})
-    //     return -a;
-    // if (b == ct{0, 1})
-    //     return ct{-a.imag(), a.real()};
-    // if (b == ct{0, -1})
-    //     return ct{a.imag(), -a.real()};
+    if (b == ct{1, 0})
+        return a;
+    if (b == ct{-1, 0})
+        return -a;
+    if (b == ct{0, 1})
+        return ct{-a.imag(), a.real()};
+    if (b == ct{0, -1})
+        return ct{a.imag(), -a.real()};
 
     using resarr = std::array<std::complex<T>, vec_t::width()>;
     auto res     = resarr{};
@@ -80,6 +80,8 @@ auto cmul(std::complex<T> a, std::complex<T> b) {
 }
 template<typename T>
 void btfly(std::complex<T>* a, std::complex<T>* b, std::complex<T> tw) {
+    using ct = std::complex<T>;
+
     auto b_tw = cmul(*b, tw);
     auto a_c  = *a;
     *a        = a_c + b_tw;
@@ -275,12 +277,12 @@ int test_subtranform(uZ fft_size) {
     naive_fft(datavec);
 
     using fimpl = pcx::detail_::subtransform<NodeSize, fX, Width>;
-    auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize);
-    // auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
+    // auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize);
+    auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
-    fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
-    // fimpl::template perform<1, 1, true>(2, fft_size, data_ptr, tw_ptr);
+    // fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    fimpl::template perform<1, 1, true>(2, fft_size, data_ptr, tw_ptr);
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
@@ -298,6 +300,15 @@ int test_subtranform(uZ fft_size) {
                              (naive),
                              (pcx),
                              (naive - pcx));
+                if (std::abs(naive - pcx) > 1) {
+                    // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                    //              i,
+                    //              (naive),
+                    //              (pcx),
+                    //              (naive - pcx));
+                    std::println("Over 1 found.");
+                    break;
+                }
             // }
         }
         return -1;

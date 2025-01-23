@@ -53,17 +53,22 @@ constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
 }
 template<typename T = f64>
 inline auto wnk(uZ n, uZ k) -> std::complex<T> {
-    while (k > 0 && k % 2 == 0) {
+    while ((k > 0) && (k % 2 == 0)) {
         k /= 2;
         n /= 2;
     }
-    constexpr auto pi = std::numbers::pi;
+    if (k == 0)
+        return {1, 0};
     if (n == k * 2)
         return {-1, 0};
     if (n == k * 4)
         return {0, -1};
-    if (k > n / 4)
-        return static_cast<std::complex<T>>(std::complex<f64>(0, -1) * wnk(n, k - n / 4));
+    if (k > n / 4) {
+        auto v = wnk<T>(n, k - n / 4);
+        return {v.imag(), -v.real()};
+        // return static_cast<std::complex<T>>(std::complex<f64>(0, -1) * );
+    }
+    constexpr auto pi = std::numbers::pi;
     return static_cast<std::complex<T>>(
         std::exp(std::complex<f64>(0, -2 * pi * static_cast<f64>(k) / static_cast<f64>(n))));
 }
@@ -72,7 +77,7 @@ inline auto wnk(uZ n, uZ k) -> std::complex<T> {
  */
 template<typename T = f64>
 inline auto wnk_br(uZ n, uZ k) -> std::complex<T> {
-    while (k % 2 == 0) {
+    while ((k > 0) && (k % 2 == 0)) {
         k /= 2;
         n /= 2;
     }
@@ -364,7 +369,7 @@ struct subtransform {
             if (max_size / size >= single_load_size * NodeSize) {
                 auto stw_ptr = tw_ptr;
                 fft_iteration<NodeSize, Width, SrcPackSize, LowK>(max_size, size, dest_ptr, tw_ptr);
-                while (max_size / size >= single_load_size * NodeSize) {
+                while (max_size / size / 2 >= single_load_size * NodeSize) {
                     //
                     auto x = 123;
                     //
@@ -376,16 +381,19 @@ struct subtransform {
                 if (true)
                     [&]<uZ... Is>(std::index_sequence<Is...>) {
                         auto try_iter = [&]<uZ I>(uZc<I>) {
-                            auto           si          = size;
-                            auto           sz          = (size * powi(2, I));
+                            auto si = size;
+                            auto sz = (size * powi(2, I));
+
+
                             constexpr auto node_size_l = powi(2, I + 1);
                             if (max_size / (size * powi(2, I)) != single_load_size)
                                 return false;
                             if constexpr (LowK)
-                                tw_ptr += size / 2;
+                                tw_ptr += size;
+                            const auto& tws = *reinterpret_cast<const T(*)[32]>(tw_ptr);
                             fft_iteration<node_size_l, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
                             if constexpr (LowK)
-                                tw_ptr += size / 2;
+                                tw_ptr += size;
                             return true;
                         };
                         (try_iter(uZc<Is>{}) || ...);
@@ -495,16 +503,16 @@ struct subtransform {
 
         constexpr auto n_tw = NodeSizeL / 2;
         // if constexpr (LowK) {
-        //     for (auto i: stdv::iota(0U, group_size / single_load_size * 2)) {
+        //     for (auto i: stdv::iota(0U, group_size / (NodeSizeL * Width) * 2)) {
         //         auto data = make_data_tup(0, i);
         //         btfly_node::template perform_lo_k<settings>(data);
         //     }
         //     l_tw_ptr += n_tw * 2;
         // }
         // constexpr auto start = LowK ? 1UZ : 0UZ;
-        constexpr auto start = LowK ? 0UZ : 0UZ;
+        constexpr auto start = 0UZ;
         for (auto k: stdv::iota(start, fft_size / 2)) {
-            auto tw = [l_tw_ptr]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+            auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
             }(std::make_index_sequence<n_tw>{});
             l_tw_ptr += n_tw * 2;
