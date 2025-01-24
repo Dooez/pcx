@@ -376,7 +376,7 @@ struct subtransform {
                 if constexpr (LowK)
                     tw_ptr += size;
 
-                if (true)
+                if (false)
                     [&]<uZ... Is>(std::index_sequence<Is...>) {
                         auto try_iter = [&]<uZ I>(uZc<I>) {
                             auto si = size;

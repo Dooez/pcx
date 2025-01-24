@@ -32,27 +32,17 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
     uZ vec_width = 4;
 
 
-    auto fft_size  = 2;
-    auto step      = rsize / 2;
-    auto n_groups  = 1;
-    auto node_size = 2U;
-    while (false && step >= 1) {
-        if (step * 2 / node_size <= vec_width * node_size) {
+    auto fft_size         = 1;
+    auto step             = rsize / 2;
+    auto n_groups         = 1;
+    auto node_size        = 2U;
+    auto single_load_size = vec_width * node_size;
+    while (step >= 1) {
+        if (!(rsize / (fft_size * node_size) >= single_load_size)) {
             break;
         }
-        if (step == vec_width * node_size / 2) {
-            // return;
-        }
-        if (step < vec_width) {
-            // return;
-        }
-        if (fft_size == 2 * powi(8, 2)) {
-            // return;
-        }
-        if (step == 2) {
-            // return;
-        }
-        for (auto l: stdv::iota(0U, 3U)) {
+        for (auto l: stdv::iota(0U, 2U)) {
+            fft_size *= 2;
             for (uZ k = 0; k < n_groups; ++k) {
                 uZ start = k * step * 2;
                 // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
@@ -63,7 +53,6 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
             }
             step /= 2;
             n_groups *= 2;
-            fft_size *= 2;
         }
     }
     // return;
@@ -74,26 +63,18 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
         if (step < vec_width) {
             // return;
         }
-        if (fft_size == 2 * powi(8, 2)) {
-            // return;
-        }
-        if (step == 2) {
-            // return;
-        }
-        for (auto l: stdv::iota(0U, 1U)) {
-            for (uZ k = 0; k < n_groups; ++k) {
-                uZ start = k * step * 2;
-                // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
-                auto tw = pcx::detail_::wnk_br<fX>(fft_size, k);
-                // auto tw = pcx::detail_::wnk<fX>(fft_size, rk);
-                for (uZ i = 0; i < step; ++i) {
-                    pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
-                }
+        fft_size *= 2;
+        for (uZ k = 0; k < n_groups; ++k) {
+            uZ start = k * step * 2;
+            // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
+            auto tw = pcx::detail_::wnk_br<fX>(fft_size, k);
+            // auto tw = pcx::detail_::wnk<fX>(fft_size, rk);
+            for (uZ i = 0; i < step; ++i) {
+                pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
             }
-            step /= 2;
-            n_groups *= 2;
-            fft_size *= 2;
         }
+        step /= 2;
+        n_groups *= 2;
     }
 }
 template void naive_fft(std::vector<std::complex<f32>>& data);
@@ -133,24 +114,44 @@ auto make_subtform_tw_lok(uZ max_size,      //
     auto single_load_size = vec_width * node_size;
     auto element_count    = max_size / start_size;
     // auto size             = start_size;
-    auto size = max_size / single_load_size;
-    auto slog = log2i(size);
-    auto a    = slog / log2i(node_size);
-    auto b    = a * log2i(node_size);
-    size      = powi(2, b);
-    for (auto i: stdv::iota(0U, size / 2)) {
-        // for (; i < size; ++i) {
-        for (auto pow2: stdv::iota(0U, log2i(node_size))) {
-            for (auto k: stdv::iota(0U, powi(2, pow2))) {
-                auto l_i = i * powi(2, pow2) + k;
-                if (k % 2 == 1) {
-                    continue;
+
+    // auto size = max_size / single_load_size;
+    // auto slog = log2i(size);
+    // auto a    = slog / log2i(node_size);
+    // auto b    = a * log2i(node_size);
+    // size      = powi(2, b);
+    // for (auto i: stdv::iota(0U, size / 2)) {
+    //     // for (; i < size; ++i) {
+    //     for (auto pow2: stdv::iota(0U, log2i(node_size))) {
+    //         for (auto k: stdv::iota(0U, powi(2, pow2))) {
+    //             auto l_i = i * powi(2, pow2) + k;
+    //             if (k % 2 == 1) {
+    //                 continue;
+    //             }
+    //             insert_tw(size * powi(2, pow2), l_i);
+    //         }
+    //     }
+    // }
+    // size *= node_size;
+
+    auto size = start_size;
+    uZ   i    = 0;
+    while (max_size / (size * node_size) >= single_load_size) {
+        // for (auto i: stdv::iota(0U, size)) {
+        for (; i < size; ++i) {
+            for (auto pow2: stdv::iota(0U, log2i(node_size))) {
+                for (auto k: stdv::iota(0U, powi(2, pow2))) {
+                    auto l_k = i * powi(2, pow2) + k;
+                    if (k % 2 == 1) {
+                        continue;
+                    }
+                    insert_tw(size * powi(2, pow2 + 1), l_k);
                 }
-                insert_tw(size * powi(2, pow2), l_i);
             }
         }
+        size *= node_size;
     }
-    size *= node_size;
+
 
     auto idx = tw_vec.size();
     auto x   = 0;
@@ -161,22 +162,22 @@ auto make_subtform_tw_lok(uZ max_size,      //
         {
             auto lsize = start_size;
             auto i     = 0;
-            while (max_size / (lsize * local_node) >= single_load_size) {
-                // for (auto i: stdv::iota(0U, size)) {
-                for (; i < lsize; ++i) {
-                    for (auto pow2: stdv::iota(0U, log2i(local_node))) {
-                        for (auto k: stdv::iota(0U, powi(2, pow2))) {
-                            auto l_i = i * powi(2, pow2) + k;
-                            if (k % 2 == 1) {
-                                continue;
-                            }
-                            insert_tw(lsize * powi(2, pow2), l_i);
+            // while (max_size / (lsize * local_node) >= single_load_size) {
+            // for (auto i: stdv::iota(0U, size)) {
+            for (; i < lsize; ++i) {
+                for (auto pow2: stdv::iota(0U, log2i(local_node))) {
+                    for (auto k: stdv::iota(0U, powi(2, pow2))) {
+                        auto l_i = i * powi(2, pow2) + k;
+                        if (k % 2 == 1) {
+                            continue;
                         }
+                        insert_tw(lsize * powi(2, pow2), l_i);
                     }
                 }
-                lsize *= local_node;
-                size *= local_node;
             }
+            lsize *= local_node;
+            size *= local_node;
+            // }
         }
         break;
     }
@@ -213,7 +214,7 @@ auto make_subtform_tw_lok(uZ max_size,      //
             uZ tw_idx = start_offset;
             for (auto i_vec: stdv::iota(0U, node_size / 2)) {
                 for (auto i_tw: stdv::iota(0U, tw_per_vec)) {
-                    insert_tw(fft_size, tw_idx);
+                    insert_tw(fft_size * 2, tw_idx);
                     ++tw_idx;
                 }
             }
