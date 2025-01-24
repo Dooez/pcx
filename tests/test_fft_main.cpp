@@ -38,7 +38,7 @@ int main() {
     // if (!exec_sl_test(node_sizes, f32_widths, f32t))
     //     return -1;
     std::println();
-    uZ fft_size = 512;
+    uZ fft_size = 32;
     while (fft_size <= 8192UZ * 4) {
         if (!exec_test(node_sizes, f32_widths, f32t, fft_size))
             return -1;

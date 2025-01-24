@@ -243,9 +243,9 @@ int test_single_load() {
 template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data);
 template<typename fX>
-auto make_tw_vec(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>>;
+auto make_tw_vec(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std::vector<std::complex<fX>>;
 template<typename fX>
-auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>>;
+auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std::vector<std::complex<fX>>;
 
 // void bit_reverse_sort(stdr::random_access_range auto& range) {
 //     auto rsize = stdr::size(range);
@@ -258,9 +258,10 @@ auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std
 //             std::swap(range[i], range[irev]);
 //     }
 // }
-template<typename fX, uZ Width, uZ NodeSize>
+template<typename fX, uZ Width, uZ NodeSize, bool LowK = true>
 int test_subtranform(uZ fft_size) {
-    uZ   freq_n  = fft_size / 2;
+    // uZ   freq_n  = 2;
+    uZ   freq_n  = 1;
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
         for (auto [i, v]: stdv::enumerate(vec)) {
@@ -277,43 +278,45 @@ int test_subtranform(uZ fft_size) {
     naive_fft(datavec);
 
     using fimpl = pcx::detail_::subtransform<NodeSize, fX, Width>;
-    // auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize);
-    auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
+    auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize, LowK);
+    // auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
     // fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
-    fimpl::template perform<1, 1, true>(2, fft_size, data_ptr, tw_ptr);
+    fimpl::template perform<1, 1, LowK>(1, fft_size, data_ptr, tw_ptr);
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
     if (subtform_error) {
         std::println(
-            "Error during subtform of size {} of type {} with vector width {:>2} and node size {:>2}.",
+            "Error during {} subtform of size {} of type {} with vector width {:>2} and node size {:>2}.",
+            LowK ? "low k" : "",
             fft_size,
             pcx::meta::types<fX>{},
             Width,
             NodeSize);
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
-            if (naive != pcx)
+            // if (naive != pcx)
                 std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
                              i,
                              (naive),
                              (pcx),
                              (naive - pcx));
-                if (std::abs(naive - pcx) > 1) {
-                    // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                    //              i,
-                    //              (naive),
-                    //              (pcx),
-                    //              (naive - pcx));
-                    std::println("Over 1 found.");
-                    break;
-                }
+            if (std::abs(naive - pcx) > 1) {
+                // // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                // //              i,
+                // //              (naive),
+                // //              (pcx),
+                // //              (naive - pcx));
+                // std::println("Over 1 found.");
+                // break;
+            }
             // }
         }
         return -1;
     }
-    std::println("Successful subtform of size {} of type {} with width {:>2} and node size {:>2}.",
+    std::println("Successful {} subtform of size {} of type {} with width {:>2} and node size {:>2}.",
+                 LowK ? "low k" : "",
                  fft_size,
                  pcx::meta::types<fX>{},
                  Width,

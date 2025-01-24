@@ -77,11 +77,11 @@ inline auto wnk(uZ n, uZ k) -> std::complex<T> {
  */
 template<typename T = f64>
 inline auto wnk_br(uZ n, uZ k) -> std::complex<T> {
-    while ((k > 0) && (k % 2 == 0)) {
-        k /= 2;
-        n /= 2;
-    }
-    k = reverse_bit_order(k, log2i(n));
+    k = reverse_bit_order(k, log2i(n) - 1);
+    // while ((k > 0) && (k % 2 == 0)) {
+    //     k /= 2;
+    //     n /= 2;
+    // }
     return wnk<T>(n, k);
 }
 constexpr auto next_pow_2(u64 v) {
@@ -363,20 +363,18 @@ struct subtransform {
     using vec_traits = simd::detail_::vec_traits<T, Width>;
 
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
-    static void perform(uZ size, uZ max_size, T* dest_ptr, const T* tw_ptr) {
+    static void perform(uZ size, uZ max_size, T* dest_ptr, const T* tw_ptr) {    // size = 1 for low k
         constexpr auto single_load_size = NodeSize * Width;
         if constexpr (SrcPackSize != Width) {
-            if (max_size / size >= single_load_size * NodeSize) {
+            if (max_size / (size * NodeSize) >= single_load_size) {
                 auto stw_ptr = tw_ptr;
                 fft_iteration<NodeSize, Width, SrcPackSize, LowK>(max_size, size, dest_ptr, tw_ptr);
-                while (max_size / size / 2 >= single_load_size * NodeSize) {
-                    //
-                    auto x = 123;
-                    //
-                    x++;
+                while (max_size / (size * NodeSize) >= single_load_size) {
                     fft_iteration<NodeSize, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
                 }
                 auto twd = tw_ptr - stw_ptr;
+                if constexpr (LowK)
+                    tw_ptr += size;
 
                 if (true)
                     [&]<uZ... Is>(std::index_sequence<Is...>) {
@@ -384,12 +382,9 @@ struct subtransform {
                             auto si = size;
                             auto sz = (size * powi(2, I));
 
-
                             constexpr auto node_size_l = powi(2, I + 1);
-                            if (max_size / (size * powi(2, I)) != single_load_size)
+                            if (max_size / (size * node_size_l) != single_load_size)
                                 return false;
-                            if constexpr (LowK)
-                                tw_ptr += size;
                             const auto& tws = *reinterpret_cast<const T(*)[32]>(tw_ptr);
                             fft_iteration<node_size_l, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
                             if constexpr (LowK)
@@ -446,7 +441,7 @@ struct subtransform {
         }
 
         // assert(max_size / size == single_load_size / 2);
-        constexpr auto skip_single_load = true;
+        constexpr auto skip_single_load = false;
         if (skip_single_load) {
             for (auto i: stdv::iota(0U, max_size / Width)) {
                 auto ptr = dest_ptr + i * Width * 2;
@@ -460,6 +455,7 @@ struct subtransform {
         //     single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
         // }
         constexpr auto start = LowK ? 0UZ : 0UZ;
+        // for (auto i: stdv::iota(start, max_size / single_load_size)) {
         for (auto i: stdv::iota(start, max_size / single_load_size)) {
             auto dest = dest_ptr + i * single_load_size * 2;
             single_load<DestPackSize, Width, false>(dest, dest, tw_ptr);
@@ -491,7 +487,7 @@ struct subtransform {
             .pack_src  = PackSrc,
             .reverse   = false,
         };
-        auto group_size    = max_fft_size / fft_size;
+        auto group_size    = max_fft_size / fft_size / 2;
         auto make_data_tup = [=] PCX_LAINLINE(uZ k, uZ i) {
             auto node_stride = group_size / NodeSizeL * 2 /*second group half*/ * 2 /*complex*/;
             auto k_stride    = group_size * 2 /*second group half*/ * 2 /*complex*/;
@@ -511,7 +507,7 @@ struct subtransform {
         // }
         // constexpr auto start = LowK ? 1UZ : 0UZ;
         constexpr auto start = 0UZ;
-        for (auto k: stdv::iota(start, fft_size / 2)) {
+        for (auto k: stdv::iota(start, fft_size)) {
             auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
             }(std::make_index_sequence<n_tw>{});
