@@ -400,13 +400,16 @@ struct subtransform {
                 // return;
                 [&]<uZ... Is>(std::index_sequence<Is...>) {
                     auto try_iter = [&]<uZ I>(uZc<I>) {
+                        auto si = size;
                         auto sz = (size * powi(2, I));
-                        if (max_size / (size * powi(2, I)) != single_load_size)
+
+                        constexpr auto node_size_l = powi(2, I + 1);
+                        if (max_size / (size * node_size_l) != single_load_size)
                             return false;
-                        fft_iteration<powi(2, I + 1), Width, SrcPackSize, LowK>(max_size,
-                                                                                size,
-                                                                                dest_ptr,
-                                                                                tw_ptr);
+                        fft_iteration<node_size_l, Width, SrcPackSize, LowK>(max_size,
+                                                                             size,
+                                                                             dest_ptr,
+                                                                             tw_ptr);
                         if constexpr (LowK)
                             tw_ptr += size;
                         return true;

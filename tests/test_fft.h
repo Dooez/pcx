@@ -241,7 +241,7 @@ int test_single_load() {
     return 0;
 };
 template<typename fX>
-void naive_fft(std::vector<std::complex<fX>>& data);
+void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
 template<typename fX>
 auto make_tw_vec(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std::vector<std::complex<fX>>;
 template<typename fX>
@@ -275,7 +275,7 @@ int test_subtranform(uZ fft_size) {
         return vec;
     }();
     auto datavec2 = datavec;
-    naive_fft(datavec);
+    naive_fft(datavec, NodeSize, Width);
 
     using fimpl = pcx::detail_::subtransform<NodeSize, fX, Width>;
     auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize, LowK);
@@ -297,11 +297,11 @@ int test_subtranform(uZ fft_size) {
             NodeSize);
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
             // if (naive != pcx)
-                std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                             i,
-                             (naive),
-                             (pcx),
-                             (naive - pcx));
+            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                         i,
+                         (naive),
+                         (pcx),
+                         (naive - pcx));
             if (std::abs(naive - pcx) > 1) {
                 // // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
                 // //              i,

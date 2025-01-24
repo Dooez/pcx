@@ -23,19 +23,17 @@ template<typename T>
 struct is_std_complex<std::complex<T>> : std::true_type {};
 
 template<typename fX>
-void naive_fft(std::vector<std::complex<fX>>& data) {
+void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) {
     auto rsize = stdr::size(data);
     if (!is_pow_of_two(rsize))
         throw std::invalid_argument("Data size is not a power of two.");
 
     // constexpr auto vec_width = pcx::simd::max_width<fX>;
-    uZ vec_width = 4;
 
 
     auto fft_size         = 1;
     auto step             = rsize / 2;
     auto n_groups         = 1;
-    auto node_size        = 4U;
     auto single_load_size = vec_width * node_size;
     while (step >= 1) {
         if (!(rsize / (fft_size * node_size) >= single_load_size)) {
@@ -65,10 +63,8 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
         }
         fft_size *= 2;
         for (uZ k = 0; k < n_groups; ++k) {
-            uZ start = k * step * 2;
-            // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
-            auto tw = pcx::detail_::wnk_br<fX>(fft_size, k);
-            // auto tw = pcx::detail_::wnk<fX>(fft_size, rk);
+            uZ   start = k * step * 2;
+            auto tw    = pcx::detail_::wnk_br<fX>(fft_size, k);
             for (uZ i = 0; i < step; ++i) {
                 pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
             }
@@ -77,8 +73,8 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
         n_groups *= 2;
     }
 }
-template void naive_fft(std::vector<std::complex<f32>>& data);
-template void naive_fft(std::vector<std::complex<f64>>& data);
+template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
+template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 
 template<uZ To, uZ From, typename R>
     requires stdr::random_access_range<R> && is_std_complex<stdr::range_value_t<R>>::value
