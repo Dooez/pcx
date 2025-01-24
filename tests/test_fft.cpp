@@ -35,13 +35,13 @@ void naive_fft(std::vector<std::complex<fX>>& data) {
     auto fft_size         = 1;
     auto step             = rsize / 2;
     auto n_groups         = 1;
-    auto node_size        = 2U;
+    auto node_size        = 4U;
     auto single_load_size = vec_width * node_size;
     while (step >= 1) {
         if (!(rsize / (fft_size * node_size) >= single_load_size)) {
             break;
         }
-        for (auto l: stdv::iota(0U, 2U)) {
+        for (auto l: stdv::iota(0U, log2i(node_size))) {
             fft_size *= 2;
             for (uZ k = 0; k < n_groups; ++k) {
                 uZ start = k * step * 2;
@@ -160,18 +160,18 @@ auto make_subtform_tw_lok(uZ max_size,      //
             continue;
         auto local_node = powi(2, align_p2 + 1);
         {
-            auto lsize = start_size;
-            auto i     = 0;
+            auto lsize = size;
+            auto li    = 0;
             // while (max_size / (lsize * local_node) >= single_load_size) {
             // for (auto i: stdv::iota(0U, size)) {
-            for (; i < lsize; ++i) {
+            for (; li < lsize; ++li) {
                 for (auto pow2: stdv::iota(0U, log2i(local_node))) {
                     for (auto k: stdv::iota(0U, powi(2, pow2))) {
-                        auto l_i = i * powi(2, pow2) + k;
+                        auto l_k = li * powi(2, pow2) + k;
                         if (k % 2 == 1) {
                             continue;
                         }
-                        insert_tw(lsize * powi(2, pow2), l_i);
+                        insert_tw(lsize * powi(2, pow2 + 1), l_k);
                     }
                 }
             }
@@ -314,7 +314,7 @@ auto make_subtform_tw(uZ max_size,      //
 template<typename fX>
 auto make_tw_vec(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std::vector<std::complex<fX>> {
     if (low_k)
-        return make_subtform_tw_lok<fX>(fft_size, 2, vec_width, node_size);
+        return make_subtform_tw_lok<fX>(fft_size, 1, vec_width, node_size);
     else
         return make_subtform_tw<fX>(fft_size, 1, 0, vec_width, node_size);
 }
@@ -323,12 +323,12 @@ template auto make_tw_vec<f32>(uZ fft_size, uZ vec_width, uZ node_size, bool low
 template auto make_tw_vec<f64>(uZ fft_size, uZ vec_width, uZ node_size, bool low_k)
     -> std::vector<std::complex<f64>>;
 
-template<typename fX>
-auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>> {
-    return make_subtform_tw_lok<fX>(fft_size, 1, vec_width, node_size);
-}
-template auto make_tw_vec_lok<f32>(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<f32>>;
-template auto make_tw_vec_lok<f64>(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<f64>>;
+// template<typename fX>
+// auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<fX>> {
+//     return make_subtform_tw_lok<fX>(fft_size, 1, vec_width, node_size);
+// }
+// template auto make_tw_vec_lok<f32>(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<f32>>;
+// template auto make_tw_vec_lok<f64>(uZ fft_size, uZ vec_width, uZ node_size) -> std::vector<std::complex<f64>>;
 
 
 // NOLINTEND (*pointer-arithmetic*)
