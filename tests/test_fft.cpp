@@ -124,9 +124,7 @@ auto make_subtform_tw_lok(uZ max_size,      //
         auto local_node = powi(2, align_p2 + 1);
         if (local_node != align_node)
             continue;
-        auto li = 0;
-
-        for (; li < size; ++li) {
+        for (auto li: stdv::iota(0U, size)) {
             for (auto pow2: stdv::iota(0U, log2i(local_node))) {
                 for (auto k: stdv::iota(0U, powi(2, pow2))) {
                     auto l_k = li * powi(2, pow2) + k;
@@ -164,9 +162,7 @@ auto make_subtform_tw_lok(uZ max_size,      //
         auto local_node = powi(2, align_p2 + 1);
         if (local_node != align_node)
             continue;
-        auto li = 0;
-
-        for (; li < size; ++li) {
+        for (auto li: stdv::iota(0U, size)) {
             for (auto pow2: stdv::iota(0U, log2i(local_node))) {
                 for (auto k: stdv::iota(0U, powi(2, pow2))) {
                     auto l_k = li * powi(2, pow2) + k;
@@ -180,49 +176,8 @@ auto make_subtform_tw_lok(uZ max_size,      //
         size *= local_node;
     }
 
-    // auto idx = tw_vec.size();
-    // auto x   = 0;
-    // for (uZ align_p2: stdv::iota(0U, log2i(node_size))) {
-    //     if (max_size / (size * powi(2, align_p2 + 1)) != single_load_size)
-    //         continue;
-    //     auto local_node = powi(2, align_p2 + 1);
-    //     {
-    //         auto lsize = size;
-    //         auto li    = 0;
-    //         // while (max_size / (lsize * local_node) >= single_load_size) {
-    //         // for (auto i: stdv::iota(0U, size)) {
-    //         for (; li < lsize; ++li) {
-    //             for (auto pow2: stdv::iota(0U, log2i(local_node))) {
-    //                 for (auto k: stdv::iota(0U, powi(2, pow2))) {
-    //                     auto l_k = li * powi(2, pow2) + k;
-    //                     if (k % 2 == 1) {
-    //                         continue;
-    //                     }
-    //                     insert_tw(lsize * powi(2, pow2 + 1), l_k);
-    //                 }
-    //             }
-    //         }
-    //         lsize *= local_node;
-    //         size *= local_node;
-    //         // }
-    //     }
-    //     break;
-    // }
-    // const auto& tws = *reinterpret_cast<const fX(*)[32]>(tw_vec.data() + idx);
-    // return tw_vec;
-    // for (auto i_sl: stdv::iota(0U, element_count / single_load_size)) {
     for (auto i_sl: stdv::iota(0U, size * 2)) {
         auto start_offset = i_sl;
-
-        // for (auto pow2: stdv::iota(0U, log2i(node_size))) {
-        //     for (auto k: stdv::iota(0U, powi(2, pow2))) {
-        //         auto l_i = i_sl * powi(2, pow2) + k;
-        //         if (k % 2 == 1) {
-        //             continue;
-        //         }
-        //         insert_tw(size * powi(2, pow2), l_i);
-        //     }
-        // }
 
         auto fft_size = size;
         for (auto pow2: stdv::iota(0U, log2i(node_size))) {
@@ -270,7 +225,34 @@ auto make_subtform_tw(uZ max_size,      //
         tw_vec.push_back(tw);
     };
     auto single_load_size = vec_width * node_size;
-    auto size             = start_size;
+
+    auto lsize      = element_count / single_load_size;
+    auto slog       = log2i(lsize);
+    auto a          = slog / log2i(node_size);
+    auto b          = a * log2i(node_size);
+    auto align_node = powi(2, slog - b);
+
+    auto size = start_size;
+
+    // pre-align
+    for (uZ align_p2: stdv::iota(0U, log2i(node_size) - 1)) {
+        auto local_node = powi(2, align_p2 + 1);
+        if (local_node != align_node)
+            continue;
+        for (auto li: stdv::iota(0U, size)) {
+            for (auto pow2: stdv::iota(0U, log2i(local_node))) {
+                for (auto k: stdv::iota(0U, powi(2, pow2))) {
+                    auto l_k = li * powi(2, pow2) + k;
+                    if (k % 2 == 1) {
+                        continue;
+                    }
+                    insert_tw(size * powi(2, pow2 + 1), l_k);
+                }
+            }
+        }
+        size *= local_node;
+    }
+
     while (max_size / size > single_load_size * node_size) {
         for (auto i: stdv::iota(0U, size)) {
             for (auto pow2: stdv::iota(0U, log2i(node_size))) {
