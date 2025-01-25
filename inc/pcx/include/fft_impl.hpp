@@ -109,25 +109,14 @@ struct btfly_node_dit {
 
     using dest_t = tupi::broadcast_tuple_t<T*, NodeSize>;
     using src_t  = tupi::broadcast_tuple_t<const T*, NodeSize>;
-    // using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize - 1>;
-    using ctw_t = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
-    // using lok_tw_t = tupi::broadcast_tuple_t<cx_vec, std::max(NodeSize / 4, 1UZ)>;
+    using ctw_t  = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
 
-
-    // template<settings S>
-    // PCX_AINLINE static void perform_lo_k(const dest_t& dest, const src_t& src, const lok_tw_t& tw) {
-    //     if constexpr (S.reverse) {
-    //         rev_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter_lok(tw));
-    //     } else {
-    //         fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter_lok(tw));
-    //     }
-    // }
     template<settings S>
     PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const ctw_t& tw) {
         if constexpr (S.reverse) {
-            rev_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter(tw));
+            rev_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
         } else {
-            fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_ctw_getter(tw));
+            fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
         }
     }
     template<settings S>
@@ -138,10 +127,6 @@ struct btfly_node_dit {
             fwd_impl<S.pack_dest, S.pack_src>(dest, src, const_tw_getter);
         }
     }
-    // template<settings S>
-    // PCX_AINLINE static void perform_lo_k(const dest_t& dest, const lok_tw_t& tw) {
-    //     perform_lo_k<S>(dest, dest, tw);
-    // }
     template<settings S>
     PCX_AINLINE static void perform(const dest_t& dest, const ctw_t& tw) {
         perform<S>(dest, dest, tw);
@@ -256,46 +241,7 @@ struct btfly_node_dit {
         }(lo, hi, std::make_index_sequence<NodeSize / Stride>{});
     }
 
-    // PCX_AINLINE static auto make_tw_getter_lo_k(tw_t tw) {
-    //     return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
-    //         return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
-    //             static_assert(NodeSize >= Size);
-    //             constexpr auto repeats = NodeSize / Size;
-    //             constexpr auto start   = Size / 2 - 1;
-    //             // return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
-    //             return tupi::tuple_cat(
-    //                 tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw))...);    // no offset for low k
-    //         }(std::make_index_sequence<Size / 2>{});
-    //         //
-    //     };
-    // }
-    // PCX_AINLINE static auto make_tw_getter(tw_t tw) {
-    //     return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
-    //         return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
-    //             static_assert(NodeSize >= Size);
-    //             constexpr auto repeats = NodeSize / Size;
-    //             constexpr auto start   = Size / 2 - 1;
-    //             return tupi::tuple_cat(tupi::make_broadcast_tuple<repeats>(tupi::get<start + Itw>(tw))...);
-    //         }(std::make_index_sequence<Size / 2>{});
-    //         //
-    //     };
-    // }
-    // PCX_AINLINE static auto make_ctw_getter_lok(lok_tw_t tw) {
-    //     return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
-    //         return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
-    //             static_assert(Size <= NodeSize);
-    //             constexpr auto repeats = NodeSize / Size;
-    //             if constexpr (Size == 2) {
-    //                 return tupi::make_broadcast_tuple<repeats>(tupi::get<0>(tw));
-    //             } else {
-    //                 return tupi::tuple_cat(tupi::tuple_cat(
-    //                     tupi::make_broadcast_tuple<repeats>(tupi::get<Itw>(tw)),
-    //                     tupi::make_broadcast_tuple<repeats>(mul_by_j<-1>(tupi::get<Itw>(tw))))...);
-    //             }
-    //         }(std::make_index_sequence<Size / 4>{});
-    //     };
-    // }
-    PCX_AINLINE static auto make_ctw_getter(ctw_t tw) {
+    PCX_AINLINE static auto make_tw_getter(ctw_t tw) {
         return [tw]<uZ Size> PCX_LAINLINE(uZc<Size>) {
             return [&]<uZ... Itw> PCX_LAINLINE(std::index_sequence<Itw...>) {
                 static_assert(Size <= NodeSize);
@@ -454,11 +400,10 @@ struct subtransform {
             return;
         }
 
-        // if constexpr (LowK) {
-        //     single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
-        // }
-        constexpr auto start = LowK ? 0UZ : 0UZ;
-        // for (auto i: stdv::iota(start, max_size / single_load_size)) {
+        if constexpr (LowK) {
+            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
+        }
+        constexpr auto start = LowK ? 1UZ : 0UZ;
         for (auto i: stdv::iota(start, max_size / single_load_size)) {
             auto dest = dest_ptr + i * single_load_size * 2;
             single_load<DestPackSize, Width, false>(dest, dest, tw_ptr);
@@ -501,15 +446,14 @@ struct subtransform {
         };
 
         constexpr auto n_tw = NodeSizeL / 2;
-        // if constexpr (LowK) {
-        //     for (auto i: stdv::iota(0U, group_size / (NodeSizeL * Width) * 2)) {
-        //         auto data = make_data_tup(0, i);
-        //         btfly_node::template perform_lo_k<settings>(data);
-        //     }
-        //     l_tw_ptr += n_tw * 2;
-        // }
-        // constexpr auto start = LowK ? 1UZ : 0UZ;
-        constexpr auto start = 0UZ;
+        if constexpr (LowK) {
+            for (auto i: stdv::iota(0U, group_size / (NodeSizeL * Width) * 2)) {
+                auto data = make_data_tup(0, i);
+                btfly_node::template perform_lo_k<settings>(data);
+            }
+            l_tw_ptr += n_tw * 2;
+        }
+        constexpr auto start = LowK ? 1UZ : 0UZ;
         for (auto k: stdv::iota(start, fft_size)) {
             auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
@@ -549,7 +493,7 @@ struct subtransform {
                 }(tw_ptr, std::make_index_sequence<NodeSize / 2>{});
                 // tw_ptr += 2 * (NodeSize - 1);
                 tw_ptr += NodeSize;
-                return btfly0(data_rep, btfly_node::make_ctw_getter(tw0));
+                return btfly0(data_rep, btfly_node::make_tw_getter(tw0));
             }
         }();
 
