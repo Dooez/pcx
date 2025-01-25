@@ -314,19 +314,11 @@ struct subtransform {
         constexpr auto single_load_size = NodeSize * Width;
         if constexpr (SrcPackSize != Width) {
             if (max_size / (size * NodeSize) >= single_load_size) {
-                auto stw_ptr = tw_ptr;    // TMP
-
-                auto lsize      = max_size / single_load_size;
-                auto slog       = log2i(lsize);
-                auto a          = slog / log2i(NodeSize);
-                auto b          = a * log2i(NodeSize);
-                auto align_node = powi(2, slog - b);
-                // lsize      = powi(2, b);
-                if (align_node != 1) {
+                auto align_iteration = [&](uZ align_node_size) {
                     [&]<uZ... Is>(std::index_sequence<Is...>) {
                         auto try_iter = [&]<uZ I>(uZc<I>) {
                             constexpr auto node_size_l = powi(2, I + 1);
-                            if (node_size_l != align_node)
+                            if (node_size_l != align_node_size)
                                 return false;
                             fft_iteration<node_size_l, Width, SrcPackSize, LowK>(max_size,
                                                                                  size,
@@ -338,13 +330,23 @@ struct subtransform {
                         };
                         (void)(try_iter(uZc<Is>{}) || ...);
                     }(std::make_index_sequence<log2i(NodeSize) - 1>{});
+                };
+
+                auto stw_ptr = tw_ptr;    // TMP
+
+                auto lsize          = max_size / single_load_size;
+                auto slog           = log2i(lsize);
+                auto a              = slog / log2i(NodeSize);
+                auto b              = a * log2i(NodeSize);
+                auto pre_align_node = powi(2, slog - b);
+
+                if (pre_align_node != 1) {
+                    align_iteration(pre_align_node);
                 } else {
                     fft_iteration<NodeSize, Width, SrcPackSize, LowK>(max_size, size, dest_ptr, tw_ptr);
                 }
-
-                while (max_size / (size * NodeSize) >= single_load_size) {
+                while (max_size / (size * NodeSize) >= single_load_size)
                     fft_iteration<NodeSize, Width, Width, LowK>(max_size, size, dest_ptr, tw_ptr);
-                }
                 if constexpr (LowK)
                     tw_ptr += size;
 
@@ -396,7 +398,7 @@ struct subtransform {
         }
 
         // assert(max_size / size == single_load_size / 2);
-        constexpr auto skip_single_load = true;
+        constexpr auto skip_single_load = false;
         if (skip_single_load) {
             for (auto i: stdv::iota(0U, max_size / Width)) {
                 auto ptr = dest_ptr + i * Width * 2;
