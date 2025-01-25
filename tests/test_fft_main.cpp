@@ -36,13 +36,13 @@ int main() {
         auto passed = (ns_passed(uZc<NodeSizes>{}) && ...);
         return passed;
     };
-    constexpr auto node_sizes = std::index_sequence<8>{};
-    constexpr auto f64_widths = std::index_sequence<8>{};
-    constexpr auto f32_widths = std::index_sequence<16>{};
+    // constexpr auto node_sizes = std::index_sequence<16>{};
+    // constexpr auto f64_widths = std::index_sequence<8>{};
+    // constexpr auto f32_widths = std::index_sequence<4>{};
     //
-    // constexpr auto node_sizes = std::index_sequence<2, 4, 8, 16>{};
-    // constexpr auto f64_widths = std::index_sequence<2, 4, 8>{};
-    // constexpr auto f32_widths = std::index_sequence<4, 8, 16>{};
+    constexpr auto node_sizes = std::index_sequence<2, 4, 8, 16>{};
+    constexpr auto f64_widths = std::index_sequence<2, 4, 8>{};
+    constexpr auto f32_widths = std::index_sequence<4, 8, 16>{};
     constexpr auto f32t       = pcx::meta::types<f32>{};
     constexpr auto f64t       = pcx::meta::types<f64>{};
 
@@ -52,7 +52,7 @@ int main() {
     // if (!exec_sl_test(node_sizes, f32_widths, f32t))
     //     return -1;
     std::println();
-    uZ fft_size = 128;
+    uZ fft_size = 1024;
     while (fft_size <= 8192UZ) {
         if (!exec_test_low(node_sizes, f32_widths, f32t, fft_size))
             return -1;
