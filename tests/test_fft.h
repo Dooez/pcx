@@ -283,7 +283,7 @@ int test_subtranform(uZ fft_size) {
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
     // fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
-    fimpl::template perform<1, 1, LowK>(1, fft_size, data_ptr, tw_ptr);
+    fimpl::template perform<1, 1, LowK>(fft_size, data_ptr, tw_ptr);
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 

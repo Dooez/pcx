@@ -66,7 +66,6 @@ inline auto wnk(uZ n, uZ k) -> std::complex<T> {
     if (k > n / 4) {
         auto v = wnk<T>(n, k - n / 4);
         return {v.imag(), -v.real()};
-        // return static_cast<std::complex<T>>(std::complex<f64>(0, -1) * );
     }
     constexpr auto pi = std::numbers::pi;
     return static_cast<std::complex<T>>(
@@ -78,10 +77,6 @@ inline auto wnk(uZ n, uZ k) -> std::complex<T> {
 template<typename T = f64>
 inline auto wnk_br(uZ n, uZ k) -> std::complex<T> {
     k = reverse_bit_order(k, log2i(n) - 1);
-    // while ((k > 0) && (k % 2 == 0)) {
-    //     k /= 2;
-    //     n /= 2;
-    // }
     return wnk<T>(n, k);
 }
 constexpr auto next_pow_2(u64 v) {
@@ -275,8 +270,6 @@ struct btfly_node_dit {
                     return imag_unit<-1>;
                 } else {
                     constexpr auto N = next_pow_2(I + 1) * 2;
-                    // constexpr auto K = (I - N / 4) * 2 + 1;
-                    // return wnk<T>(N, K);
                     return wnk_br<T>(N, I);
                 }
             };
@@ -316,13 +309,10 @@ struct subtransform {
     };
 
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
-    static void perform(uZ       size,    // == 1 for lowK
-                        uZ       max_size,
-                        T*       dest_ptr,
-                        const T* tw_ptr) {
+    static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
         constexpr auto single_load_size = NodeSize * Width;
 
-        auto lsize          = max_size / single_load_size;
+        auto lsize          = data_size / single_load_size;
         auto slog           = log2i(lsize);
         auto a              = slog / log2i(NodeSize);
         auto b              = a * log2i(NodeSize);
@@ -333,7 +323,7 @@ struct subtransform {
                 constexpr auto l_node_size = powi(2, I);
                 if (l_node_size != pre_align_node)
                     return false;
-                perform_impl<DestPackSize, SrcPackSize, LowK, {l_node_size, 1}>(max_size, dest_ptr, tw_ptr);
+                perform_impl<DestPackSize, SrcPackSize, LowK, {l_node_size, 1}>(data_size, dest_ptr, tw_ptr);
                 return true;
             };
             (void)(check_align(uZc<Is>{}) || ...);
@@ -393,20 +383,9 @@ struct subtransform {
 
     template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration(uZ data_size, uZ& fft_size, auto data_ptr, auto& tw_ptr) {
-        auto pdest     = PackDest;     // TMP
-        auto psrc      = PackSrc;      // TMP
-        auto node_size = NodeSizeL;    // TMP
-
+        using btfly_node  = btfly_node_dit<NodeSizeL, T, Width>;
         auto  tw_ptr_copy = tw_ptr;
-        auto& l_tw_ptr    = [&] -> auto& {
-            if constexpr (LowK) {
-                return tw_ptr_copy;
-            } else {
-                return tw_ptr;
-            }
-        }();
-
-        using btfly_node = btfly_node_dit<NodeSizeL, T, Width>;
+        auto& l_tw_ptr    = LowK ? tw_ptr_copy : tw_ptr;
 
         constexpr auto settings = typename btfly_node::settings{
             .pack_dest = PackDest,
@@ -414,18 +393,18 @@ struct subtransform {
             .reverse   = false,
         };
         auto group_size    = data_size / fft_size / 2;
-        auto make_data_tup = [=] PCX_LAINLINE(uZ k, uZ i) {
+        auto make_data_tup = [=] PCX_LAINLINE(uZ k, uZ offset) {
             auto node_stride = group_size / NodeSizeL * 2 /*second group half*/ * 2 /*complex*/;
             auto k_stride    = group_size * 2 /*second group half*/ * 2 /*complex*/;
             return [node_stride]<uZ... Is> PCX_LAINLINE(auto data_ptr,    //
                                                         std::index_sequence<Is...>) {
                 return tupi::make_tuple((data_ptr + node_stride * Is)...);
-            }(data_ptr + k * k_stride + i * Width * 2, std::make_index_sequence<NodeSizeL>{});
+            }(data_ptr + k * k_stride + offset * 2, std::make_index_sequence<NodeSizeL>{});
         };
 
         constexpr auto n_tw = NodeSizeL / 2;
         if constexpr (LowK) {
-            for (auto i: stdv::iota(0U, group_size / (NodeSizeL * Width) * 2)) {
+            for (auto i: stdv::iota(0U, group_size / NodeSizeL * 2) | stdv::stride(Width)) {
                 auto data = make_data_tup(0, i);
                 btfly_node::template perform_lo_k<settings>(data);
             }
@@ -437,7 +416,7 @@ struct subtransform {
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
             }(std::make_index_sequence<n_tw>{});
             l_tw_ptr += n_tw * 2;
-            for (auto i: stdv::iota(0U, group_size / (NodeSizeL * Width) * 2)) {
+            for (auto i: stdv::iota(0U, group_size / NodeSizeL * 2) | stdv::stride(Width)) {
                 auto data = make_data_tup(k, i);
                 btfly_node::template perform<settings>(data, tw);
             }
@@ -467,42 +446,35 @@ struct subtransform {
             } else {
                 auto tw0 = []<uZ... Is>(auto tw_ptr, std::index_sequence<Is...>) {
                     return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
-                    // }(tw_ptr, std::make_index_sequence<NodeSize - 1>{});
                 }(tw_ptr, std::make_index_sequence<NodeSize / 2>{});
-                // tw_ptr += 2 * (NodeSize - 1);
                 tw_ptr += NodeSize;
                 return btfly0(data_rep, btfly_node::make_tw_getter(tw0));
             }
         }();
 
-        auto data_lo = [&btfly_res_0]<uZ... Is>(std::index_sequence<Is...>) {
-            return tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
+        auto [data_lo, data_hi] = [&]<uZ... Is>(std::index_sequence<Is...>) {
+            auto lo = tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
+            auto hi = tupi::make_tuple(get<Is * 2 + 1>(btfly_res_0)...);
+            return tupi::make_tuple(lo, hi);
         }(half_node_idxs);
-        auto data_hi = [&btfly_res_0]<uZ... Is>(std::index_sequence<Is...>) {
-            return tupi::make_tuple(get<Is * 2 + 1>(btfly_res_0)...);
-        }(half_node_idxs);
-        auto [lo, hi] = [&tw_ptr]<uZ NGroups = 2> PCX_LAINLINE(this auto f,
-                                                               auto      data_lo,
-                                                               auto      data_hi,
-                                                               uZc<NGroups> = {}) {
-            if constexpr (NGroups == Width) {
-                auto tmp = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
-                // if constexpr (!LowK)
-                tw_ptr += NGroups * 2 * NodeSize / 2;
-                return tmp;
-            } else {
-                auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
-                // if constexpr (!LowK)
-                tw_ptr += NGroups * 2 * NodeSize / 2;
-                return f(lo, hi, uZc<NGroups * 2>{});
-            }
-        }(data_lo, data_hi);
+        auto [lo, hi] = [&tw_ptr]<uZ NGroups = 2> PCX_LAINLINE    //
+            (this auto f, auto data_lo, auto data_hi, uZc<NGroups> = {}) {
+                if constexpr (NGroups == Width) {
+                    auto tmp = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
+                    tw_ptr += NGroups * 2 * NodeSize / 2;
+                    return tmp;
+                } else {
+                    auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
+                    tw_ptr += NGroups * 2 * NodeSize / 2;
+                    return f(lo, hi, uZc<NGroups * 2>{});
+                }
+            }(data_lo, data_hi);
         auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
         auto res_rep     = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
-        []<uZ... Is>(auto data_ptr, auto data, std::index_sequence<Is...>) {
-            (simd::cxstore<DestPackSize>(data_ptr + Width * 2 * Is, get<Is>(data)), ...);
-        }(data_ptr, res_rep, std::make_index_sequence<NodeSize>{});
+        [data_ptr, res_rep]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+            (simd::cxstore<DestPackSize>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
+        }(std::make_index_sequence<NodeSize>{});
     }
 
     template<uZ NGroups>
@@ -510,12 +482,8 @@ struct subtransform {
     struct regroup_btfly_t {
         template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
-            auto ng = NGroups;     // TMP
-            auto ns = NodeSize;    // TMP
-
             auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
-            // auto regrouped = tupi::group_invoke(split_regroup<Width / NGroups>, lo, hi);
-            // auto           tw = tupi::group_invoke(load_tw<NGroups>, tw_tup, half_node_tuple);
+
             constexpr auto regr_ltw =
                 tupi::make_tuple
                 | tupi::pipeline(tupi::apply | tupi::group_invoke(split_regroup<Width / NGroups>),
@@ -523,13 +491,12 @@ struct subtransform {
             auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
                                             tupi::forward_as_tuple(tw_tup, half_node_tuple));
 
-            auto twx       = tw;    // TMP
-            auto lo_re     = tupi::group_invoke(tupi::get<0>, regrouped);
-            auto hi_re     = tupi::group_invoke(tupi::get<1>, regrouped);
-            auto hi_tw     = tupi::group_invoke(simd::mul, hi_re, tw);
-            auto btfly_res = tupi::group_invoke(simd::btfly, lo_re, hi_tw);
-            auto new_lo    = tupi::group_invoke(tupi::get_copy<0>, btfly_res);
-            auto new_hi    = tupi::group_invoke(tupi::get_copy<1>, btfly_res);
+            auto lo_re  = tupi::group_invoke(tupi::get<0>, regrouped);
+            auto hi_re  = tupi::group_invoke(tupi::get<1>, regrouped);
+            auto hi_tw  = tupi::group_invoke(simd::mul, hi_re, tw);
+            auto res    = tupi::group_invoke(simd::btfly, lo_re, hi_tw);
+            auto new_lo = tupi::group_invoke(tupi::get_copy<0>, res);
+            auto new_hi = tupi::group_invoke(tupi::get_copy<1>, res);
             return tupi::make_tuple(new_lo, new_hi);
         }
 
@@ -547,8 +514,6 @@ struct subtransform {
         tupi::pass    
         | []<uZ IGroup>(const T* tw_ptr, uZc<IGroup>) {
             // return simd::cxload<Count, Count>(tw_ptr + Count * (2 * IGroup));
-            auto count = Count;     // TMP
-            auto igroup = IGroup;   // TMP
             auto tw = simd::cxload<1, Count>(tw_ptr + Count * (2 * IGroup));
             auto twr = simd::repack<Count>(tw);
             return twr;
