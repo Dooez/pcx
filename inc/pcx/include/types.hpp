@@ -110,12 +110,13 @@ struct vec_traits {
      * @brief Splits two vectors in half by chunks of `ChunkSize` and returns vectors of interleaved even and odd chunks.
      *
      * Example:
-     * Width == 8
+     * Width     == 8
      * ChunkSize == 2
-     * a = [0 0 1 1 2 2 3 3]
-     * b = [4 4 5 5 6 6 7 7]
-     * result<0> = [0 0 4 4 2 2 6 6]
-     * result<1> = [1 1 5 5 3 3 7 7]
+     *  a = [a0 a1 a2 a3 a4 a5 a6 a7] 
+     *  b = [b0 b1 b2 b3 b4 b5 b6 b7] 
+     * 
+     *  result<0> = [a0 a1 b0 b1 a4 a5 b4 b5]
+     *  result<1> = [a2 a3 b2 b3 a6 a7 b6 b7]
      */
     template<uZ ChunkSize>
         requires(ChunkSize <= Width)

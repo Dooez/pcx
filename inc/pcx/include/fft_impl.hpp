@@ -478,7 +478,6 @@ struct subtransform {
     }
 
     template<uZ NGroups>
-        requires(NGroups > 1)
     struct regroup_btfly_t {
         template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
@@ -505,10 +504,19 @@ struct subtransform {
             return tupi::make_tuple(uZc<Is>{}...);
         }(half_node_idxs);
     };
-    template<uZ Count>
-    constexpr static auto regroup_btfly = regroup_btfly_t<Count>{};
+    /**
+     *  @brief Split-regroups input data, loads twiddles and performs a single butterfly operation.
+     *  see `split_regroup<>`. 
+     *  
+     *  @tparam NGroups - number of fft groups (`k`) that fit in a single simd vector.
+     */
+    template<uZ NGroups>
+    constexpr static auto regroup_btfly = regroup_btfly_t<NGroups>{};
 
     // clang-format off
+    /**
+     * @brief Loads and upsamples `Count` twiddles.
+     */
     template<uZ Count>
     static constexpr auto load_tw =
         tupi::pass    
@@ -524,6 +532,11 @@ struct subtransform {
         | tupi::apply                                                  
         | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
 
+
+    /**
+     * @brief Regroups input sismd vectors, similar to `simd::repack`, except
+     * that the real and imaginary part are processed separately.
+     */
     template<uZ GroupTo, uZ GroupFrom>
     static constexpr auto regroup = 
         tupi::pass 
@@ -542,18 +555,33 @@ struct subtransform {
             return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    
                                     V{.m_real = get<1>(re), .m_imag = get<1>(im)});
           };
-    template<uZ GroupTo>
+    /**
+     *  @brief Splits the input simd vectors into even/odd chunks of `ChunkSize`,
+     *  interleaves the matching chunks of `a` and `b`.
+     *
+     *  @return `tupi::tuple<>` the interleaved even/odd chunks.
+     *
+     *  Example: 
+     *  Width     == 8
+     *  ChunkSize == 2
+     *  a = [a0 a1 a2 a3 a4 a5 a6 a7]  
+     *  b = [b0 b1 b2 b3 b4 b5 b6 b7]  
+     * 
+     *  result<0> = [a0 a1 b0 b1 a4 a5 b4 b5]
+     *  result<1> = [a2 a3 b2 b3 a6 a7 b6 b7]
+     */
+    template<uZ ChunkSize>
     static constexpr auto split_regroup = 
         tupi::pass 
-        | []<simd::any_cx_vec V>(V a, V b) 
-            requires(GroupTo <= V::width())
+        | []<simd::eval_cx_vec V>(V a, V b) 
+            requires(ChunkSize <= V::width())
           {
             auto re = tupi::make_tuple(a.real_v(), b.real_v());
             auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
             return tupi::make_tuple(re, im, meta::types<V>{});
           }
-        | tupi::pipeline(tupi::apply | vec_traits::template split_interleave<GroupTo>, 
-                         tupi::apply | vec_traits::template split_interleave<GroupTo>,
+        | tupi::pipeline(tupi::apply | vec_traits::template split_interleave<ChunkSize>, 
+                         tupi::apply | vec_traits::template split_interleave<ChunkSize>,
                          tupi::pass)
         | tupi::apply
         | []<typename V>(auto re, auto im, meta::types<V>){
