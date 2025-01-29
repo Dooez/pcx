@@ -591,4 +591,41 @@ struct subtransform {
     // clang-format on
 };
 
+template<uZ NodeSize, typename T, uZ Width>
+struct transform {
+    using subtf = subtransform<NodeSize, T, Width>;
+
+
+    static constexpr uZ subsize   = 2048;
+    static constexpr uZ line_size = 512 / Width / sizeof(T);
+
+    template<uZ DestPackSize, uZ SrcPackSize>
+    static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
+        uZ   n_subs            = data_size / subsize;
+        auto stride            = subsize;
+        uZ   contiguous_length = std::max(subsize / n_subs, line_size);
+        uZ   cont_cnt          = contiguous_length / Width;
+    };
+
+
+    template<uZ DestPackSize, uZ SrcPackSize, uZ AlignSize = 1>
+    void sparse_subtform(uZ cont_cnt, T* dest_ptr, const T* tw_ptr) {
+        constexpr auto single_load_size = NodeSize * Width;
+
+        uZ size = 1;
+        if constexpr (AlignSize != 1) {
+            // fft_iteration<align_node, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
+        } else {
+            // fft_iteration<NodeSize, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
+        }
+
+
+        // while (data_size / (size * NodeSize) >= single_load_size)
+        // fft_iteration<NodeSize, Width, Width, LowK>(data_size, size, dest_ptr, tw_ptr);
+    };
+    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc>
+    PCX_AINLINE static auto
+    fft_iteration(uZ data_size, uZ& fft_size, auto data_ptr, auto& tw_ptr, uZ stride) {}
+};
+
 }    // namespace pcx::detail_
