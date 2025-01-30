@@ -601,10 +601,24 @@ struct transform {
 
     template<uZ DestPackSize, uZ SrcPackSize>
     static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
-        uZ   n_subs            = data_size / subsize;
-        auto stride            = subsize;
-        uZ   contiguous_length = std::max(subsize / n_subs, line_size);
-        uZ   cont_cnt          = contiguous_length / Width;
+        uZ n_subs            = data_size / subsize;
+        uZ contiguous_length = std::max(subsize / n_subs, line_size);
+        uZ cont_cnt          = contiguous_length / Width;
+
+        uZ max_subdivisions = subsize / Width;
+
+        constexpr auto logKi = [](uZ k, uZ value) {
+            auto pow = 0;
+            while (k > value) {
+                pow++;
+                k /= value;
+            };
+            return pow;
+        };
+        uZ subdivision_depth = logKi(data_size, max_subdivisions * subsize);
+
+        uZ stride1 = data_size / n_subs;    // stride
+        uZ stride2 = subsize;               // constant stride between subdivisions.
     };
 
 
