@@ -596,34 +596,58 @@ struct transform {
     using subtf = subtransform<NodeSize, T, Width>;
 
 
-    static constexpr uZ subsize   = 2048;
-    static constexpr uZ line_size = 512 / Width / sizeof(T);
+    static constexpr uZ coherent_size = 2048;
+    static constexpr uZ line_size     = 512 / Width / sizeof(T);
 
     template<uZ DestPackSize, uZ SrcPackSize>
     static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
-        uZ n_subs            = data_size / subsize;
-        uZ contiguous_length = std::max(subsize / n_subs, line_size);
-        uZ cont_cnt          = contiguous_length / Width;
-
-        uZ max_subdivisions = subsize / Width;
+        uZ max_subdivisions = coherent_size / Width;
 
         constexpr auto logKi = [](uZ k, uZ value) {
-            auto pow = 0;
+            auto pow = 1;
             while (k > value) {
                 pow++;
                 k /= value;
             };
             return pow;
         };
-        uZ subdivision_depth = logKi(data_size, max_subdivisions * subsize);
+        uZ subdivision_depth = logKi(data_size / coherent_size, max_subdivisions);
 
-        uZ stride1 = data_size / n_subs;    // stride
-        uZ stride2 = subsize;               // constant stride between subdivisions.
+        uZ current_depth  = 1;
+        uZ n_subdivisions = std::min(max_subdivisions, data_size / coherent_size);
+
+        uZ stride = 0;
+
+        // constant stride
+        //  [s0, s1,    ..., s0, ...    ]
+        //  [0 , width, ..., stride, ...]
+        //
+        // uZ stride = Width * n_subdivisions;
+
+        // bundled
+        // [ b0[...], b1[...]    ,..., b0[...], b1[...], ... ]
+        // [ 0,...  , bundle_size,..., stride , ...          ]
+        //
+        // uZ stride = data_size / n_subdivisions;
+        // uZ bundle_size = coherent_size / n_subdivisions;
+        //
+
+
+        // uZ   depth    = 1;
+        // auto l_stride = subsize;
+        // while (true) {
+        //     if (data_size <= l_stride * max_subdivisions)
+        //         break;
+        //     l_stride = l_stride * max_subdivisions;
+        //     ++depth;
+        // }
+
+        //either [grp_size]
     };
 
 
     template<uZ DestPackSize, uZ SrcPackSize, uZ AlignSize = 1>
-    void sparse_subtform(uZ cont_cnt, T* dest_ptr, const T* tw_ptr) {
+    void bundled_sparse_subtform(uZ bundles_size, uZ stride, uZ fft_size, T* dest_ptr, const T* tw_ptr) {
         constexpr auto single_load_size = NodeSize * Width;
 
         uZ size = 1;
@@ -632,14 +656,76 @@ struct transform {
         } else {
             // fft_iteration<NodeSize, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
         }
-
-
         // while (data_size / (size * NodeSize) >= single_load_size)
         // fft_iteration<NodeSize, Width, Width, LowK>(data_size, size, dest_ptr, tw_ptr);
     };
     template<uZ NodeSizeL, uZ PackDest, uZ PackSrc>
-    PCX_AINLINE static auto
-    fft_iteration(uZ data_size, uZ& fft_size, auto data_ptr, auto& tw_ptr, uZ stride) {}
+    PCX_AINLINE static auto fft_iteration_bun(uZ    bundle_size,
+                                              uZ    stride,
+                                              uZ    bundle_stride,
+                                              uZ    n_bundles_per_group,
+                                              uZ&   fft_size,
+                                              auto  data_ptr,
+                                              auto& tw_ptr) {
+        auto& l_tw_ptr = tw_ptr;
+
+        auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ i_bun, uZ k) {
+            auto base_ptr = data_ptr                       //
+                            + i * Width * 2                //
+                            + i_bun * bundle_stride * 2    //
+                            + k * NodeSizeL * stride * 2;
+            return [stride]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                return tupi::make_tuple((base_ptr + stride * Is)...);
+            }(std::make_index_sequence<NodeSizeL>{});
+        };
+
+        constexpr auto n_tw = NodeSizeL / 2;
+        for (auto k_group: stdv::iota(0U, fft_size)) {
+            auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
+            }(std::make_index_sequence<n_tw>{});
+            l_tw_ptr += n_tw * 2;
+
+            for (auto i_bundle: stdv::iota(0U, n_bundles_per_group)) {
+                for (auto i: stdv::iota(0U, bundle_size / Width)) {
+                    auto data = make_data_tup(i, i_bundle, k_group);
+                    //btfly::perfom(data, tw);
+                }
+            }
+        }
+    }
+
+    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc>
+    PCX_AINLINE static auto fft_iteration_cs(uZ    stride,    //
+                                             uZ    group_stride,
+                                             uZ    group_size,
+                                             uZ&   fft_size,
+                                             auto  data_ptr,
+                                             auto& tw_ptr) {
+        auto& l_tw_ptr = tw_ptr;
+
+        auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
+            auto base_ptr = data_ptr            //
+                            + i * stride * 2    //
+                            + k * NodeSizeL * group_stride * 2;
+            return [group_stride]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                return tupi::make_tuple((base_ptr + group_stride * Is)...);
+            }(std::make_index_sequence<NodeSizeL>{});
+        };
+
+        constexpr auto n_tw = NodeSizeL / 2;
+        for (auto k_group: stdv::iota(0U, fft_size)) {
+            auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
+            }(std::make_index_sequence<n_tw>{});
+            l_tw_ptr += n_tw * 2;
+
+            for (auto i: stdv::iota(0U, group_size / Width)) {
+                auto data = make_data_tup(i, k_group);
+                //btfly::perfom(data, tw);
+            }
+        }
+    }
 };
 
 }    // namespace pcx::detail_
