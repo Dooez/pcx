@@ -37,6 +37,14 @@ namespace stdr = std::ranges;
 
 template<uZ I>
 using uZc = std::integral_constant<uZ, I>;
+template<uZ... Is>
+using uZ_seq = std::index_sequence<Is...>;
+template<uZ N>
+using make_uZ_seq = std::make_index_sequence<N>;
+template<auto V>
+struct cevalue {
+    static constexpr auto value = V;
+};
 
 template<uZ N>
 concept power_of_two = N > 0 && (N & (N - 1)) == 0;

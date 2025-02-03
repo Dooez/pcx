@@ -107,6 +107,14 @@ struct btfly_node_dit {
     using ctw_t  = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
 
     template<settings S>
+    PCX_AINLINE static void perform(cevalue<S>, const dest_t& dest, const src_t& src, const ctw_t& tw) {
+        if constexpr (S.reverse) {
+            rev_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
+        } else {
+            fwd_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
+        }
+    }
+    template<settings S>
     PCX_AINLINE static void perform(const dest_t& dest, const src_t& src, const ctw_t& tw) {
         if constexpr (S.reverse) {
             rev_impl<S.pack_dest, S.pack_src>(dest, src, make_tw_getter(tw));
@@ -695,13 +703,20 @@ struct transform {
         }
     }
 
-    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc>
+    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration_cs(uZ    stride,    //
                                              uZ    group_stride,
                                              uZ    group_size,
                                              uZ&   fft_size,
                                              auto  data_ptr,
                                              auto& tw_ptr) {
+        using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
+        constexpr auto settings = cevalue<typename btfly_node::settings{
+            .pack_dest = PackDest,
+            .pack_src  = PackSrc,
+            .reverse   = false,
+        }>{};
+
         auto& l_tw_ptr = tw_ptr;
 
         auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
@@ -722,7 +737,7 @@ struct transform {
 
             for (auto i: stdv::iota(0U, group_size / Width)) {
                 auto data = make_data_tup(i, k_group);
-                //btfly::perfom(data, tw);
+                btfly_node::perform(settings, data);
             }
         }
     }
