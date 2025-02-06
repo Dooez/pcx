@@ -38,12 +38,22 @@ namespace stdr = std::ranges;
 template<uZ I>
 using uZc = std::integral_constant<uZ, I>;
 template<uZ... Is>
-using uZ_seq = std::index_sequence<Is...>;
+using uZseq = std::index_sequence<Is...>;
 template<uZ N>
-using make_uZ_seq = std::make_index_sequence<N>;
+using make_uZseq = std::make_index_sequence<N>;
 template<auto V>
-struct cevalue {
+struct ce_val {
+    using value_type = decltype(V);
+    using type       = ce_val<V>;
+
     static constexpr auto value = V;
+
+    consteval operator value_type() const {    // NOLINT (*explicit*)
+        return V;
+    }
+    static consteval auto operator()() {
+        return V;
+    }
 };
 
 template<uZ N>
