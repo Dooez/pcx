@@ -12,8 +12,8 @@ int main() {
                                       std::index_sequence<NodeSizes...>,
                                       std::index_sequence<VecWidth...>,
                                       pcx::meta::types<fX>) {
-        auto ns_passed = [=]<uZ NS>(uZc<NS>) { return ((test_single_load<fX, VecWidth, NS>() == 0) && ...); };
-        auto passed    = (ns_passed(uZc<NodeSizes>{}) && ...);
+        auto ns_passed = [=]<uZ NS>(uZ_ce<NS>) { return ((test_single_load<fX, VecWidth, NS>() == 0) && ...); };
+        auto passed    = (ns_passed(uZ_ce<NodeSizes>{}) && ...);
         return passed;
     };
     constexpr auto exec_test_low =
@@ -21,11 +21,11 @@ int main() {
                                                          std::index_sequence<VecWidth...>,
                                                          pcx::meta::types<fX>,
                                                          uZ fft_size) {
-            auto ns_passed = [=]<uZ NS>(uZc<NS>) {
+            auto ns_passed = [=]<uZ NS>(uZ_ce<NS>) {
                 return ((fft_size <= NS * VecWidth || test_subtranform<fX, VecWidth, NS, true>(fft_size) == 0)
                         && ...);
             };
-            auto passed = (ns_passed(uZc<NodeSizes>{}) && ...);
+            auto passed = (ns_passed(uZ_ce<NodeSizes>{}) && ...);
             return passed;
         };
     constexpr auto exec_test = []<uZ... NodeSizes, uZ... VecWidth, typename fX>(
@@ -33,11 +33,11 @@ int main() {
                                    std::index_sequence<VecWidth...>,
                                    pcx::meta::types<fX>,
                                    uZ fft_size) {
-        auto ns_passed = [=]<uZ NS>(uZc<NS>) {
+        auto ns_passed = [=]<uZ NS>(uZ_ce<NS>) {
             return ((fft_size <= NS * VecWidth || test_subtranform<fX, VecWidth, NS, false>(fft_size) == 0)
                     && ...);
         };
-        auto passed = (ns_passed(uZc<NodeSizes>{}) && ...);
+        auto passed = (ns_passed(uZ_ce<NodeSizes>{}) && ...);
         return passed;
     };
     constexpr auto node_sizes = std::index_sequence<8>{};

@@ -36,15 +36,15 @@ namespace stdv = std::views;
 namespace stdr = std::ranges;
 
 template<uZ I>
-using uZc = std::integral_constant<uZ, I>;
+using uZ_ce = std::integral_constant<uZ, I>;
 template<uZ... Is>
-using uZseq = std::index_sequence<Is...>;
+using uZ_seq = std::index_sequence<Is...>;
 template<uZ N>
-using make_uZseq = std::make_index_sequence<N>;
+using make_uZ_seq = std::make_index_sequence<N>;
 template<auto V>
-struct ce_val {
+struct val_ce {
     using value_type = decltype(V);
-    using type       = ce_val<V>;
+    using type       = val_ce<V>;
 
     static constexpr auto value = V;
 

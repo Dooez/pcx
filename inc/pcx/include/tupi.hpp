@@ -94,7 +94,7 @@ struct pipe_mixin {
 struct call_mixin {
     template<typename G, typename... Args>
     PCX_AINLINE constexpr auto call(this G&& g, Args&&... args) -> decltype(auto) {
-        return [&]<uZ I, typename... IArgs>(this auto invoker, uZc<I>, IArgs&&... iargs) -> decltype(auto) {
+        return [&]<uZ I, typename... IArgs>(this auto invoker, uZ_ce<I>, IArgs&&... iargs) -> decltype(auto) {
             using res_t = decltype(get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(iargs)...));
             if constexpr (final_result_cvref<res_t>) {
                 return get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(iargs)...);
@@ -103,9 +103,9 @@ struct call_mixin {
                 auto x       = g;
                 auto stage   = get_stage<I>(std::forward<G>(g));
                 auto tmp_res = get_stage<I>(std::forward<G>(g))(std::forward<IArgs>(iargs)...);
-                return invoker(uZc<I + 1>{}, tmp_res);
+                return invoker(uZ_ce<I + 1>{}, tmp_res);
             }
-        }(uZc<0>{}, std::forward<Args>(args)...);
+        }(uZ_ce<0>{}, std::forward<Args>(args)...);
     }
 };
 
@@ -176,19 +176,19 @@ struct tuple_cat_t : public pipe_mixin {
         requires(any_tuple<std::remove_cvref_t<Tups>> && ...)
     PCX_AINLINE constexpr static auto operator()(Tups&&... tups) {
         auto tuptup          = forward_as_tuple_t{}(std::forward<Tups>(tups)...);
-        auto get_cat_element = [&]<uZ I>(uZc<I>) -> decltype(auto) {
+        auto get_cat_element = [&]<uZ I>(uZ_ce<I>) -> decltype(auto) {
             return [&]<uZ ITup = 0, uZ K = 0, uZ L = 0>(this auto&& it,
-                                                        uZc<ITup> = {},
-                                                        uZc<K>    = {},
-                                                        uZc<L>    = {}) -> decltype(auto) {
+                                                        uZ_ce<ITup> = {},
+                                                        uZ_ce<K>    = {},
+                                                        uZ_ce<L>    = {}) -> decltype(auto) {
                 if constexpr (K == I) {
                     return get<L>(get<ITup>(tuptup));
                 } else {
                     constexpr auto tup_size = tuple_cvref_size_v<decltype(get<ITup>(tuptup))>;
                     if constexpr (L < tup_size - 1) {
-                        return std::forward<decltype(it)>(it)(uZc<ITup>{}, uZc<K + 1>{}, uZc<L + 1>{});
+                        return std::forward<decltype(it)>(it)(uZ_ce<ITup>{}, uZ_ce<K + 1>{}, uZ_ce<L + 1>{});
                     } else {
-                        return std::forward<decltype(it)>(it)(uZc<ITup + 1>{}, uZc<K + 1>{}, uZc<0>{});
+                        return std::forward<decltype(it)>(it)(uZ_ce<ITup + 1>{}, uZ_ce<K + 1>{}, uZ_ce<0>{});
                     }
                 }
             }();
@@ -196,7 +196,7 @@ struct tuple_cat_t : public pipe_mixin {
         constexpr auto total_size = (tuple_cvref_size_v<Tups> + ...);
         return [&]<uZ... Is>(std::index_sequence<Is...>) {
             using cat_t = detail_::tuple_cat_result_t<std::remove_cvref_t<Tups>...>;
-            return cat_t{get_cat_element(uZc<Is>{})...};
+            return cat_t{get_cat_element(uZ_ce<Is>{})...};
         }(std::make_index_sequence<total_size>{});
     }
 };
@@ -286,15 +286,15 @@ struct apply_t {
     static auto operator()(F&& f, Tup&& arg) -> decltype(auto) {
         return [&]<uZ... Is>(std::index_sequence<Is...>) -> decltype(auto) {
             if constexpr (compound_op_cvref<F>) {
-                [&]<uZ I, typename... IArgs>(this auto invoker, uZc<I>, IArgs&&... args) -> decltype(auto) {
+                [&]<uZ I, typename... IArgs>(this auto invoker, uZ_ce<I>, IArgs&&... args) -> decltype(auto) {
                     using res_t = decltype(get_stage<I>(std::forward<F>(f))(std::forward<IArgs>(args)...));
                     if constexpr (final_result_cvref<res_t>) {
                         return get_stage<I>(std::forward<F>(f))(std::forward<IArgs>(args)...);
                     } else {
-                        return invoker(uZc<I + 1>{},
+                        return invoker(uZ_ce<I + 1>{},
                                        get_stage<I>(std::forward<F>(f))(std::forward<IArgs>(args)...));
                     }
-                }(uZc<0>{}, get<Is>(std::forward<Tup>(arg))...);
+                }(uZ_ce<0>{}, get<Is>(std::forward<Tup>(arg))...);
             } else {
                 return std::forward<F>(f)(get<Is>(std::forward<Tup>(arg))...);
             }
@@ -602,7 +602,7 @@ private:
         static constexpr auto operator()(F&& f, Tups&&... arg_tups) {    // NOLINT(*std-forward*)
             constexpr auto group_count = std::min({tuple_cvref_size_v<Tups>...});
             return [&]<uZ... Is>(std::index_sequence<Is...>) {
-                auto invoke_group = [&]<uZ IGrp>(uZc<IGrp>) -> decltype(auto) {
+                auto invoke_group = [&]<uZ IGrp>(uZ_ce<IGrp>) -> decltype(auto) {
                     auto igrp         = IGrp;
                     auto invoke_stage = [&]<typename... Args>(Args&&... args) -> decltype(auto) {
                         auto igrp = IGrp;
@@ -620,13 +620,13 @@ private:
                         return invoke_stage(get<IGrp>(std::forward<Tups>(arg_tups))...);
                     }
                 };
-                constexpr auto final = (final_result<decltype(invoke_group(uZc<Is>{}))> && ...);
+                constexpr auto final = (final_result<decltype(invoke_group(uZ_ce<Is>{}))> && ...);
                 if constexpr (final) {
-                    using res_t = tuple<decltype(invoke_group(uZc<Is>{}))...>;
-                    return res_t{invoke_group(uZc<Is>{})...};
+                    using res_t = tuple<decltype(invoke_group(uZ_ce<Is>{}))...>;
+                    return res_t{invoke_group(uZ_ce<Is>{})...};
                 } else {
-                    using res_t = interim_tuple<decltype(invoke_group(uZc<Is>{}))...>;
-                    return wrap_interim(&f, res_t{invoke_group(uZc<Is>{})...});
+                    using res_t = interim_tuple<decltype(invoke_group(uZ_ce<Is>{}))...>;
+                    return wrap_interim(&f, res_t{invoke_group(uZ_ce<Is>{})...});
                 }
             }(std::make_index_sequence<group_count>{});
         };
