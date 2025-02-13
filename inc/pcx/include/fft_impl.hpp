@@ -660,11 +660,9 @@ struct transform {
 
 
     template<uZ DestPackSize, uZ SrcPackSize, uZ AlignSize = 1, bool LowK = false>
-    void sparse_subtform(uZ data_size, uZ size, uZ stride, uZ k_count, T* dest_ptr, const T* tw_ptr) {
+    void sparse_subtform(uZ stride, uZ k_count, uZ final_k_count, T* dest_ptr, const T* tw_ptr) {
         constexpr auto single_load_size = NodeSize * Width;
 
-
-        auto max_k = 2;    // input parameter
 
         // if constexpr (AlignSize != 1) {
         //     // fft_iteration<align_node, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
@@ -672,7 +670,8 @@ struct transform {
         //     // fft_iteration<NodeSize, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
         // }
 
-        while (k_count < max_k)
+
+        while (k_count < final_k_count)
             fft_iteration_cs<NodeSize, Width, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
     };
 
