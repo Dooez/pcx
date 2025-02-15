@@ -608,34 +608,79 @@ template<uZ NodeSize, typename T, uZ Width>
 struct transform {
     using subtf = subtransform<NodeSize, T, Width>;
 
-
+    /**
+     * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
+     */
     static constexpr uZ coherent_size = 2048;
-    static constexpr uZ line_size     = 512 / Width / sizeof(T);
+    static constexpr uZ line_size     = std::max(64 / sizeof(T) / 2, Width);
 
     template<uZ DestPackSize, uZ SrcPackSize>
     static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
-        uZ max_subdivisions = coherent_size / Width;
+        uZ coherent_k_cnt = coherent_size / line_size;    // maximum number of butterflies per subdivision
 
-        constexpr auto logKi = [](uZ k, uZ value) {
+        constexpr auto log_rem = [](uZ k, uZ value) {
             auto pow = 1;
             while (k > value) {
                 pow++;
                 k /= value;
             };
-            return pow;
+            return tupi::make_tuple(pow, k);
         };
-        uZ subdivision_depth = logKi(data_size / coherent_size, max_subdivisions);
 
-        uZ current_depth  = 1;
-        uZ n_subdivisions = std::min(max_subdivisions, data_size / coherent_size);
-
-        uZ stride = 0;
+        uZ total_subdivisions       = data_size / coherent_size;
+        auto [subdivision_depth,    //
+              subdivision_misalign] = log_rem(total_subdivisions, coherent_k_cnt);
 
         // constant stride
         //  [s0, s1,    ..., s0, ...    ]
         //  [0 , width, ..., stride, ...]
         //
-        // uZ stride = Width * n_subdivisions;
+
+        uZ n_subdiv_grp = 2;
+
+        auto exec_subdiv_grp =
+            [tw_ptr](uZ stride, uZ subdiv_grp_size, uZ k_count, uZ n_subdivisions, auto* grp_begin_ptr) {
+                for (uZ i_sd: stdv::iota(0U, subdiv_grp_size)) {
+                    auto data_ptr = grp_begin_ptr + i_sd * line_size;
+                    sparse_subtform<Width, SrcPackSize>(stride, k_count, n_subdivisions, data_ptr, tw_ptr);
+                }
+            };
+
+        uZ stride  = Width * total_subdivisions;
+        uZ k_count = 1;
+        if (subdivision_misalign != 1) {
+            uZ n_subdivisions = subdivision_misalign;
+            sparse_subtform<Width, SrcPackSize>(stride, k_count, n_subdivisions, dest_ptr, tw_ptr);
+            stride /= n_subdivisions;
+        } else {
+            uZ n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
+            sparse_subtform<Width, SrcPackSize>(stride, k_count, n_subdivisions, dest_ptr, tw_ptr);
+            stride /= n_subdivisions;
+        }
+        for (auto d: stdv::iota(1U, subdivision_depth)) {
+            uZ n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
+            sparse_subtform<Width, Width>(stride, k_count, n_subdivisions, dest_ptr, tw_ptr);
+            stride /= n_subdivisions;
+        }
+        uZ n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
+        for (uZ i: stdv::iota(0U, n_subdiv_grp)) {
+            exec_subdiv_grp(stride, data_size, k_count, n_subdivisions, dest_ptr);
+        }
+
+        for (auto d: stdv::iota(1U, subdivision_depth)) {
+            auto n_sd_groups    = powi(2, d);
+            uZ   n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
+            for (auto i_sd_grp: stdv::iota(0U, n_sd_groups)) {
+                // auto l_tw_ptr = tw_ptr;
+                for (uZ i_sd: stdv::iota(0U, n_subdivisions)) {
+                    // l_tw_ptr = tw_ptr;
+                    //sparse_subtform
+                }
+                // tw_ptr = l_tw_ptr;
+            }
+            //stride/= n_subdivisions;
+        }
+
 
         // bundled
         // [ b0[...], b1[...]    ,..., b0[...], b1[...], ... ]
@@ -659,18 +704,17 @@ struct transform {
     };
 
 
-    template<uZ DestPackSize, uZ SrcPackSize, uZ AlignSize = 1, bool LowK = false>
-    void sparse_subtform(uZ stride, uZ k_count, uZ final_k_count, T* dest_ptr, const T* tw_ptr) {
-        constexpr auto single_load_size = NodeSize * Width;
-
-
-        // if constexpr (AlignSize != 1) {
-        //     // fft_iteration<align_node, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
-        // } else {
-        //     // fft_iteration<NodeSize, Width, SrcPackSize, LowK>(data_size, size, dest_ptr, tw_ptr);
-        // }
-
-
+    template<uZ PackDest, uZ PackSrc, uZ PackAlign = 1, bool LowK = false>
+    PCX_AINLINE static void sparse_subtform(uZ       stride,    //
+                                            uZ       k_count,
+                                            uZ       final_k_count,
+                                            T*       dest_ptr,
+                                            const T* tw_ptr) {
+        if constexpr (PackAlign != 1) {
+            fft_iteration_cs<PackAlign, Width, PackSrc, LowK>(stride, dest_ptr, k_count, tw_ptr);
+        } else if constexpr (PackSrc != Width) {
+            fft_iteration_cs<NodeSize, Width, PackSrc, LowK>(stride, dest_ptr, k_count, tw_ptr);
+        }
         while (k_count < final_k_count)
             fft_iteration_cs<NodeSize, Width, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
     };
