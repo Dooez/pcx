@@ -611,122 +611,93 @@ struct transform {
     /**
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
      */
-    static constexpr uZ coherent_size = 2048;
-    static constexpr uZ line_size     = std::max(64 / sizeof(T) / 2, Width);
+    static constexpr uZ coherent_size  = 2048;
+    static constexpr uZ line_size      = std::max(64 / sizeof(T) / 2, Width);
+    static constexpr uZ coherent_k_cnt = coherent_size / line_size;
 
-    template<uZ DestPackSize, uZ SrcPackSize>
+
+    /**
+     * Subdivides the data into buckets of `coherent_size`.
+     * A bucket represents contiguous chunks of `line_size` distributed with a constant stride.
+     * A single subdivision can perform a maximum of `coherent_k_cnt` levels of fft.
+     *
+     */
+    template<uZ DestPackSize, uZ SrcPackSize, uZ NSubdiv>
     static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
-        uZ coherent_k_cnt = coherent_size / line_size;    // maximum number of butterflies per subdivision
-
-        constexpr auto log_rem = [](uZ k, uZ value) {
-            auto pow = 1;
-            while (k > value) {
-                pow++;
-                k /= value;
-            };
-            return tupi::make_tuple(pow, k);
-        };
-
-        uZ total_subdivisions       = data_size / coherent_size;
-        auto [subdivision_depth,    //
-              subdivision_misalign] = log_rem(total_subdivisions, coherent_k_cnt);
-
         // constant stride
         //  [s0, s1,    ..., s0, ...    ]
         //  [0 , width, ..., stride, ...]
-        //
 
-        uZ n_subdiv_grp = 2;
-
-        auto exec_subdiv_grp =
-            [tw_ptr](uZ stride, uZ subdiv_grp_size, uZ k_count, uZ n_subdivisions, auto* grp_begin_ptr) {
-                for (uZ i_sd: stdv::iota(0U, subdiv_grp_size)) {
-                    auto data_ptr = grp_begin_ptr + i_sd * line_size;
-                    sparse_subtform<Width, SrcPackSize>(stride, k_count, n_subdivisions, data_ptr, tw_ptr);
-                }
-            };
-
-        uZ stride  = Width * total_subdivisions;
-        uZ k_count = 1;
-        if (subdivision_misalign != 1) {
-            uZ n_subdivisions = subdivision_misalign;
-            sparse_subtform<Width, SrcPackSize>(stride, k_count, n_subdivisions, dest_ptr, tw_ptr);
-            stride /= n_subdivisions;
-        } else {
-            uZ n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
-            sparse_subtform<Width, SrcPackSize>(stride, k_count, n_subdivisions, dest_ptr, tw_ptr);
-            stride /= n_subdivisions;
-        }
-        for (auto d: stdv::iota(1U, subdivision_depth)) {
-            uZ n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
-            sparse_subtform<Width, Width>(stride, k_count, n_subdivisions, dest_ptr, tw_ptr);
-            stride /= n_subdivisions;
-        }
-        uZ n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
-        for (uZ i: stdv::iota(0U, n_subdiv_grp)) {
-            exec_subdiv_grp(stride, data_size, k_count, n_subdivisions, dest_ptr);
-        }
-
-        for (auto d: stdv::iota(1U, subdivision_depth)) {
-            auto n_sd_groups    = powi(2, d);
-            uZ   n_subdivisions = std::min(coherent_k_cnt, data_size / coherent_size);
-            for (auto i_sd_grp: stdv::iota(0U, n_sd_groups)) {
-                // auto l_tw_ptr = tw_ptr;
-                for (uZ i_sd: stdv::iota(0U, n_subdivisions)) {
-                    // l_tw_ptr = tw_ptr;
-                    //sparse_subtform
-                }
-                // tw_ptr = l_tw_ptr;
+        uZ n_buckets     = data_size / coherent_size;    // per bucket group
+        uZ align_k_count = data_size / (coherent_size * powi(coherent_k_cnt, NSubdiv - 1));
+        uZ stride        = Width * n_buckets;
+        uZ k_count       = 1;
+        {
+            auto l_tw_ptr = tw_ptr;
+            for (uZ i_b: stdv::iota(0U, n_buckets)) {
+                auto bucket_ptr = dest_ptr + i_b * line_size * 2;
+                l_tw_ptr        = tw_ptr;
+                sparse_subtform<SrcPackSize, 1, true>(stride,    //
+                                                      k_count,
+                                                      align_k_count,
+                                                      bucket_ptr,
+                                                      l_tw_ptr);
             }
-            //stride/= n_subdivisions;
+            stride /= align_k_count;
+            n_buckets /= align_k_count;
         }
 
-
-        // bundled
-        // [ b0[...], b1[...]    ,..., b0[...], b1[...], ... ]
-        // [ 0,...  , bundle_size,..., stride , ...          ]
-        //
-        // uZ stride = data_size / n_subdivisions;
-        // uZ bundle_size = coherent_size / n_subdivisions;
-        //
-
-
-        // uZ   depth    = 1;
-        // auto l_stride = subsize;
-        // while (true) {
-        //     if (data_size <= l_stride * max_subdivisions)
-        //         break;
-        //     l_stride = l_stride * max_subdivisions;
-        //     ++depth;
-        // }
-
-        //either [grp_size]
+        auto n_bucket_groups = align_k_count;
+        for (auto d: stdv::iota(1U, NSubdiv)) {
+            for (uZ i_b: stdv::iota(0U, n_buckets)) {
+                auto bucket_ptr = dest_ptr + i_b * line_size * 2;
+                sparse_subtform<Width, 1, true>(stride,    //
+                                                k_count,
+                                                align_k_count,
+                                                bucket_ptr,
+                                                tw_ptr);
+            }
+            for (auto i_bucket_grp: stdv::iota(1U, n_bucket_groups)) {
+                auto bucket_grp_ptr = dest_ptr + i_bucket_grp * data_size / n_bucket_groups;
+                auto l_tw_ptr       = tw_ptr + 0 * i_bucket_grp;
+                for (uZ i_b: stdv::iota(0U, n_buckets)) {
+                    auto bucket_ptr = bucket_grp_ptr + i_b * line_size * 2;
+                    sparse_subtform<Width, 1, false>(stride,    //
+                                                     k_count,
+                                                     align_k_count,
+                                                     bucket_ptr,
+                                                     l_tw_ptr);
+                }
+            }
+            n_bucket_groups *= coherent_k_cnt;
+            stride /= coherent_k_cnt;
+        }
     };
 
 
-    template<uZ PackDest, uZ PackSrc, uZ PackAlign = 1, bool LowK = false>
+    template<uZ PackSrc, uZ PackAlign = 1, bool LowK = false>
     PCX_AINLINE static void sparse_subtform(uZ       stride,    //
                                             uZ       k_count,
                                             uZ       final_k_count,
                                             T*       dest_ptr,
                                             const T* tw_ptr) {
         if constexpr (PackAlign != 1) {
-            fft_iteration_cs<PackAlign, Width, PackSrc, LowK>(stride, dest_ptr, k_count, tw_ptr);
+            fft_iteration_cs<PackAlign, PackSrc, LowK>(stride, dest_ptr, k_count, tw_ptr);
         } else if constexpr (PackSrc != Width) {
-            fft_iteration_cs<NodeSize, Width, PackSrc, LowK>(stride, dest_ptr, k_count, tw_ptr);
+            fft_iteration_cs<NodeSize, PackSrc, LowK>(stride, dest_ptr, k_count, tw_ptr);
         }
         while (k_count < final_k_count)
-            fft_iteration_cs<NodeSize, Width, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
+            fft_iteration_cs<NodeSize, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
     };
 
-    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
+    template<uZ NodeSizeL, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration_cs(uZ    stride,    //
                                              auto  data_ptr,
                                              uZ&   k_count,
                                              auto& tw_ptr) {
         using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
         constexpr auto settings = val_ce<typename btfly_node::settings{
-            .pack_dest = PackDest,
+            .pack_dest = Width,
             .pack_src  = PackSrc,
             .reverse   = false,
         }>{};
@@ -768,42 +739,6 @@ struct transform {
             }
         }
         k_count *= NodeSizeL;
-    }
-
-    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc>
-    PCX_AINLINE static auto fft_iteration_bun(uZ    bundle_size,
-                                              uZ    stride,
-                                              uZ    bundle_stride,
-                                              uZ    n_bundles_per_group,
-                                              uZ&   fft_size,
-                                              auto  data_ptr,
-                                              auto& tw_ptr) {
-        auto& l_tw_ptr = tw_ptr;
-
-        auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ i_bun, uZ k) {
-            auto base_ptr = data_ptr                       //
-                            + i * Width * 2                //
-                            + i_bun * bundle_stride * 2    //
-                            + k * NodeSizeL * stride * 2;
-            return [stride]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
-                return tupi::make_tuple((base_ptr + stride * Is)...);
-            }(std::make_index_sequence<NodeSizeL>{});
-        };
-
-        constexpr auto n_tw = NodeSizeL / 2;
-        for (auto k_group: stdv::iota(0U, fft_size)) {
-            auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
-                return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-            }(std::make_index_sequence<n_tw>{});
-            l_tw_ptr += n_tw * 2;
-
-            for (auto i_bundle: stdv::iota(0U, n_bundles_per_group)) {
-                for (auto i: stdv::iota(0U, bundle_size / Width)) {
-                    auto data = make_data_tup(i, i_bundle, k_group);
-                    //btfly::perfom(data, tw);
-                }
-            }
-        }
     }
 };
 
