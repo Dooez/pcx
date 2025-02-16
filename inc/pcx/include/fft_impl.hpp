@@ -623,7 +623,7 @@ struct transform {
      *
      */
     template<uZ DestPackSize, uZ SrcPackSize, uZ NSubdiv>
-    static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
+    static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr, uZ n_subdiv) {
         // constant stride
         //  [s0, s1,    ..., s0, ...    ]
         //  [0 , width, ..., stride, ...]
@@ -690,6 +690,75 @@ struct transform {
             fft_iteration_cs<NodeSize, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
     };
 
+    template<uZ NodeSizeL>
+    static auto make_tw_node(uZ_ce<NodeSizeL>, uZ fft_size, uZ k) {
+        constexpr auto n_tw = NodeSizeL / 2;
+
+        auto tw_node = std::array<std::complex<T>, n_tw>{};
+        uZ   i_tw    = 0;
+        for (uZ l: stdv::iota(0U, log2i(NodeSizeL))) {
+            for (uZ i: stdv::iota(0U, powi(2, l))) {
+                if (i % 2 == 1)
+                    continue;
+                auto tw          = pcx::detail_::wnk_br<T>(fft_size, k + i);
+                tw_node.at(i_tw) = tw;
+                ++i_tw;
+            }
+            k *= 2;
+            fft_size *= 2;
+        }
+        return tw_node;
+    }
+
+    template<uZ NodeSizeL, uZ PackSrc, bool LowK>
+    PCX_AINLINE static auto fft_iteration_cs_notw(uZ   stride,    //
+                                                  auto data_ptr,
+                                                  uZ&  k_count,
+                                                  uZ&  fft_size,
+                                                  uZ&  starting_k) {
+        using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
+        constexpr auto settings = val_ce<typename btfly_node::settings{
+            .pack_dest = Width,
+            .pack_src  = PackSrc,
+            .reverse   = false,
+        }>{};
+
+        auto k_group_size = coherent_size / k_count;
+        auto k_stride     = stride * coherent_size / Width / k_count;
+
+        auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
+            auto base_ptr = data_ptr            //
+                            + i * stride * 2    //
+                            + k * NodeSizeL * k_stride * 2;
+            return [k_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                return tupi::make_tuple((base_ptr + k_stride * Is)...);
+            }(make_uZ_seq<NodeSizeL>{});
+        };
+
+        constexpr auto n_tw = NodeSizeL / 2;
+
+        if constexpr (LowK) {
+            // l_tw_ptr += n_tw * 2;
+            for (auto i: stdv::iota(0U, k_group_size / Width)) {
+                auto data = make_data_tup(i, 0);
+                btfly_node::perform_lo_k(settings, data);
+            }
+        }
+        constexpr auto k_start = LowK ? 1U : 0U;
+        for (auto k_group: stdv::iota(k_start, k_count)) {
+            auto tw = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                auto tws = make_tw_node(uZ_ce<NodeSizeL>{}, fft_size, starting_k + k_group);
+                return tupi::make_tuple(simd::cxbroadcast<1, Width>(&tws[Is])...);
+            }(make_uZ_seq<n_tw>{});
+            // l_tw_ptr += n_tw * 2;
+
+            for (auto i: stdv::iota(0U, k_group_size / Width)) {
+                auto data = make_data_tup(i, k_group);
+                btfly_node::perform(settings, data, tw);
+            }
+        }
+        k_count *= NodeSizeL;
+    }
     template<uZ NodeSizeL, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration_cs(uZ    stride,    //
                                              auto  data_ptr,
