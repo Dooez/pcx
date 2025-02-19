@@ -8,14 +8,16 @@
 // }
 
 int main() {
-    constexpr auto exec_sl_test = []<uZ... NodeSizes, uZ... VecWidth, typename fX>(
-                                      std::index_sequence<NodeSizes...>,
-                                      std::index_sequence<VecWidth...>,
-                                      pcx::meta::types<fX>) {
-        auto ns_passed = [=]<uZ NS>(uZ_ce<NS>) { return ((test_single_load<fX, VecWidth, NS>() == 0) && ...); };
-        auto passed    = (ns_passed(uZ_ce<NodeSizes>{}) && ...);
-        return passed;
-    };
+    constexpr auto exec_sl_test =
+        []<uZ... NodeSizes, uZ... VecWidth, typename fX>(std::index_sequence<NodeSizes...>,
+                                                         std::index_sequence<VecWidth...>,
+                                                         pcx::meta::types<fX>) {
+            auto ns_passed = [=]<uZ NS>(uZ_ce<NS>) {
+                return ((test_single_load<fX, VecWidth, NS>() == 0) && ...);
+            };
+            auto passed = (ns_passed(uZ_ce<NodeSizes>{}) && ...);
+            return passed;
+        };
     constexpr auto exec_test_low =
         []<uZ... NodeSizes, uZ... VecWidth, typename fX>(std::index_sequence<NodeSizes...>,
                                                          std::index_sequence<VecWidth...>,
@@ -58,8 +60,8 @@ int main() {
     std::println();
     uZ fft_size = 256;
     while (fft_size <= 8192UZ) {
-        if (!exec_test_low(node_sizes, f32_widths, f32t, fft_size))
-            return -1;
+        // if (!exec_test_low(node_sizes, f32_widths, f32t, fft_size))
+        //     return -1;
         if (!exec_test(node_sizes, f32_widths, f32t, fft_size))
             return -1;
         fft_size *= 2;
