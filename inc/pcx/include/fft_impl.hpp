@@ -370,24 +370,26 @@ struct subtransform {
         auto tw_fact = [&tw_ptr]<uZ NodeSizeL = NodeSize>(uZ_ce<NodeSizeL> = {}) {
             constexpr uZ n_tw = NodeSizeL / 2;
             if constexpr (LocalTw) {
-                // return [&tw_ptr] PCX_LAINLINE(uZ k, uZ k_count) {
-                //     return [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
-                //         auto tws = make_tw_node<T, NodeSizeL>(k_count, k);
-                //         return tupi::make_tuple(simd::cxbroadcast<1, Width>(&tws[Is])...);
-                //     }(std::make_index_sequence<n_tw>{});
-                // };
+                return [&tw_ptr] PCX_LAINLINE(uZ k, uZ k_count) {
+                    return [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                        auto tws = make_tw_node<T, NodeSizeL>(k_count, k);
+                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(&tws[Is])...);
+                    }(std::make_index_sequence<n_tw>{});
+                };
             } else if constexpr (LowK) {
-                return [&tw_ptr] PCX_LAINLINE(uZ /* k */, uZ /* k_count */) {
-                    return [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) mutable {
+                return [tw_ptr] PCX_LAINLINE(uZ /* k */, uZ /* k_count */) mutable {
+                    return [&tw_ptr]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                        auto l_tw_ptr = tw_ptr;
                         tw_ptr += n_tw * 2;
-                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + Is * 2)...);
+                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
                     }(std::make_index_sequence<n_tw>{});
                 };
             } else {
                 return [&tw_ptr] PCX_LAINLINE(uZ /* k */, uZ /* k_count */) {
                     return [&tw_ptr]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+                        auto l_tw_ptr = tw_ptr;
                         tw_ptr += n_tw * 2;
-                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + Is * 2)...);
+                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
                     }(std::make_index_sequence<n_tw>{});
                 };
             };
@@ -415,12 +417,15 @@ struct subtransform {
                 tw_ptr += size;
         }
 
-        // if constexpr (AlignNode.node_size_post != 1) {
-        //     constexpr auto align_node = AlignNode.node_size_post;
-        //     fft_iteration<align_node, Width, Width, LowK>(data_size, size, dest_ptr, tw_fact());
-        //     if constexpr (LowK)
-        //         tw_ptr += size;
-        // }
+        if constexpr (AlignNode.node_size_post != 1) {
+            constexpr auto align_node = AlignNode.node_size_post;
+            fft_iteration<align_node, Width, Width, LowK>(data_size,
+                                                          size,
+                                                          dest_ptr,
+                                                          tw_fact(uZ_ce<align_node>{}));
+            if constexpr (LowK)
+                tw_ptr += size;
+        }
 
         constexpr auto skip_single_load = false;
         if constexpr (skip_single_load) {

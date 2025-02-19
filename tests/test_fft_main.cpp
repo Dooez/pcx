@@ -60,8 +60,8 @@ int main() {
     std::println();
     uZ fft_size = 256;
     while (fft_size <= 8192UZ) {
-        // if (!exec_test_low(node_sizes, f32_widths, f32t, fft_size))
-        //     return -1;
+        if (!exec_test_low(node_sizes, f32_widths, f32t, fft_size))
+            return -1;
         if (!exec_test(node_sizes, f32_widths, f32t, fft_size))
             return -1;
         fft_size *= 2;
