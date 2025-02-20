@@ -438,12 +438,12 @@ struct subtransform {
         }
 
         if constexpr (LowK) {
-            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr);
+            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_ptr, 0, size);
         }
         constexpr auto start = LowK ? 1UZ : 0UZ;
         for (auto i: stdv::iota(start, data_size / single_load_size)) {
             auto dest = dest_ptr + i * single_load_size * 2;
-            single_load<DestPackSize, Width, false>(dest, dest, tw_ptr);
+            single_load<DestPackSize, Width, false>(dest, dest, tw_ptr, i, size);
         }
     };
 
@@ -452,10 +452,7 @@ struct subtransform {
 
     template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK>
     PCX_AINLINE static auto fft_iteration(uZ data_size, uZ& k_count, auto data_ptr, auto&& get_tw) {
-        using btfly_node = btfly_node_dit<NodeSizeL, T, Width>;
-        // auto  tw_ptr_copy = tw_ptr;
-        // auto& l_tw_ptr    = LowK ? tw_ptr_copy : tw_ptr;
-
+        using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
         constexpr auto settings = val_ce<typename btfly_node::settings{
             .pack_dest = PackDest,
             .pack_src  = PackSrc,
@@ -472,22 +469,16 @@ struct subtransform {
             }(data_ptr + k * k_stride + offset * 2, std::make_index_sequence<NodeSizeL>{});
         };
 
-        // constexpr auto n_tw = NodeSizeL / 2;
         if constexpr (LowK) {
             auto tw = get_tw(0, k_count);
             for (auto i: stdv::iota(0U, group_size / NodeSizeL * 2) | stdv::stride(Width)) {
                 auto data = make_data_tup(0, i);
                 btfly_node::perform_lo_k(settings, data);
             }
-            // l_tw_ptr += n_tw * 2;
         }
         constexpr auto k_start = LowK ? 1UZ : 0UZ;
         for (auto k: stdv::iota(k_start, k_count)) {
             auto tw = get_tw(k, k_count);
-            // auto tw = [=]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
-            //     return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-            // }(std::make_index_sequence<n_tw>{});
-            // l_tw_ptr += n_tw * 2;
             for (auto i: stdv::iota(0U, group_size / NodeSizeL * 2) | stdv::stride(Width)) {
                 auto data = make_data_tup(k, i);
                 btfly_node::perform(settings, data, tw);
@@ -495,8 +486,10 @@ struct subtransform {
         }
         k_count *= NodeSizeL;
     }
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
-    PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, auto& tw_ptr) {
+
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw = true>
+    PCX_AINLINE static auto
+    single_load(T* data_ptr, const T* src_ptr, auto&& tw_ptr, uZ start_k, uZ start_fft_size) {
         auto data = []<uZ... Is>(auto data_ptr, std::index_sequence<Is...>) {
             return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(data_ptr + Width * 2 * Is)...);
         }(src_ptr, std::make_index_sequence<NodeSize>{});
@@ -524,19 +517,40 @@ struct subtransform {
             }
         }();
 
+        auto get_tw_regroup = [&] {
+            if constexpr (LocalTw) {
+                return [=]<uZ TwCount, uZ KGroup>(uZ_ce<TwCount>, uZ_ce<KGroup>) {
+                    auto tw_arr   = std::array<std::complex<T>, TwCount * 2>{};
+                    auto fft_size = start_fft_size * NodeSize * TwCount;
+                    for (auto [i, tw]: stdv::enumerate(tw_arr)) {
+                        auto k = start_k * NodeSize * TwCount / 2 + KGroup * TwCount + i;
+                        tw     = wnk_br(fft_size, k);
+                    }
+                    auto tw = simd::cxload<1, TwCount>(reinterpret_cast<T*>(tw_arr.data()));
+                    return tw;
+                };
+            } else {
+                return [&tw_ptr]<uZ TwCount, uZ K>(uZ_ce<TwCount>, uZ_ce<K>) {
+                    auto tw = simd::cxload<1, TwCount>(tw_ptr + TwCount * (2 * K));
+                    return tw;
+                };
+            }
+        }();
+
         auto [data_lo, data_hi] = [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto lo = tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
             auto hi = tupi::make_tuple(get<Is * 2 + 1>(btfly_res_0)...);
             return tupi::make_tuple(lo, hi);
         }(half_node_idxs);
-        auto [lo, hi] = [&tw_ptr]<uZ NGroups = 2> PCX_LAINLINE    //
+
+        auto [lo, hi] = [&tw_ptr, get_tw_regroup]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
                 if constexpr (NGroups == Width) {
-                    auto tmp = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
+                    auto tmp = regroup_btfly<NGroups>(data_lo, data_hi, get_tw_regroup);
                     tw_ptr += NGroups * 2 * NodeSize / 2;
                     return tmp;
                 } else {
-                    auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, tw_ptr);
+                    auto [lo, hi] = regroup_btfly<NGroups>(data_lo, data_hi, get_tw_regroup);
                     tw_ptr += NGroups * 2 * NodeSize / 2;
                     return f(lo, hi, uZ_ce<NGroups * 2>{});
                 }
@@ -552,8 +566,8 @@ struct subtransform {
     template<uZ NGroups>
     struct regroup_btfly_t {
         template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
-        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, const T* tw_ptr) {
-            auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(tw_ptr);
+        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi, auto&& get_tw) {
+            auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(get_tw);
 
             constexpr auto regr_ltw =
                 tupi::make_tuple
@@ -592,9 +606,9 @@ struct subtransform {
     template<uZ Count>
     static constexpr auto load_tw =
         tupi::pass    
-        | []<uZ IGroup>(const T* tw_ptr, uZ_ce<IGroup>) {
-            // return simd::cxload<Count, Count>(tw_ptr + Count * (2 * IGroup));
-            auto tw = simd::cxload<1, Count>(tw_ptr + Count * (2 * IGroup));
+        | []<uZ K>(auto&& get_tw, uZ_ce<K> k) {
+            auto tw = get_tw(uZ_ce<Count>{}, k);
+            // auto tw = simd::cxload<1, Count>(tw_ptr + Count * (2 * K));
             auto twr = simd::repack<Count>(tw);
             return twr;
           }
