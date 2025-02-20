@@ -369,8 +369,8 @@ struct subtransform {
         auto b              = a * log2i(NodeSize);
         auto pre_align_node = powi(2, slog - b);
 
-        // auto tw = tw_data<T, false>{tw_ptr};
-        auto tw = tw_data<T, true>{1, 0};
+        auto tw = tw_data<T, false>{tw_ptr};
+        // auto tw = tw_data<T, true>{1, 0};
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
@@ -384,7 +384,9 @@ struct subtransform {
     }
 
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK, align_node_t AlignNode, bool LocalTw>
-    static void perform_impl(uZ data_size, T* dest_ptr, tw_data<T, LocalTw> tw_data_arg) {
+    static void perform_impl(uZ                  data_size,    // NOLINT (*complexity*)
+                             T*                  dest_ptr,
+                             tw_data<T, LocalTw> tw_data_arg) {
         constexpr auto single_load_size = NodeSize * Width;
 
         auto tw_fact = [&tw_data_arg]<uZ NodeSizeL = NodeSize>(uZ_ce<NodeSizeL> = {}) {
@@ -400,7 +402,9 @@ struct subtransform {
                     }(make_uZ_seq<n_tw>{});
                 };
             } else if constexpr (LowK) {
-                return [tw_data_arg] PCX_LAINLINE(uZ /* k */, uZ /* k_count */) mutable {
+                return [tw_data_arg] PCX_LAINLINE(uZ /* k */
+                                                  ,
+                                                  uZ /* k_count */) mutable {
                     return [&tw_data_arg]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                         auto l_tw_ptr = tw_data_arg.tw_ptr;
                         tw_data_arg.tw_ptr += n_tw * 2;
@@ -408,7 +412,9 @@ struct subtransform {
                     }(std::make_index_sequence<n_tw>{});
                 };
             } else {
-                return [&tw_data_arg] PCX_LAINLINE(uZ /* k */, uZ /* k_count */) {
+                return [&tw_data_arg] PCX_LAINLINE(uZ /* k */
+                                                   ,
+                                                   uZ /* k_count */) {
                     return [&tw_data_arg]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
                         auto l_tw_ptr = tw_data_arg.tw_ptr;
                         tw_data_arg.tw_ptr += n_tw * 2;
@@ -460,21 +466,24 @@ struct subtransform {
             return;
         }
 
-        auto tw_data_sl = [=] {
-            return tw_data<T, true>{k_count, 0};
-            // return tw_data<T, false>{tw_ptr};
-        }();
+        auto get_tw_data = [&]([[maybe_unused]] uZ k) -> decltype(auto) {
+            if constexpr (LocalTw) {
+                return tw_data<T, true>{tw_data_arg.start_fft_size * k_count,
+                                        tw_data_arg.start_k * k_count + k};
+            } else {
+                return *(&tw_data_arg);
+            }
+        };
+
         if constexpr (LowK) {
-            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_data_sl);
+            auto&& tw = get_tw_data(0);
+            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw);
         }
         constexpr auto start = LowK ? 1UZ : 0UZ;
         for (auto i: stdv::iota(start, data_size / single_load_size)) {
-            auto dest = dest_ptr + i * single_load_size * 2;
-
-            if constexpr (tw_data_sl.local) {
-                tw_data_sl.start_k = i;
-            }
-            single_load<DestPackSize, Width, false>(dest, dest, tw_data_sl);
+            auto   dest = dest_ptr + i * single_load_size * 2;
+            auto&& tw   = get_tw_data(i);
+            single_load<DestPackSize, Width, false>(dest, dest, tw);
         }
     };
 
