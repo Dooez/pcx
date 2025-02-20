@@ -434,6 +434,37 @@ struct subtransform {
         }
     };
 
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, align_node_t AlignNode, bool LocalTw>
+    void insert_impl(auto r, uZ data_size, auto tw_data) {
+        constexpr auto single_load_size = NodeSize * Width;
+
+        uZ k_count = 1;
+        if constexpr (AlignNode.node_size_pre != 1) {
+            constexpr auto align_node = AlignNode.node_size_pre;
+            insert_iteration_tw<align_node, LowK>(r, k_count, tw_data);
+        }
+
+        while (data_size / (k_count * NodeSize) >= single_load_size) {
+            if constexpr (!LowK) {
+                k_count *= NodeSize;
+            } else {
+                insert_iteration_tw<NodeSize, LowK>(r, k_count, tw_data);
+            }
+        }
+        if constexpr (!LowK)
+            insert_iteration_tw<NodeSize, LowK>(r, k_count, tw_data);
+
+        if constexpr (AlignNode.node_size_post != 1) {
+            constexpr auto align_node = AlignNode.node_size_post;
+            insert_iteration_tw<align_node, LowK>(r, k_count, tw_data);
+        }
+
+        insert_single_load_tw<LowK>(r, tw_data);
+        for (auto i: stdv::iota(1U, data_size / single_load_size)) {
+            insert_single_load_tw<false>(r, tw_data);
+        }
+    }
+
     // private:
     static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
 
