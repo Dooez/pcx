@@ -544,7 +544,18 @@ struct subtransform {
             l_tw_data.start_k *= NodeSizeL;
         }
     }
-    // insert_iteration_tw(cx_range auto r, k_count, tw_data);
+    template<uZ NodeSizeL, bool LowK>
+    void insert_iteration_tw(/* cx_range */ auto& r, uZ k_count, auto& tw_data) {
+        // if constexpr(!LowK)
+        {
+            r.append_range(make_tw_node<T, NodeSizeL>(tw_data.start_fft_size * 2,    //
+                                                      tw_data.start_k));
+        }
+        for (auto k: stdv::iota(1U, k_count)) {
+            r.append_range(make_tw_node<T, NodeSizeL>(tw_data.start_fft_size * 2,    //
+                                                      tw_data.start_k + k));
+        }
+    };
 
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
     PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
@@ -623,6 +634,34 @@ struct subtransform {
         if constexpr (LocalTw) {
             ++tw_data.start_k;
         }
+    }
+    template<bool LowK>
+    void insert_single_load_tw(/* cx_range */ auto& r, auto& tw_data) {
+        // // if constexpr(!LowK)
+        // {
+        //     r.append_range(make_tw_node<T, NodeSize>(tw_data.start_fft_size * 2,    //
+        //                                              tw_data.start_k));
+        // }
+        // auto insert_kg = [&]<uZ TwCount, uZ KGroup>(uZ_ce<TwCount>, uZ_ce<KGroup>) {
+        //     auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
+        //     auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
+        //     r.append_range([=]<uZ... Is>(uZ_seq<Is...>) {
+        //         return std::array{wnk_br<T>(fft_size, k + Is)...};
+        //     }(make_uZ_seq<TwCount>{}));
+        // };
+        // []<uZ NGroups = 2> PCX_LAINLINE    //
+        //     (this auto f, uZ_ce<NGroups> = {}) {
+        //         if constexpr (NGroups == Width) {
+        //             insert_kg(uZ_ce<KGroup>)regroup_tw_fact(uZ_ce<NGroups>{}));
+        //         } else {
+        //             auto [lo, hi] =
+        //                 regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
+        //             return f(lo, hi, uZ_ce<NGroups * 2>{});
+        //         }
+        //     }();
+
+
+        ++tw_data.start_k;
     }
     // insert_single_load_tw(cx_range auto r, tw_data);
 
