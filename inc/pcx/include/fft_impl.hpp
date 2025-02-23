@@ -358,8 +358,8 @@ struct subtransform {
         uZ node_size_post = 1;
     };
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK>
-    static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr) {
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
+    static void perform(uZ data_size, T* dest_ptr, tw_data_t<T, LocalTw> tw) {
         constexpr auto single_load_size = NodeSize * Width;
 
         auto lsize          = data_size / single_load_size;
@@ -368,8 +368,8 @@ struct subtransform {
         auto b              = a * log2i(NodeSize);
         auto pre_align_node = powi(2, slog - b);
 
-        // auto tw = tw_data_t<T, false>{tw_ptr};
-        auto tw = tw_data_t<T, true>{1, 0};
+        // // auto tw = tw_data_t<T, false>{tw_ptr};
+        // auto tw = tw_data_t<T, true>{1, 0};
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);

@@ -258,7 +258,7 @@ auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std
 //             std::swap(range[i], range[irev]);
 //     }
 // }
-template<typename fX, uZ Width, uZ NodeSize, bool LowK = true>
+template<typename fX, uZ Width, uZ NodeSize, bool LowK = true, bool LocalTw = false>
 int test_subtranform(uZ fft_size) {
     // uZ   freq_n  = 2;
     uZ   freq_n  = 1;
@@ -283,18 +283,26 @@ int test_subtranform(uZ fft_size) {
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
     // fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
-    fimpl::template perform<1, 1, LowK>(fft_size, data_ptr, tw_ptr);
+    auto tw = [=] {
+        using tw_t = detail_::tw_data_t<fX, LocalTw>;
+        if constexpr (LocalTw) {
+            return tw_t{1, 0};
+        } else {
+            return tw_t{tw_ptr};
+        }
+    }();
+    fimpl::template perform<1, 1, LowK>(fft_size, data_ptr, tw);
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
 
     if (subtform_error) {
-        std::println(
-            "Error during {} subtform of size {} of type {} with vector width {:>2} and node size {:>2}.",
-            LowK ? "low k" : "",
-            fft_size,
-            pcx::meta::types<fX>{},
-            Width,
-            NodeSize);
+        std::println("[Error] {}×{}, width {}, node size {}{}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     Width,
+                     NodeSize,
+                     LowK ? ", low k" : "",
+                     LocalTw ? ", local tw" : "");
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
             // if (naive != pcx)
             std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
@@ -315,11 +323,12 @@ int test_subtranform(uZ fft_size) {
         }
         return -1;
     }
-    std::println("Successful {} subtform of size {} of type {} with width {:>2} and node size {:>2}.",
-                 LowK ? "low k" : "",
-                 fft_size,
+    std::println("[Success] {}×{}, width {}, node size {}{}{}.",
                  pcx::meta::types<fX>{},
+                 fft_size,
                  Width,
-                 NodeSize);
+                 NodeSize,
+                 LowK ? ", low k" : "",
+                 LocalTw ? ", local tw" : "");
     return 0;
 }

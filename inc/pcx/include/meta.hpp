@@ -28,26 +28,9 @@ concept equal_values = detail_::are_equal<Vs...>::value;
 template<auto... Vs>
 concept unique_values = detail_::are_unique<Vs...>::value;
 
-namespace detail_ {
 template<auto... Vs>
-struct generic_value_sequence {};
-template<auto... Vs>
-struct value_sequence {
-    using type = generic_value_sequence<Vs...>;
-};
-template<std::integral T, T I>
-struct value_sequence<I> {
-    using type = std::integral_constant<T, I>;
-};
-template<typename T, T I, typename... Ts, Ts... Is>
-    requires std::integral<T> && (std::same_as<T, Ts> && ...)
-struct value_sequence<I, Is...> {
-    using type = std::integer_sequence<T, I, Is...>;
-};
-}    // namespace detail_
-
-template<auto... Vs>
-using value_sequence = detail_::value_sequence<Vs...>::type;
+struct value_sequence {};
+// using value_sequence = detail_::value_sequence<Vs...>::type;
 
 template<auto... Vs>
 using val_seq = value_sequence<Vs...>;
