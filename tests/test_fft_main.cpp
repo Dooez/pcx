@@ -42,16 +42,16 @@ int main() {
     constexpr auto node_sizes = std::index_sequence<8>{};
     constexpr auto f64_widths = std::index_sequence<8>{};
     constexpr auto f32_widths = std::index_sequence<16>{};
-    // constexpr auto low_k      = pcx::meta::val_seq<false>{};
-    // constexpr auto local_tw   = pcx::meta::val_seq<true>{};
+    constexpr auto low_k      = pcx::meta::val_seq<false>{};
+    constexpr auto local_tw   = pcx::meta::val_seq<true>{};
 
     // constexpr auto node_sizes = std::index_sequence<2, 4, 8, 16>{};
     // constexpr auto f64_widths = std::index_sequence<2, 4, 8>{};
     // constexpr auto f32_widths = std::index_sequence<4, 8, 16>{};
-    constexpr auto low_k    = pcx::meta::val_seq<false, true>{};
-    constexpr auto local_tw = pcx::meta::val_seq<false, true>{};
-    constexpr auto f32t     = pcx::meta::t_id<f32>{};
-    constexpr auto f64t     = pcx::meta::t_id<f64>{};
+    // constexpr auto low_k    = pcx::meta::val_seq<false, true>{};
+    // constexpr auto local_tw = pcx::meta::val_seq<false, true>{};
+    constexpr auto f32t = pcx::meta::t_id<f32>{};
+    constexpr auto f64t = pcx::meta::t_id<f64>{};
 
     // int test_single_load(uZ fft_size);
     // int test_subtranform(uZ fft_size);

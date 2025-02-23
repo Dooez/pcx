@@ -128,24 +128,31 @@ struct btfly_node_dit {
     using tw_t       = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
     using low_k_tw_t = decltype([] {});
 
-    PCX_LAINLINE static auto forward(const data_t& data, low_k_tw_t = {}) {
+    PCX_LAINLINE static auto forward(data_t data, low_k_tw_t = {}) {
         return fwd_impl(data, const_tw_getter);
     }
-    PCX_LAINLINE static auto forward(const data_t& data, const tw_t& tw) {
+    PCX_LAINLINE static auto forward(data_t data, const tw_t& tw) {
         return fwd_impl(data, make_tw_getter(tw));
     }
-    PCX_LAINLINE static auto reverse(const data_t& data, low_k_tw_t = {}) {
+    PCX_LAINLINE static auto reverse(data_t data, low_k_tw_t = {}) {
         return rev_impl(data, const_tw_getter);
     }
-    PCX_LAINLINE static auto reverse(const data_t& data, const tw_t& tw) {
+    PCX_LAINLINE static auto reverse(data_t data, const tw_t& tw) {
         return rev_impl(data, make_tw_getter(tw));
     }
 
     template<settings S, typename Tw = low_k_tw_t>
         requires std::same_as<Tw, tw_t> || std::same_as<Tw, low_k_tw_t>
     PCX_AINLINE static void perform(val_ce<S>, const dest_t& dest, const src_t& src, const Tw& tw = {}) {
-        auto data    = tupi::group_invoke(simd::cxload<S.pack_src> | simd::repack<Width>, src);
-        auto res     = S.reverse ? reverse(data, tw) : forward(data, tw);
+        auto data = tupi::group_invoke(simd::cxload<S.pack_src, Width> | simd::repack<Width>, src);
+        auto res  = S.reverse ? reverse(data, tw) : forward(data, tw);
+        // auto res = [=] {
+        //     if constexpr (S.reverse) {
+        //         return reverse(data, tw);
+        //     } else {
+        //         return forward(data, tw);
+        //     }
+        // }();
         auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<S.pack_dest>, res);
         tupi::group_invoke(simd::cxstore<S.pack_dest>, dest, res_rep);
     }
@@ -368,8 +375,6 @@ struct subtransform {
         auto b              = a * log2i(NodeSize);
         auto pre_align_node = powi(2, slog - b);
 
-        // // auto tw = tw_data_t<T, false>{tw_ptr};
-        // auto tw = tw_data_t<T, true>{1, 0};
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
@@ -507,10 +512,10 @@ struct subtransform {
         auto make_data_tup = [=] PCX_LAINLINE(uZ k, uZ offset) {
             auto node_stride = group_size / NodeSizeL * 2 /*second group half*/ * 2 /*complex*/;
             auto k_stride    = group_size * 2 /*second group half*/ * 2 /*complex*/;
-            return [node_stride]<uZ... Is> PCX_LAINLINE(auto data_ptr,    //
-                                                        std::index_sequence<Is...>) {
-                return tupi::make_tuple((data_ptr + node_stride * Is)...);
-            }(data_ptr + k * k_stride + offset * 2, std::make_index_sequence<NodeSizeL>{});
+            auto base_ptr    = data_ptr + k * k_stride + offset * 2;
+            return [base_ptr, node_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                return tupi::make_tuple((base_ptr + node_stride * Is)...);
+            }(make_uZ_seq<NodeSizeL>{});
         };
 
         if constexpr (LowK) {
@@ -776,8 +781,8 @@ struct transform {
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
      */
     static constexpr uZ coherent_size  = 2048;
-    static constexpr uZ line_size      = std::max(64 / sizeof(T) / 2, Width);
-    static constexpr uZ coherent_k_cnt = coherent_size / line_size;
+    static constexpr uZ lane_size      = std::max(64 / sizeof(T) / 2, Width);
+    static constexpr uZ coherent_k_cnt = coherent_size / lane_size;
 
 
     /**
@@ -799,7 +804,7 @@ struct transform {
         {
             auto l_tw_ptr = tw_ptr;
             for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                auto bucket_ptr = dest_ptr + i_b * line_size * 2;
+                auto bucket_ptr = dest_ptr + i_b * lane_size * 2;
                 l_tw_ptr        = tw_ptr;
                 sparse_subtform<SrcPackSize, 1, true>(stride,    //
                                                       k_count,
@@ -814,7 +819,7 @@ struct transform {
         auto n_bucket_groups = align_k_count;
         for (auto d: stdv::iota(1U, NSubdiv)) {
             for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                auto bucket_ptr = dest_ptr + i_b * line_size * 2;
+                auto bucket_ptr = dest_ptr + i_b * lane_size * 2;
                 sparse_subtform<Width, 1, true>(stride,    //
                                                 k_count,
                                                 align_k_count,
@@ -825,7 +830,7 @@ struct transform {
                 auto bucket_grp_ptr = dest_ptr + i_bucket_grp * data_size / n_bucket_groups;
                 auto l_tw_ptr       = tw_ptr + 0 * i_bucket_grp;
                 for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                    auto bucket_ptr = bucket_grp_ptr + i_b * line_size * 2;
+                    auto bucket_ptr = bucket_grp_ptr + i_b * lane_size * 2;
                     sparse_subtform<Width, 1, false>(stride,    //
                                                      k_count,
                                                      align_k_count,
@@ -854,18 +859,35 @@ struct transform {
             fft_iteration_cs<NodeSize, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
     };
 
-    template<uZ NodeSizeL, uZ PackSrc, bool LowK>
-    PCX_AINLINE static auto fft_iteration_cs_notw(uZ   stride,    //
-                                                  auto data_ptr,
-                                                  uZ&  k_count,
-                                                  uZ&  fft_size,
-                                                  uZ&  starting_k) {
+    template<uZ NodeSizeL, uZ PackSrc, bool LowK, bool LocalTw>
+    PCX_AINLINE static auto fft_iteration_cs(uZ                    stride,    //
+                                             auto                  data_ptr,
+                                             uZ&                   k_count,
+                                             tw_data_t<T, LocalTw> tw_data
+                                             // uZ&  fft_size,
+                                             /* uZ&  starting_k */
+    ) {
         using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
         constexpr auto settings = val_ce<typename btfly_node::settings{
             .pack_dest = Width,
             .pack_src  = PackSrc,
             .reverse   = false,
         }>{};
+
+        // auto data_size     = 0U;
+        // auto group_size    = data_size / k_count / 2;
+        // auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
+        //     auto node_stride = data_size / k_count / 2 / NodeSizeL * 2 /*second group half*/ * 2 /*complex*/;
+        //     auto i_stride    = data_size / k_count / 2 * 2 /*second group half*/ * 2 /*complex*/;
+        //     auto base_ptr    = data_ptr
+        //                        + i * i_stride
+        //                        + k * Width * 2;
+        //     return [base_ptr, node_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+        //         return tupi::make_tuple((base_ptr + node_stride * Is)...);
+        //     }(make_uZ_seq<NodeSizeL>{});
+        // };
+        //
+        // stride == width
 
         auto k_group_size = coherent_size / k_count;
         auto k_stride     = stride * coherent_size / Width / k_count;
@@ -881,9 +903,33 @@ struct transform {
 
         constexpr auto n_tw = NodeSizeL / 2;
 
+        auto make_tw_tup = [&tw_data] {
+            constexpr uZ n_tw = NodeSizeL / 2;
+            if constexpr (LocalTw) {
+                return [&tw_data] PCX_LAINLINE(uZ k) {
+                    return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                        auto tws = make_tw_node<T, NodeSizeL>(tw_data.start_fft_size * 2,    //
+                                                              tw_data.start_k + k);
+
+                        auto tw_ptr = reinterpret_cast<T*>(tws.data());
+                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
+                    }(make_uZ_seq<n_tw>{});
+                };
+            } else {
+                // return [&tw_data] PCX_LAINLINE(uZ) {
+                //     return [&tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                //         auto l_tw_ptr = tw_data.tw_ptr;
+                //         tw_data.tw_ptr += n_tw * 2;
+                //         return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
+                //     }(make_uZ_seq<n_tw>{});
+                // };
+            }
+        }();
+
         if constexpr (LowK) {
             // l_tw_ptr += n_tw * 2;
-            for (auto i: stdv::iota(0U, k_group_size / Width)) {
+            for (auto i: stdv::iota(0U, k_group_size / lane_size)) {
+                // for (auto r : stdv::iota(0U, lane_size/Width))
                 auto data = make_data_tup(i, 0);
                 btfly_node::perform(settings, data);
             }
@@ -891,62 +937,13 @@ struct transform {
         constexpr auto k_start = LowK ? 1U : 0U;
         for (auto k_group: stdv::iota(k_start, k_count)) {
             auto tw = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                auto tws = make_tw_node<T, NodeSizeL>(fft_size, starting_k + k_group);
+                auto tws = make_tw_node<T, NodeSizeL>(tw_data.start_fft_size, tw_data.start_k + k_group);
                 return tupi::make_tuple(simd::cxbroadcast<1, Width>(&tws[Is])...);
             }(make_uZ_seq<n_tw>{});
             // l_tw_ptr += n_tw * 2;
 
-            for (auto i: stdv::iota(0U, k_group_size / Width)) {
-                auto data = make_data_tup(i, k_group);
-                btfly_node::perform(settings, data, tw);
-            }
-        }
-        k_count *= NodeSizeL;
-    }
-    template<uZ NodeSizeL, uZ PackSrc, bool LowK>
-    PCX_AINLINE static auto fft_iteration_cs(uZ    stride,    //
-                                             auto  data_ptr,
-                                             uZ&   k_count,
-                                             auto& tw_ptr) {
-        using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
-        constexpr auto settings = val_ce<typename btfly_node::settings{
-            .pack_dest = Width,
-            .pack_src  = PackSrc,
-            .reverse   = false,
-        }>{};
-
-        auto  tw_ptr_copy = tw_ptr;
-        auto& l_tw_ptr    = LowK ? tw_ptr_copy : tw_ptr;
-
-        auto k_group_size = coherent_size / k_count;
-        auto k_stride     = stride * coherent_size / Width / k_count;
-
-        auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
-            auto base_ptr = data_ptr            //
-                            + i * stride * 2    //
-                            + k * NodeSizeL * k_stride * 2;
-            return [k_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                return tupi::make_tuple((base_ptr + k_stride * Is)...);
-            }(make_uZ_seq<NodeSizeL>{});
-        };
-
-        constexpr auto n_tw = NodeSizeL / 2;
-
-        if constexpr (LowK) {
-            l_tw_ptr += n_tw * 2;
-            for (auto i: stdv::iota(0U, k_group_size / Width)) {
-                auto data = make_data_tup(i, 0);
-                btfly_node::perform(settings, data);
-            }
-        }
-        constexpr auto k_start = LowK ? 1U : 0U;
-        for (auto k_group: stdv::iota(k_start, k_count)) {
-            auto tw = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-            }(make_uZ_seq<n_tw>{});
-            l_tw_ptr += n_tw * 2;
-
-            for (auto i: stdv::iota(0U, k_group_size / Width)) {
+            for (auto i: stdv::iota(0U, k_group_size / lane_size)) {
+                // for (auto r : stdv::iota(0U, lane_size/Width))
                 auto data = make_data_tup(i, k_group);
                 btfly_node::perform(settings, data, tw);
             }
