@@ -352,6 +352,24 @@ struct tw_data_t<T, true> {
     uZ start_fft_size;
     uZ start_k;
 };
+template<uZ Value = -1>
+struct maybe_ce_uZ {
+    static constexpr auto operator()() {
+        return uZ_ce<Value>{};
+    }
+};
+template<>
+struct maybe_ce_uZ<-1> {
+    uZ m_value;
+
+    maybe_ce(uZ value)
+    : m_value(value) {};
+    maybe_ce() = delete;
+
+    constexpr auto operator()() const -> uZ {
+        return value;
+    }
+};
 
 
 template<uZ NodeSize, typename T, uZ Width>
@@ -799,7 +817,7 @@ struct transform {
 
         uZ n_buckets     = data_size / coherent_size;    // per bucket group
         uZ align_k_count = data_size / (coherent_size * powi(coherent_k_cnt, NSubdiv - 1));
-        uZ stride        = Width * n_buckets;
+        uZ stride        = lane_size * n_buckets;
         uZ k_count       = 1;
         {
             auto l_tw_ptr = tw_ptr;
@@ -859,8 +877,16 @@ struct transform {
             fft_iteration_cs<NodeSize, Width, LowK>(stride, dest_ptr, k_count, tw_ptr);
     };
 
-    template<uZ NodeSizeL, uZ PackSrc, bool LowK, bool LocalTw>
-    PCX_AINLINE static auto fft_iteration_cs(uZ                    stride,    //
+
+    /**
+     *  [k0, k0,     ...,  k0                     , k1, k1, ..., k_count - 1, k_count - 1, ...]
+     *  [i0, i1,     ..., i<data_size / lane_size>, i0, i1, ..., i0,          i1,          ...]
+     *  [0 , stride, ...                                                                      ]
+     */
+    template<uZ NodeSizeL, uZ PackSrc, bool LowK, bool LocalTw, uZ DS_, uZ ST_, uZ LS_>
+    PCX_AINLINE static auto fft_iteration_cs(maybe_ce_uZ<DS_>      data_size,
+                                             maybe_ce_uZ<ST_>      stride,       //
+                                             maybe_ce_uZ<LS_>      lane_size,    //
                                              auto                  data_ptr,
                                              uZ&                   k_count,
                                              tw_data_t<T, LocalTw> tw_data
@@ -878,9 +904,9 @@ struct transform {
         // auto group_size    = data_size / k_count / 2;
         // auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
         //     auto node_stride = data_size / k_count / 2 / NodeSizeL * 2 /*second group half*/ * 2 /*complex*/;
-        //     auto i_stride    = data_size / k_count / 2 * 2 /*second group half*/ * 2 /*complex*/;
+        //     auto i_stride    = data_size / k_count;
         //     auto base_ptr    = data_ptr
-        //                        + i * i_stride
+        //                        + i * i_stride * 2
         //                        + k * Width * 2;
         //     return [base_ptr, node_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
         //         return tupi::make_tuple((base_ptr + node_stride * Is)...);
@@ -889,15 +915,28 @@ struct transform {
         //
         // stride == width
 
-        auto k_group_size = coherent_size / k_count;
-        auto k_stride     = stride * coherent_size / Width / k_count;
+        auto k_group_size = data_size() / lane_size() / k_count;
+        auto k_stride     = stride() * k_group_size * 2;
 
+        //
+        // data division:
+        // E - even, O - odd
+        // [E0, E0,     ..., E0                 , O1, O1, ... , O<k_count - 1>, O<k_count - 1>, ...]
+        // [i0, i1,     ..., i<k_group_size - 1>, i0, i1, ... , i0,             i1,             ...]
+        // [0 , stride, ...                                                                        ]
+        // k is an index of O elements
+
+        // data for a butterfly:
+        // k == 0, i == 0
+        // [0,     ... , NodeSizeL/4 - 1,          ... , NodeSizeL/2 - 1, ... ] - tuple index
+        // [E0:i0, ... , E0:i<k_group_size/2 - 1>, ... , O1:i0,           ... ]
+        //
         auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k) {
-            auto base_ptr = data_ptr            //
-                            + i * stride * 2    //
-                            + k * NodeSizeL * k_stride * 2;
-            return [k_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                return tupi::make_tuple((base_ptr + k_stride * Is)...);
+            auto base_ptr = data_ptr              //
+                            + i * stride() * 2    //
+                            + k * k_stride * 2;
+            return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                return tupi::make_tuple((base_ptr + k_stride / NodeSizeL * Is)...);
             }(make_uZ_seq<NodeSizeL>{});
         };
 
