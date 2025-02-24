@@ -21,12 +21,21 @@ template<auto V, auto... Vs>
 struct are_unique<V, Vs...> {
     static constexpr bool value = (!are_equal<V, Vs>::value && ...) && are_unique<Vs...>::value;
 };
+
+template<typename T, typename U>
+struct is_ce_of : std::false_type {};
+template<typename T, T Val>
+struct is_ce_of<val_ce<Val>, T> : std::true_type {};
+
 }    // namespace detail_
 
 template<auto... Vs>
 concept equal_values = detail_::are_equal<Vs...>::value;
 template<auto... Vs>
 concept unique_values = detail_::are_unique<Vs...>::value;
+
+template<typename T, typename U>
+concept maybe_ce = detail_::is_ce_of<U, T>::value || std::same_as<T, U>;
 
 template<auto... Vs>
 struct value_sequence {};

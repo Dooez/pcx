@@ -42,7 +42,7 @@ using uZ_seq = std::index_sequence<Is...>;
 template<uZ N>
 using make_uZ_seq = std::make_index_sequence<N>;
 template<auto V>
-struct val_ce {
+struct val_ce : std::integral_constant<decltype(V), V> {
     using value_type = decltype(V);
     using type       = val_ce<V>;
 
