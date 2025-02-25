@@ -792,51 +792,78 @@ struct transform {
      */
     template<uZ DestPackSize, uZ SrcPackSize, uZ NSubdiv = 1>
     static void perform(uZ data_size, T* dest_ptr) {
+        constexpr bool LocalTw = true;
         // constant stride
         //  [s0, s1,    ..., s0, ...    ]
         //  [0 , width, ..., stride, ...]
 
-        const uZ   n_buckets     = data_size / coherent_size;    // per bucket group
-        const auto batch_size    = lane_size;
-        uZ         pass0_k_count = data_size / (coherent_size * powi(coherent_k_cnt, NSubdiv - 1));
-        uZ         stride        = batch_size * n_buckets;
+        const auto bucket_size        = coherent_size;
+        uZ         bucket_count       = data_size / coherent_size;    // per bucket group
+        uZ         bucket_group_count = 1;
+
+        const auto batch_size       = lane_size;
+        uZ         pre_pass_k_count = data_size / (coherent_size * powi(coherent_k_cnt, NSubdiv - 1));
+        uZ         stride           = batch_size * bucket_count;
 
         uZ   k_count = 1;
         auto tw_data = tw_data_t<T, true>{1, 0};
 
 
-        auto iterate_buckets = [&]<uZ AlignPack>(uZ_ce<AlignPack>, auto k_count) {
-            auto l_tw_data = tw_data;
-            for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                auto bucket_ptr = dest_ptr + i_b * batch_size * 2;
-                sparse_subtform<SrcPackSize, 1, true>(stride,    //
-                                                      k_count,
-                                                      bucket_ptr,
-                                                      l_tw_data);
+        auto iterate_buckets = [&]<uZ PackAlign>(uZ_ce<PackAlign>, auto k_count) {
+            for (uZ i_bg: stdv::iota(0U, bucket_group_count)) {
+                auto bucket_group_start = dest_ptr + i_bg * bucket_count * bucket_size;
+                auto l_tw_data          = tw_data_t<T, LocalTw>{bucket_group_count, i_bg};
+                sparse_subtform<SrcPackSize, PackAlign, true>(stride,    //
+                                                              k_count,
+                                                              bucket_group_start,
+                                                              l_tw_data);
+                for (uZ i_b: stdv::iota(1U, bucket_count)) {
+                    auto bucket_ptr = bucket_group_start + i_b * batch_size * 2;
+                    sparse_subtform<SrcPackSize, PackAlign, false>(stride,    //
+                                                                   k_count,
+                                                                   bucket_ptr,
+                                                                   l_tw_data);
+                }
             }
+            bucket_count /= k_count;
             stride /= k_count;
-            tw_data = l_tw_data;
+            bucket_group_count *= k_count;
         };
 
-        auto get_align_node = [](uZ size) {
+        constexpr auto get_align_node = [](uZ size) {
             auto slog       = log2i(size);
             auto a          = slog / log2i(NodeSize);
             auto b          = a * log2i(NodeSize);
             auto align_node = powi(2, slog - b);
             return align_node;
         };
+        constexpr auto logKi = [](uZ K, uZ value) {
+            auto p = 0;
+            while (value > K) {
+                value /= K;
+                ++p;
+            }
+            return p;
+        };
 
-        auto pass0_align_node = get_align_node(pass0_k_count);
+
+        auto pre_pass_align_node = get_align_node(pre_pass_k_count);
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
-                if (l_node_size != pass0_align_node)
+                if (l_node_size != pre_pass_align_node)
                     return false;
-                iterate_buckets(uZ_ce<l_node_size>{}, pass0_k_count);
+                iterate_buckets(uZ_ce<l_node_size>{}, pre_pass_k_count);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(std::make_index_sequence<log2i(NodeSize)>{});
+
+
+        auto pass_count = logKi(coherent_size, data_size / coherent_size / pre_pass_k_count);
+        for (uZ pass: stdv::iota(0U, pass_count)) {
+            iterate_buckets(uZ_ce<NodeSize>{}, coherent_size);
+        }
     };
 
 
