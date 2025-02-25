@@ -779,92 +779,96 @@ struct transform {
     /**
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
      */
-    static constexpr uZ coherent_size  = 2048;
-    static constexpr uZ lane_size      = std::max(64 / sizeof(T) / 2, Width);
-    static constexpr uZ coherent_k_cnt = coherent_size / lane_size;
+    static constexpr auto coherent_size  = uZ_ce<2048>{};
+    static constexpr auto lane_size      = uZ_ce<std::max(64 / sizeof(T) / 2, Width)>{};
+    static constexpr uZ   coherent_k_cnt = uZ_ce<coherent_size / lane_size>{};
 
 
     /**
-     * Subdivides the data into buckets of `coherent_size`.
-     * A bucket represents contiguous chunks of `line_size` distributed with a constant stride.
+     * Subdivides the data into buckets. Default bucket size is `coherent_size`.
+     * A bucket represents contiguous batches of data, distributed with a constant stride. Default batch size is `lane_size`.
      * A single subdivision can perform a maximum of `coherent_k_cnt` levels of fft.
      *
      */
-    template<uZ DestPackSize, uZ SrcPackSize, uZ NSubdiv>
-    static void perform(uZ data_size, T* dest_ptr, const T* tw_ptr, uZ n_subdiv) {
+    template<uZ DestPackSize, uZ SrcPackSize, uZ NSubdiv = 1>
+    static void perform(uZ data_size, T* dest_ptr) {
         // constant stride
         //  [s0, s1,    ..., s0, ...    ]
         //  [0 , width, ..., stride, ...]
 
-        uZ n_buckets     = data_size / coherent_size;    // per bucket group
-        uZ align_k_count = data_size / (coherent_size * powi(coherent_k_cnt, NSubdiv - 1));
-        uZ stride        = lane_size * n_buckets;
-        uZ k_count       = 1;
-        {
-            auto l_tw_ptr = tw_ptr;
+        const uZ   n_buckets     = data_size / coherent_size;    // per bucket group
+        const auto batch_size    = lane_size;
+        uZ         pass0_k_count = data_size / (coherent_size * powi(coherent_k_cnt, NSubdiv - 1));
+        uZ         stride        = batch_size * n_buckets;
+
+        uZ   k_count = 1;
+        auto tw_data = tw_data_t<T, true>{1, 0};
+
+
+        auto iterate_buckets = [&]<uZ AlignPack>(uZ_ce<AlignPack>, auto k_count) {
+            auto l_tw_data = tw_data;
             for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                auto bucket_ptr = dest_ptr + i_b * lane_size * 2;
-                l_tw_ptr        = tw_ptr;
+                auto bucket_ptr = dest_ptr + i_b * batch_size * 2;
                 sparse_subtform<SrcPackSize, 1, true>(stride,    //
                                                       k_count,
-                                                      align_k_count,
                                                       bucket_ptr,
-                                                      l_tw_ptr);
+                                                      l_tw_data);
             }
-            stride /= align_k_count;
-            n_buckets /= align_k_count;
-        }
+            stride /= k_count;
+            tw_data = l_tw_data;
+        };
 
-        auto n_bucket_groups = align_k_count;
-        for (auto d: stdv::iota(1U, NSubdiv)) {
-            for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                auto bucket_ptr = dest_ptr + i_b * lane_size * 2;
-                sparse_subtform<Width, 1, true>(stride,    //
-                                                k_count,
-                                                align_k_count,
-                                                bucket_ptr,
-                                                tw_ptr);
-            }
-            for (auto i_bucket_grp: stdv::iota(1U, n_bucket_groups)) {
-                auto bucket_grp_ptr = dest_ptr + i_bucket_grp * data_size / n_bucket_groups;
-                auto l_tw_ptr       = tw_ptr + 0 * i_bucket_grp;
-                for (uZ i_b: stdv::iota(0U, n_buckets)) {
-                    auto bucket_ptr = bucket_grp_ptr + i_b * lane_size * 2;
-                    sparse_subtform<Width, 1, false>(stride,    //
-                                                     k_count,
-                                                     align_k_count,
-                                                     bucket_ptr,
-                                                     l_tw_ptr);
-                }
-            }
-            n_bucket_groups *= coherent_k_cnt;
-            stride /= coherent_k_cnt;
-        }
+        auto get_align_node = [](uZ size) {
+            auto slog       = log2i(size);
+            auto a          = slog / log2i(NodeSize);
+            auto b          = a * log2i(NodeSize);
+            auto align_node = powi(2, slog - b);
+            return align_node;
+        };
+
+        auto pass0_align_node = get_align_node(pass0_k_count);
+        [&]<uZ... Is>(std::index_sequence<Is...>) {
+            auto check_align = [&]<uZ I>(uZ_ce<I>) {
+                constexpr auto l_node_size = powi(2, I);
+                if (l_node_size != pass0_align_node)
+                    return false;
+                iterate_buckets(uZ_ce<l_node_size>{}, pass0_k_count);
+                return true;
+            };
+            (void)(check_align(uZ_ce<Is>{}) || ...);
+        }(std::make_index_sequence<log2i(NodeSize)>{});
     };
 
 
     template<uZ PackSrc, uZ PackAlign, bool LowK, bool LocalTw>
     PCX_AINLINE static void sparse_subtform(uZ                    stride,    //
-                                            uZ                    k_count,
                                             uZ                    final_k_count,
                                             T*                    dest_ptr,
                                             tw_data_t<T, LocalTw> tw_data) {
-        constexpr auto data_size = uZ_ce<coherent_size>{};
+        uZ k_count = 1;
         if constexpr (PackAlign != 1) {
-            fft_iteration_cs<PackAlign, PackSrc, lane_size, LowK>(data_size,
-                                                                  stride,
-                                                                  dest_ptr,
-                                                                  k_count,
-                                                                  tw_data);
+            fft_iteration_cs<PackAlign, PackSrc, LowK>(coherent_size,
+                                                       stride,
+                                                       lane_size,
+                                                       dest_ptr,
+                                                       k_count,
+                                                       tw_data);
         } else if constexpr (PackSrc != Width) {
-            fft_iteration_cs<NodeSize, PackSrc, lane_size, LowK>(data_size,
-                                                                 stride,
-                                                                 dest_ptr,
-                                                                 k_count,
-                                                                 tw_data);
+            fft_iteration_cs<NodeSize, PackSrc, LowK>(coherent_size,
+                                                      stride,
+                                                      lane_size,
+                                                      dest_ptr,
+                                                      k_count,
+                                                      tw_data);
         }
-        while (k_count < final_k_count)
-            fft_iteration_cs<NodeSize, Width, lane_size, LowK>(data_size, stride, dest_ptr, k_count, tw_data);
+        while (k_count < final_k_count) {
+            fft_iteration_cs<NodeSize, Width, LowK>(coherent_size,
+                                                    stride,
+                                                    lane_size,
+                                                    dest_ptr,
+                                                    k_count,
+                                                    tw_data);
+        }
     };
 
 
@@ -873,9 +877,10 @@ struct transform {
      *  [i0, i1,     ..., i<data_size / lane_size>, i0, i1, ..., i0,          i1,          ...]
      *  [0 , stride, ...                                                                      ]
      */
-    template<uZ NodeSizeL, uZ PackSrc, uZ LaneSize, bool LowK, bool LocalTw, uZ LS_>
-    PCX_AINLINE static auto fft_iteration_cs(meta::maybe_ce<uZ> auto data_size,
-                                             meta::maybe_ce<uZ> auto stride,    //
+    template<uZ NodeSizeL, uZ PackSrc, bool LowK, bool LocalTw, uZ LS_>
+    PCX_AINLINE static auto fft_iteration_cs(meta::maybe_ce<uZ> auto bucket_size,
+                                             meta::maybe_ce<uZ> auto stride,        //
+                                             meta::maybe_ce<uZ> auto batch_size,    //
                                              auto                    data_ptr,
                                              uZ&                     k_count,
                                              tw_data_t<T, LocalTw>&  tw_data) {
@@ -889,8 +894,8 @@ struct transform {
         using l_twd_t = std::conditional_t<LowK && !LocalTw, tw_data_t<T, LocalTw>, tw_data_t<T, LocalTw>&>;
         l_twd_t l_tw_data = tw_data;
 
-        auto k_group_size = data_size / LaneSize / k_count;
-        auto k_stride     = stride * k_group_size * 2;
+        const auto k_group_size = bucket_size / k_count / batch_size;
+        const auto k_stride     = stride * k_group_size * 2;
 
         // data division:
         // E - even, O - odd
@@ -903,6 +908,7 @@ struct transform {
         // k == 0, i == 0
         // [0,     ... , NodeSizeL/4 - 1,          ... , NodeSizeL/2 - 1, ... ] - tuple index
         // [E0:i0, ... , E0:i<k_group_size/2 - 1>, ... , O1:i0,           ... ]
+        //
         //
         auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k, uZ offset) {
             auto base_ptr = data_ptr              //
@@ -941,8 +947,8 @@ struct transform {
 
         if constexpr (LowK) {
             auto tw = make_tw_tup(0);
-            for (auto i: stdv::iota(0U, k_group_size / LaneSize)) {
-                for (auto r: stdv::iota(0U, LaneSize / Width)) {
+            for (auto i: stdv::iota(0U, k_group_size / batch_size)) {
+                for (auto r: stdv::iota(0U, batch_size / Width)) {
                     auto data = make_data_tup(i, 0, r * Width);
                     btfly_node::perform(settings, data);
                 }
@@ -951,8 +957,8 @@ struct transform {
         constexpr auto k_start = LowK ? 1U : 0U;
         for (auto k_group: stdv::iota(k_start, k_count)) {
             auto tw = make_tw_tup(k_group);
-            for (auto i: stdv::iota(0U, k_group_size / lane_size)) {
-                for (auto r: stdv::iota(0U, LaneSize / Width)) {
+            for (auto i: stdv::iota(0U, k_group_size / batch_size)) {
+                for (auto r: stdv::iota(0U, batch_size / Width)) {
                     auto data = make_data_tup(i, k_group, r * Width);
                     btfly_node::perform(settings, data, tw);
                 }
