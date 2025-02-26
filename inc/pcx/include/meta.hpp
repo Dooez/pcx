@@ -35,7 +35,9 @@ template<auto... Vs>
 concept unique_values = detail_::are_unique<Vs...>::value;
 
 template<typename T, typename U>
-concept maybe_ce = detail_::is_ce_of<U, T>::value || std::same_as<T, U>;
+concept any_ce = detail_::is_ce_of<U, T>::value;
+template<typename T, typename U>
+concept maybe_ce = any_ce<T, U> || std::same_as<T, U>;
 
 template<auto... Vs>
 struct value_sequence {};

@@ -62,6 +62,9 @@ concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 template<typename T>
 concept floating_point = std::same_as<T, float> || std::same_as<T, double>;
 
+template<typename T, typename fX>
+concept any_cxpack = false;
+
 template<typename T, uZ PackSize>
 concept packed_floating_point = floating_point<T> && power_of_two<PackSize>;
 
