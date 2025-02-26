@@ -258,6 +258,80 @@ auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std
 //             std::swap(range[i], range[irev]);
 //     }
 // }
+template<typename fX, uZ Width, uZ NodeSize, bool LowK = true, bool LocalTw = true>
+int test_tform(uZ fft_size) {
+    // uZ   freq_n  = 2;
+    uZ   freq_n  = 1;
+    auto datavec = [=]() {
+        auto vec = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v]: stdv::enumerate(vec)) {
+            v = std::exp(std::complex<fX>(0, 1)                 //
+                         * static_cast<fX>(2)                   //
+                         * static_cast<fX>(std::numbers::pi)    //
+                         * static_cast<fX>(i)                   //
+                         * static_cast<fX>(freq_n)              //
+                         / static_cast<fX>(fft_size));
+        }
+        return vec;
+    }();
+    auto datavec2 = datavec;
+    naive_fft(datavec, NodeSize, Width);
+
+    using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
+    // auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize, LowK);
+    // auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
+    auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
+    // auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
+    // fimpl::template perform<1, 1, false>(2, fft_size, data_ptr, tw_ptr);
+    auto tw = [=] {
+        using tw_t = detail_::tw_data_t<fX, LocalTw>;
+        if constexpr (LocalTw) {
+            return tw_t{1, 0};
+        } else {
+            // return tw_t{tw_ptr};
+        }
+    }();
+    fimpl::template perform<1, 1>(fft_size, data_ptr, tw);
+    auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
+                                       [](auto v) { return std::get<0>(v) != std::get<1>(v); });
+
+    if (subtform_error) {
+        std::println("[Error] {}×{}, width {}, node size {}{}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     Width,
+                     NodeSize,
+                     LowK ? ", low k" : "",
+                     LocalTw ? ", local tw" : "");
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
+            // if (naive != pcx)
+            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                         i,
+                         (naive),
+                         (pcx),
+                         (naive - pcx));
+            if (std::abs(naive - pcx) > 1) {
+                // // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                // //              i,
+                // //              (naive),
+                // //              (pcx),
+                // //              (naive - pcx));
+                // std::println("Over 1 found.");
+                // break;
+            }
+            // }
+        }
+        return -1;
+    }
+    std::println("[Success] {}×{}, width {}, node size {}{}{}.",
+                 pcx::meta::types<fX>{},
+                 fft_size,
+                 Width,
+                 NodeSize,
+                 LowK ? ", low k" : "",
+                 LocalTw ? ", local tw" : "");
+    return 0;
+}
 template<typename fX, uZ Width, uZ NodeSize, bool LowK = true, bool LocalTw = false>
 int test_subtranform(uZ fft_size) {
     // uZ   freq_n  = 2;

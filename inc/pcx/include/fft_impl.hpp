@@ -364,7 +364,7 @@ struct subtransform {
         uZ node_size_post = 1;
     };
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK = false, bool LocalTw = false>
     static void perform(uZ data_size, T* dest_ptr, tw_data_t<T, LocalTw> tw) {
         constexpr auto single_load_size = NodeSize * Width;
 
@@ -783,8 +783,8 @@ struct transform {
     static constexpr auto lane_size      = uZ_ce<std::max(64 / sizeof(T) / 2, Width)>{};
     static constexpr uZ   coherent_k_cnt = uZ_ce<coherent_size / lane_size>{};
 
-    static constexpr auto logKi(meta::maybe_ce<uZ> auto k, u64 value) {
-        auto p = 0;
+    static constexpr auto logKi(meta::maybe_ce_of<uZ> auto k, u64 value) {
+        uZ p = 0;
         while (value > k) {
             value /= k;
             ++p;
@@ -798,9 +798,9 @@ struct transform {
      * A single subdivision can perform a maximum of `coherent_k_cnt` levels of fft.
      *
      */
-    template<uZ DestPackSize, uZ SrcPackSize>
-    static void perform(uZ data_size, T* dest_ptr) {
-        constexpr bool LocalTw = true;
+    template<uZ DestPackSize, uZ SrcPackSize, bool LocalTw>
+    static void perform(uZ data_size, T* dest_ptr, tw_data_t<T, LocalTw> tw_data) {
+        // constexpr bool LocalTw = true;
 
         constexpr auto src_pck = uZ_ce<SrcPackSize>{};
         constexpr auto dst_pck = uZ_ce<DestPackSize>{};
@@ -814,13 +814,16 @@ struct transform {
         uZ stride             = batch_size * bucket_count;
 
         auto pass_count       = logKi(pass_k_count, data_size / bucket_size);
-        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count, pass_count);
+        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count, pass_count) / 2;
 
-        auto iterate_buckets = [&]<uZ AlignPackSize>(uZ_ce<AlignPackSize> align_pck, auto k_count) {
+        auto iterate_buckets = [&]<uZ AlignPackSize>(uZ_ce<AlignPackSize>, auto k_count) {
             for (uZ i_b: stdv::iota(0U, bucket_count)) {
                 auto l_tw_data  = tw_data_t<T, LocalTw>{bucket_group_count, 0};
+                uZ   bs         = batch_size;
                 auto bucket_ptr = dest_ptr + i_b * batch_size * 2;
-                sparse_subtform<SrcPackSize, AlignPackSize, false>(stride,    //
+                sparse_subtform<SrcPackSize, AlignPackSize, false>(bucket_size,
+                                                                   stride,
+                                                                   batch_size,
                                                                    k_count,
                                                                    bucket_ptr,
                                                                    l_tw_data);
@@ -830,7 +833,9 @@ struct transform {
                 auto l_tw_data          = tw_data_t<T, LocalTw>{bucket_group_count, i_bg};
                 for (uZ i_b: stdv::iota(0U, bucket_count)) {
                     auto bucket_ptr = bucket_group_start + i_b * batch_size * 2;
-                    sparse_subtform<SrcPackSize, AlignPackSize, false>(stride,    //
+                    sparse_subtform<SrcPackSize, AlignPackSize, false>(bucket_size,
+                                                                       stride,
+                                                                       batch_size,
                                                                        k_count,
                                                                        bucket_ptr,
                                                                        l_tw_data);
@@ -849,10 +854,10 @@ struct transform {
             return align_node;
         };
 
-        auto pre_pass_align_node = get_align_node(pre_pass_k_count);
+        auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
-                constexpr auto l_node_size = powi(2, I);
+                constexpr auto l_node_size = powi(2, I + 1);
                 if (l_node_size != pre_pass_align_node)
                     return false;
                 iterate_buckets(uZ_ce<l_node_size>{}, pre_pass_k_count);
@@ -862,6 +867,7 @@ struct transform {
         }(std::make_index_sequence<log2i(NodeSize)>{});
 
 
+        return;
         constexpr auto pass_align_node = get_align_node(pass_k_count);
         for (uZ pass: stdv::iota(0U, pass_count)) {
             iterate_buckets(uZ_ce<pass_align_node>{}, pass_k_count);
@@ -871,17 +877,17 @@ struct transform {
         // static void perform(uZ data_size, T* dest_ptr, tw_data_t<T, LocalTw> tw) {
         for (uZ i_bg: stdv::iota(0U, bucket_group_count)) {
             auto l_tw_data = tw_data_t<T, LocalTw>{bucket_group_count, i_bg};
-            subtf::template perform<DestPackSize, Width, false>(bucket_size, dest_ptr, l_tw_data);
+            subtf::template perform<DestPackSize, SrcPackSize, false>(bucket_size, dest_ptr, l_tw_data);
         }
     };
 
     template<uZ SrcPackSize, uZ AlignPackSize, bool LowK, bool LocalTw>
-    PCX_AINLINE static void sparse_subtform(meta::maybe_ce<uZ> auto bucket_size,
-                                            meta::maybe_ce<uZ> auto stride,
-                                            meta::maybe_ce<uZ> auto batch_size,
-                                            uZ                      final_k_count,
-                                            T*                      dest_ptr,
-                                            tw_data_t<T, LocalTw>   tw_data) {
+    PCX_AINLINE static void sparse_subtform(meta::maybe_ce_of<uZ> auto bucket_size,
+                                            meta::maybe_ce_of<uZ> auto stride,
+                                            meta::maybe_ce_of<uZ> auto batch_size,
+                                            uZ                         final_k_count,
+                                            T*                         dest_ptr,
+                                            tw_data_t<T, LocalTw>      tw_data) {
         uZ k_count = 1;
         if constexpr (AlignPackSize != 1) {
             fft_iteration<AlignPackSize, SrcPackSize, LowK>(bucket_size,
@@ -910,12 +916,12 @@ struct transform {
      *  [0 , stride, ...                                                                      ]
      */
     template<uZ NodeSizeL, uZ PackSrc, bool LowK, bool LocalTw>
-    PCX_AINLINE static auto fft_iteration(meta::maybe_ce<uZ> auto bucket_size,
-                                          meta::maybe_ce<uZ> auto stride,        //
-                                          meta::maybe_ce<uZ> auto batch_size,    //
-                                          auto                    data_ptr,
-                                          uZ&                     k_count,
-                                          tw_data_t<T, LocalTw>&  tw_data) {
+    PCX_AINLINE static auto fft_iteration(meta::maybe_ce_of<uZ> auto bucket_size,
+                                          meta::maybe_ce_of<uZ> auto stride,        //
+                                          meta::maybe_ce_of<uZ> auto batch_size,    //
+                                          auto                       data_ptr,
+                                          uZ&                        k_count,
+                                          tw_data_t<T, LocalTw>&     tw_data) {
         using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
         constexpr auto settings = val_ce<typename btfly_node::settings{
             .pack_dest = Width,
@@ -926,14 +932,17 @@ struct transform {
         using l_twd_t = std::conditional_t<LowK && !LocalTw, tw_data_t<T, LocalTw>, tw_data_t<T, LocalTw>&>;
         l_twd_t l_tw_data = tw_data;
 
-        const auto k_group_size = bucket_size / k_count / batch_size;
-        const auto k_stride     = stride * k_group_size * 2;
+        const auto k_batch_count = bucket_size / k_count / batch_size / 2;
+        const auto k_stride      = stride * k_batch_count;
 
         // data division:
         // E - even, O - odd
         // [E0, E0,     ..., E0                 , O1, O1, ... , O<k_count - 1>, O<k_count - 1>, ...]
-        // [i0, i1,     ..., i<k_group_size - 1>, i0, i1, ... , i0,             i1,             ...]
+        // [i0, i1,     ..., i<k_group_size - 1>, i0, i1, ... , i0,             i1,             ...] batches
         // [0 , stride, ...                                                                        ]
+        // iX is batch X
+        //
+        //
         // k is an index of O elements
 
         // data for a butterfly:
@@ -979,9 +988,9 @@ struct transform {
 
         if constexpr (LowK) {
             auto tw = make_tw_tup(0);
-            for (auto i: stdv::iota(0U, k_group_size / batch_size)) {
+            for (auto i_batch: stdv::iota(0U, k_batch_count)) {
                 for (auto r: stdv::iota(0U, batch_size / Width)) {
-                    auto data = make_data_tup(i, 0, r * Width);
+                    auto data = make_data_tup(i_batch, 0, r * Width);
                     btfly_node::perform(settings, data);
                 }
             }
@@ -989,9 +998,9 @@ struct transform {
         constexpr auto k_start = LowK ? 1U : 0U;
         for (auto k_group: stdv::iota(k_start, k_count)) {
             auto tw = make_tw_tup(k_group);
-            for (auto i: stdv::iota(0U, k_group_size / batch_size)) {
+            for (auto i_batch: stdv::iota(0U, k_batch_count)) {
                 for (auto r: stdv::iota(0U, batch_size / Width)) {
-                    auto data = make_data_tup(i, k_group, r * Width);
+                    auto data = make_data_tup(i_batch, k_group, r * Width);
                     btfly_node::perform(settings, data, tw);
                 }
             }

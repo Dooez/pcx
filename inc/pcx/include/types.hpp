@@ -42,19 +42,20 @@ using uZ_seq = std::index_sequence<Is...>;
 template<uZ N>
 using make_uZ_seq = std::make_index_sequence<N>;
 template<auto V>
-struct val_ce : std::integral_constant<decltype(V), V> {
-    using value_type = decltype(V);
-    using type       = val_ce<V>;
-
-    static constexpr auto value = V;
-
-    consteval operator value_type() const {    // NOLINT (*explicit*)
-        return V;
-    }
-    static consteval auto operator()() {
-        return V;
-    }
-};
+using val_ce = std::integral_constant<decltype(V), V>;
+// struct val_ce : std::integral_constant<decltype(V), V> {
+//     using value_type = decltype(V);
+//     using type       = val_ce<V>;
+//
+//     static constexpr auto value = V;
+//
+//     consteval operator value_type() const {    // NOLINT (*explicit*)
+//         return V;
+//     }
+//     static consteval auto operator()() {
+//         return V;
+//     }
+// };
 
 template<uZ N>
 concept power_of_two = N > 0 && (N & (N - 1)) == 0;

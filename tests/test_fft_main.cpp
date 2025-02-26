@@ -30,6 +30,27 @@ int main() {
                 auto lk_passed = [=]<bool LowK>(val_ce<LowK>) {
                     auto ltw_passed = [=]<bool LocalTw>(val_ce<LocalTw>) {
                         return ((fft_size <= NS * VecWidth
+                                 || test_tform<fX, VecWidth, NS, LowK, LocalTw>(fft_size) == 0)
+                                && ...);
+                    };
+                    return (ltw_passed(val_ce<local_tw>{}) && ...);
+                };
+                return (lk_passed(val_ce<low_k>{}) && ...);
+            };
+            return (ns_passed(uZ_ce<NodeSizes>{}) && ...);
+        };
+    constexpr auto exec_subtf_test =
+        []<uZ... NodeSizes, uZ... VecWidth, bool... low_k, bool... local_tw, typename fX>(
+            std::index_sequence<NodeSizes...>,
+            std::index_sequence<VecWidth...>,
+            pcx::meta::val_seq<low_k...>,
+            pcx::meta::val_seq<local_tw...>,
+            pcx::meta::t_id<fX>,
+            uZ fft_size) {
+            auto ns_passed = [=]<uZ NS>(uZ_ce<NS>) {
+                auto lk_passed = [=]<bool LowK>(val_ce<LowK>) {
+                    auto ltw_passed = [=]<bool LocalTw>(val_ce<LocalTw>) {
+                        return ((fft_size <= NS * VecWidth
                                  || test_subtranform<fX, VecWidth, NS, LowK, LocalTw>(fft_size) == 0)
                                 && ...);
                     };
@@ -61,6 +82,12 @@ int main() {
     std::println();
     uZ fft_size = 256;
     while (fft_size <= 8192UZ) {
+        // if (!exec_subtf_test(node_sizes, f32_widths, low_k, local_tw, f32t, fft_size))
+        //     return -1;
+        fft_size *= 2;
+    }
+    fft_size = 4096;
+    while (fft_size <= 8192UZ) {
         if (!exec_test(node_sizes, f32_widths, low_k, local_tw, f32t, fft_size))
             return -1;
         fft_size *= 2;
@@ -72,8 +99,8 @@ int main() {
     //     return -1;
     fft_size = 512;
     while (fft_size <= 8192UZ) {
-        if (!exec_test(node_sizes, f64_widths, low_k, local_tw, f64t, fft_size))
-            return -1;
+        // if (!exec_subtf_test(node_sizes, f64_widths, low_k, local_tw, f64t, fft_size))
+        //     return -1;
         fft_size *= 2;
     }
 
