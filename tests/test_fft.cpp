@@ -69,7 +69,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
                 pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
             }
         }
-        // if (n_groups >= powi(2, 1))
+        // if (n_groups >= powi(2, 2))
         //     break;
         step /= 2;
         n_groups *= 2;

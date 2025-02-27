@@ -860,7 +860,7 @@ struct transform {
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
-                constexpr auto l_node_size = powi(2, I + 1);
+                constexpr auto l_node_size = powi(2, I);
                 if (l_node_size != pre_pass_align_node)
                     return false;
                 iterate_buckets(uZ_ce<l_node_size>{}, pre_pass_k_count);

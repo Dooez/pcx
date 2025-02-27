@@ -303,7 +303,7 @@ int test_tform(uZ fft_size) {
                      NodeSize,
                      LowK ? ", low k" : "",
                      LocalTw ? ", local tw" : "");
-        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2)) {
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(2048)) {
             // if (naive != pcx)
             std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
                          i,
