@@ -948,9 +948,9 @@ struct transform {
 
         // data division:
         // E - even, O - odd
-        // [E0, E0,     ..., E0                , O0, O0, ... , O<k_count - 1>, O<k_count - 1>, ...]
-        // [i0, i1,     ..., i<batch_count - 1>, i0, i1, ... , i0,             i1,             ...] batches
-        // [0 , stride, ...                                                                       ]
+        // [E0, E0,     ..., E0                  , O0, O0, ... , O<k_count - 1>, O<k_count - 1>, ...]
+        // [i0, i1,     ..., i<batch_count/2 - 1>, i0, i1, ... , i0,             i1,             ...] batches
+        // [0 , stride, ...                                                                         ]
         // iX is batch X
         //
         //
