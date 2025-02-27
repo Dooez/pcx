@@ -261,7 +261,7 @@ auto make_tw_vec_lok(uZ fft_size, uZ vec_width, uZ node_size, bool low_k) -> std
 template<typename fX, uZ Width, uZ NodeSize, bool LowK = true, bool LocalTw = true>
 int test_tform(uZ fft_size) {
     // uZ   freq_n  = 2;
-    uZ   freq_n  = 1;
+    uZ   freq_n  = 0;
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
         for (auto [i, v]: stdv::enumerate(vec)) {
