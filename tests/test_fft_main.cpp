@@ -87,7 +87,7 @@ int main() {
         fft_size *= 2;
     }
     fft_size = 2048*2;
-    while (fft_size <= 2048*8) {
+    while (fft_size <= 2048*64) {
         if (!exec_test(node_sizes, f32_widths, low_k, local_tw, f32t, fft_size))
             return -1;
         fft_size *= 2;
