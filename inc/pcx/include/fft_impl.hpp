@@ -335,23 +335,29 @@ struct btfly_node_dit {
     } const_tw_getter{};
 };
 
-template<typename T, bool LocalTw>
-struct tw_data_t {
-    static constexpr bool local = LocalTw;
-};
-template<typename T>
+template<floating_point T, bool LocalTw>
+struct tw_data_t;
+template<floating_point T>
 struct tw_data_t<T, false> {
     static constexpr bool local = false;
 
     const T* tw_ptr;
 };
-template<typename T>
+template<floating_point T>
 struct tw_data_t<T, true> {
     static constexpr bool local = true;
 
     uZ start_fft_size;
     uZ start_k;
 };
+template<typename T, floating_point fX>
+struct is_tw_data_of : std::false_type {};
+
+template<floating_point fX, bool LocalTw>
+struct is_tw_data_of<tw_data_t<fX, LocalTw>, fX> : std::true_type {};
+
+template<typename T, typename fX>
+concept tw_data_for = is_tw_data_of<T, fX>::value;
 
 template<uZ NodeSize, typename T, uZ Width>
 struct subtransform {
@@ -795,6 +801,28 @@ struct transform {
         return p;
     }
 
+    struct coherent_subtform {
+        void perform(cxpack_for<T> auto         dst_pck,
+                     cxpack_for<T> auto         src_pck,
+                     meta::maybe_ce_of<uZ> auto data_size,
+                     T*                         data_ptr,
+                     tw_data_for<T> auto        tw_data) {
+            uZ k_count = 1;
+
+            constexpr auto single_load_size = Width * NodeSize;
+
+            constexpr auto width = uZ_ce<Width>{};
+            while (data_size / (k_count * NodeSize) >= single_load_size)
+                // fft_iteration<NodeSize, Width, Width, LowK>(data_size, k_count, data_ptr, tw_data);
+                fft_iteration<NodeSize, Width, Width, false>(data_size,
+                                                             width,
+                                                             width,
+                                                             data_ptr,
+                                                             k_count,
+                                                             tw_data);
+        };
+    };
+
     /**
      * Subdivides the data into buckets. Default bucket size is `coherent_size`.
      * A bucket represents contiguous batches of data, distributed with a constant stride. Default batch size is `lane_size`.
@@ -948,7 +976,7 @@ struct transform {
 
         // data division:
         // E - even, O - odd
-        // [E0, E0,     ..., E0                  , O0, O0, ... , O<k_count - 1>, O<k_count - 1>, ...]
+        // [E0, E0,     ..., E0                  , O0, O0, ... , O<k_count - 1>, O<k_count - 1>, ...] subtform indexes
         // [i0, i1,     ..., i<batch_count/2 - 1>, i0, i1, ... , i0,             i1,             ...] batches
         // [0 , stride, ...                                                                         ]
         // iX is batch X

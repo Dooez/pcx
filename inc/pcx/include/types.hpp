@@ -43,6 +43,8 @@ template<uZ N>
 using make_uZ_seq = std::make_index_sequence<N>;
 template<auto V>
 using val_ce = std::integral_constant<decltype(V), V>;
+
+
 // struct val_ce : std::integral_constant<decltype(V), V> {
 //     using value_type = decltype(V);
 //     using type       = val_ce<V>;
@@ -56,15 +58,27 @@ using val_ce = std::integral_constant<decltype(V), V>;
 //         return V;
 //     }
 // };
-
+//
+//
 template<uZ N>
 concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 
 template<typename T>
 concept floating_point = std::same_as<T, float> || std::same_as<T, double>;
 
+template<uZ PackSize, floating_point fX>
+    requires power_of_two<PackSize>
+struct cxpack : public uZ_ce<PackSize> {};
+
+namespace detail_ {
 template<typename T, typename fX>
-concept any_cxpack = false;
+struct is_cxpack : std::false_type {};
+template<uZ PackSize, typename fX>
+struct is_cxpack<cxpack<PackSize, fX>, fX> : std::true_type {};
+}    // namespace detail_
+
+template<typename T, typename fX>
+concept cxpack_for = detail_::is_cxpack<T, fX>::value;
 
 template<typename T, uZ PackSize>
 concept packed_floating_point = floating_point<T> && power_of_two<PackSize>;
