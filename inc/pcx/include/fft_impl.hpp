@@ -592,46 +592,11 @@ struct subtransform {
                              meta::any_ce_of<align_node_t> auto align) {
         constexpr auto single_load_size = NodeSize * Width;
 
-        auto fft_iter = [=]<uZ NodeSizeL> PCX_LAINLINE(uZ_ce<NodeSizeL>,
-                                                       auto  dst_pck,
-                                                       auto  src_pck,
-                                                       auto& k_count,
-                                                       auto& tw_data) {
-            fft_iteration<NodeSizeL, T, Width>(dst_pck,
-                                               src_pck,
-                                               lowk,
-                                               data_size,
-                                               width,
-                                               width,
-                                               data_ptr,
-                                               k_count,
-                                               tw_data);
-        };
+        auto aligngg = align_param<align().node_size_pre, true>{};
+        using fnode  = fft_node<NodeSize, T, Width>;
+        auto final_k = data_size / single_load_size;
+        fnode::perform(src_pck, aligngg, lowk, data_size, width, width, final_k, data_ptr, tw_data);
 
-        uZ k_count = 1;
-        if constexpr (align().node_size_pre != 1) {
-            constexpr auto align_node = uZ_ce<align().node_size_pre>{};
-            fft_iter(align_node, w_pck, src_pck, k_count, tw_data);
-            if constexpr (lowk && !tw_data.is_local())
-                tw_data.tw_ptr += k_count;
-        } else {
-            fft_iter(node_size, w_pck, src_pck, k_count, tw_data);
-        }
-
-        while (data_size / (k_count * node_size) >= single_load_size)
-            fft_iter(node_size, w_pck, w_pck, k_count, tw_data);
-
-        if constexpr (lowk && !tw_data.is_local()) {
-            if (k_count > align().node_size_pre)
-                tw_data.tw_ptr += k_count;
-        }
-
-        if constexpr (align().node_size_post != 1) {
-            constexpr auto align_node = uZ_ce<align().node_size_post>{};
-            fft_iter(align_node, w_pck, src_pck, k_count, tw_data);
-            if constexpr (lowk && !tw_data.is_local())
-                tw_data.tw_ptr += k_count;
-        }
         constexpr auto skip_single_load = false;
         if constexpr (skip_single_load) {
             for (auto i: stdv::iota(0U, data_size / Width)) {
