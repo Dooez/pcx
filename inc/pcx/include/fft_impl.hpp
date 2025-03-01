@@ -574,28 +574,26 @@ struct coherent_subtransform {
                 if (l_node_size != pre_align_node)
                     return false;
 
-                constexpr auto align = val_ce<align_node_t{l_node_size, 1}>{};
-                perform_impl(dst_pck, src_pck, lowk, data_size, dest_ptr, tw, align);
+                constexpr auto align = align_param<l_node_size, true>{};
+                perform_impl(dst_pck, src_pck, align, lowk, data_size, dest_ptr, tw);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(std::make_index_sequence<log2i(NodeSize)>{});
     }
 
-
-    static void perform_impl(cxpack_for<T> auto                 dst_pck,
-                             cxpack_for<T> auto                 src_pck,
-                             meta::any_ce_of<bool> auto         lowk,
-                             meta::maybe_ce_of<uZ> auto         data_size,
-                             T*                                 data_ptr,
-                             tw_data_for<T> auto                tw_data,
-                             meta::any_ce_of<align_node_t> auto align) {
+    static void perform_impl(cxpack_for<T> auto         dst_pck,
+                             cxpack_for<T> auto         src_pck,
+                             any_align auto             align,
+                             meta::any_ce_of<bool> auto lowk,
+                             meta::maybe_ce_of<uZ> auto data_size,
+                             T*                         data_ptr,
+                             tw_data_for<T> auto        tw_data) {
         constexpr auto single_load_size = NodeSize * Width;
 
-        auto aligngg = align_param<align().node_size_pre, true>{};
         using fnode  = subtransform<NodeSize, T, Width>;
         auto final_k = data_size / single_load_size;
-        fnode::perform(src_pck, aligngg, lowk, data_size, width, width, final_k, data_ptr, tw_data);
+        fnode::perform(src_pck, align, lowk, data_size, width, width, final_k, data_ptr, tw_data);
 
         constexpr auto skip_single_load = false;
         if constexpr (skip_single_load) {
