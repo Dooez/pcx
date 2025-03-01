@@ -332,13 +332,17 @@ template<floating_point T, bool LocalTw>
 struct tw_data_t;
 template<floating_point T>
 struct tw_data_t<T, false> {
-    static constexpr bool local = false;
+    static constexpr auto is_local() -> std::false_type {
+        return {};
+    };
 
     const T* tw_ptr;
 };
 template<floating_point T>
 struct tw_data_t<T, true> {
-    static constexpr bool local = true;
+    static constexpr auto is_local() -> std::true_type {
+        return {};
+    };
 
     uZ start_fft_size;
     uZ start_k;
@@ -370,7 +374,8 @@ PCX_AINLINE void fft_iteration(cxpack_for<T> auto         dst_pck,
     }>{};
 
     auto l_tw_data = [&] {
-        if constexpr (lowk && !tw_data.local) {
+        auto local = tw_data.is_local();
+        if constexpr (lowk && !local) {
             return tw_data;
         } else {
             return *&tw_data;
@@ -410,7 +415,7 @@ PCX_AINLINE void fft_iteration(cxpack_for<T> auto         dst_pck,
 
     auto make_tw_tup = [&l_tw_data] {
         constexpr uZ n_tw = NodeSize / 2;
-        if constexpr (l_tw_data.local) {
+        if constexpr (l_tw_data.is_local()) {
             return [l_tw_data] PCX_LAINLINE(uZ k) {
                 return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     auto tws = make_tw_node<T, NodeSize>(l_tw_data.start_fft_size * 2,    //
@@ -421,13 +426,13 @@ PCX_AINLINE void fft_iteration(cxpack_for<T> auto         dst_pck,
                 }(make_uZ_seq<n_tw>{});
             };
         } else {
-            // return [&tw_data] PCX_LAINLINE(uZ) {
-            //     return [&tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-            //         auto l_tw_ptr = tw_data.tw_ptr;
-            //         tw_data.tw_ptr += n_tw * 2;
-            //         return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-            //     }(make_uZ_seq<n_tw>{});
-            // };
+            return [&l_tw_data] PCX_LAINLINE(uZ) {
+                return [&l_tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                    auto l_tw_ptr = l_tw_data.tw_ptr;
+                    l_tw_data.tw_ptr += n_tw * 2;
+                    return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
+                }(make_uZ_seq<n_tw>{});
+            };
         }
     }();
 
@@ -451,7 +456,7 @@ PCX_AINLINE void fft_iteration(cxpack_for<T> auto         dst_pck,
         }
     }
     k_count *= NodeSize;
-    if constexpr (l_tw_data.local) {
+    if constexpr (l_tw_data.is_local()) {
         l_tw_data.start_fft_size *= NodeSize;
         l_tw_data.start_k *= NodeSize;
     }
@@ -463,6 +468,9 @@ struct subtransform {
     using btfly_node = btfly_node_dit<NodeSize, T, Width>;
     using vec_traits = simd::detail_::vec_traits<T, Width>;
 
+    static constexpr auto width     = uZ_ce<Width>{};
+    static constexpr auto w_pck     = cxpack<width, T>{};
+    static constexpr auto node_size = uZ_ce<NodeSize>{};
 
     struct align_node_t {
         uZ node_size_pre  = 1;
@@ -479,69 +487,91 @@ struct subtransform {
         auto b              = a * log2i(NodeSize);
         auto pre_align_node = powi(2, slog - b);
 
+        constexpr auto dst_pck = cxpack<DestPackSize, T>{};
+        constexpr auto src_pck = cxpack<SrcPackSize, T>{};
+        constexpr auto lowk    = val_ce<LowK>{};
+
         [&]<uZ... Is>(std::index_sequence<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
                 if (l_node_size != pre_align_node)
                     return false;
-                perform_impl<DestPackSize, SrcPackSize, LowK, {l_node_size, 1}>(data_size, dest_ptr, tw);
+
+                constexpr auto align = val_ce<align_node_t{l_node_size, 1}>{};
+                perform_impl(dst_pck, src_pck, lowk, data_size, dest_ptr, tw, align);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(std::make_index_sequence<log2i(NodeSize)>{});
     }
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, align_node_t AlignNode, bool LocalTw>
-    static void perform_impl(uZ                    data_size,    // NOLINT (*complexity*)
-                             T*                    dest_ptr,
-                             tw_data_t<T, LocalTw> tw_data) {
+
+    static void perform_impl(cxpack_for<T> auto                 dst_pck,
+                             cxpack_for<T> auto                 src_pck,
+                             meta::any_ce_of<bool> auto         lowk,
+                             meta::maybe_ce_of<uZ> auto         data_size,
+                             T*                                 data_ptr,
+                             tw_data_for<T> auto                tw_data,
+                             meta::any_ce_of<align_node_t> auto align) {
         constexpr auto single_load_size = NodeSize * Width;
 
-        auto dps = DestPackSize;    // TMP
-        auto sps = SrcPackSize;     // TMP
+        auto fft_iter = [=]<uZ NodeSizeL> PCX_LAINLINE(uZ_ce<NodeSizeL>,
+                                                       auto  dst_pck,
+                                                       auto  src_pck,
+                                                       auto& k_count,
+                                                       auto& tw_data) {
+            fft_iteration<NodeSizeL, T, Width>(dst_pck,
+                                               src_pck,
+                                               lowk,
+                                               data_size,
+                                               width,
+                                               width,
+                                               data_ptr,
+                                               k_count,
+                                               tw_data);
+        };
 
         uZ k_count = 1;
-        if constexpr (AlignNode.node_size_pre != 1) {
-            constexpr auto align_node = AlignNode.node_size_pre;
-            fft_iteration<align_node, Width, SrcPackSize, LowK>(data_size, k_count, dest_ptr, tw_data);
-            if constexpr (LowK && !LocalTw)
+        if constexpr (align().node_size_pre != 1) {
+            constexpr auto align_node = uZ_ce<align().node_size_pre>{};
+            fft_iter(align_node, w_pck, src_pck, k_count, tw_data);
+            if constexpr (lowk && !tw_data.is_local())
                 tw_data.tw_ptr += k_count;
         } else {
-            fft_iteration<NodeSize, Width, SrcPackSize, LowK>(data_size, k_count, dest_ptr, tw_data);
+            fft_iter(node_size, w_pck, src_pck, k_count, tw_data);
         }
 
-        while (data_size / (k_count * NodeSize) >= single_load_size)
-            fft_iteration<NodeSize, Width, Width, LowK>(data_size, k_count, dest_ptr, tw_data);
+        while (data_size / (k_count * node_size) >= single_load_size)
+            fft_iter(node_size, w_pck, w_pck, k_count, tw_data);
 
-        if constexpr (LowK && !LocalTw) {
-            if (k_count > AlignNode.node_size_pre)
+        if constexpr (lowk && !tw_data.is_local()) {
+            if (k_count > align().node_size_pre)
                 tw_data.tw_ptr += k_count;
         }
 
-        if constexpr (AlignNode.node_size_post != 1) {
-            constexpr auto align_node = AlignNode.node_size_post;
-            fft_iteration<align_node, Width, Width, LowK>(data_size, k_count, dest_ptr, tw_data);
-            if constexpr (LowK && !LocalTw)
+        if constexpr (align().node_size_post != 1) {
+            constexpr auto align_node = uZ_ce<align().node_size_post>{};
+            fft_iter(align_node, w_pck, src_pck, k_count, tw_data);
+            if constexpr (lowk && !tw_data.is_local())
                 tw_data.tw_ptr += k_count;
         }
-
         constexpr auto skip_single_load = false;
         if constexpr (skip_single_load) {
             for (auto i: stdv::iota(0U, data_size / Width)) {
-                auto ptr = dest_ptr + i * Width * 2;
+                auto ptr = data_ptr + i * Width * 2;
                 auto rd  = (simd::cxload<Width, Width> | simd::repack<1>)(ptr);
                 simd::cxstore<1>(ptr, rd);
             }
             return;
         }
 
-        if constexpr (LowK) {
-            single_load<DestPackSize, Width, LowK>(dest_ptr, dest_ptr, tw_data);
+        if constexpr (lowk) {
+            single_load<dst_pck, width, lowk>(data_ptr, data_ptr, tw_data);
         }
-        constexpr auto start = LowK ? 1UZ : 0UZ;
+        constexpr auto start = lowk ? 1UZ : 0UZ;
         for (auto i: stdv::iota(start, data_size / single_load_size)) {
-            auto dest = dest_ptr + i * single_load_size * 2;
-            single_load<DestPackSize, Width, false>(dest, dest, tw_data);
+            auto dest = data_ptr + i * single_load_size * 2;
+            single_load<dst_pck, width, false>(dest, dest, tw_data);
         }
     };
 
@@ -578,86 +608,6 @@ struct subtransform {
 
     // private:
     static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
-
-    template<uZ NodeSizeL, uZ PackDest, uZ PackSrc, bool LowK, bool LocalTw>
-    PCX_AINLINE static auto
-    fft_iteration(uZ data_size, uZ& k_count, auto data_ptr, tw_data_t<T, LocalTw>& tw_data) {
-        using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
-        constexpr auto settings = val_ce<typename btfly_node::settings{
-            .pack_dest = PackDest,
-            .pack_src  = PackSrc,
-            .reverse   = false,
-        }>{};
-
-        using l_twd_t = std::conditional_t<LowK && !LocalTw, tw_data_t<T, LocalTw>, tw_data_t<T, LocalTw>&>;
-        l_twd_t l_tw_data = tw_data;
-
-        auto make_tw_tup = [&l_tw_data] {
-            constexpr uZ n_tw = NodeSizeL / 2;
-            if constexpr (LocalTw) {
-                return [l_tw_data] PCX_LAINLINE(uZ k) {
-                    return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                        auto tws = make_tw_node<T, NodeSizeL>(l_tw_data.start_fft_size * 2,    //
-                                                              l_tw_data.start_k + k);
-
-                        auto tw_ptr = reinterpret_cast<T*>(tws.data());
-                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
-                    }(make_uZ_seq<n_tw>{});
-                };
-            } else {
-                return [&l_tw_data] PCX_LAINLINE(uZ) {
-                    return [&l_tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                        auto l_tw_ptr = l_tw_data.tw_ptr;
-                        l_tw_data.tw_ptr += n_tw * 2;
-                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-                    }(make_uZ_seq<n_tw>{});
-                };
-            }
-        }();
-
-        auto group_size    = data_size / k_count / 2;
-        auto make_data_tup = [=] PCX_LAINLINE(uZ k, uZ offset) {
-            auto node_stride = group_size / NodeSizeL * 2 /*second group half*/ * 2 /*complex*/;
-            auto k_stride    = group_size * 2 /*second group half*/ * 2 /*complex*/;
-            auto base_ptr    = data_ptr + k * k_stride + offset * 2;
-            return [base_ptr, node_stride]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                return tupi::make_tuple((base_ptr + node_stride * Is)...);
-            }(make_uZ_seq<NodeSizeL>{});
-        };
-
-        if constexpr (LowK) {
-            auto tw = make_tw_tup(0);
-            for (auto i: stdv::iota(0U, group_size / NodeSizeL * 2) | stdv::stride(Width)) {
-                auto data = make_data_tup(0, i);
-                btfly_node::perform(settings, data);
-            }
-        }
-        constexpr auto k_start = LowK ? 1UZ : 0UZ;
-        for (auto k: stdv::iota(k_start, k_count)) {
-            auto tw = make_tw_tup(k);
-            for (auto i: stdv::iota(0U, group_size / NodeSizeL * 2) | stdv::stride(Width)) {
-                auto data = make_data_tup(k, i);
-                btfly_node::perform(settings, data, tw);
-            }
-        }
-        k_count *= NodeSizeL;
-        if constexpr (LocalTw) {
-            l_tw_data.start_fft_size *= NodeSizeL;
-            l_tw_data.start_k *= NodeSizeL;
-        }
-    }
-    template<uZ NodeSizeL, bool LowK>
-    void insert_iteration_tw(/* cx_range */ auto& r, uZ k_count, auto& tw_data) {
-        // if constexpr(!LowK)
-        {
-            r.append_range(make_tw_node<T, NodeSizeL>(tw_data.start_fft_size * 2,    //
-                                                      tw_data.start_k));
-        }
-        for (auto k: stdv::iota(1U, k_count)) {
-            r.append_range(make_tw_node<T, NodeSizeL>(tw_data.start_fft_size * 2,    //
-                                                      tw_data.start_k + k));
-        }
-    };
 
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
     PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
@@ -903,257 +853,6 @@ struct transform {
         return p;
     }
 
-    struct coherent_subtform {
-        struct align_node_t {
-            uZ node_size_pre  = 1;
-            uZ node_size_post = 1;
-        };
-        void perform(cxpack_for<T> auto                 dst_pck,
-                     cxpack_for<T> auto                 src_pck,
-                     meta::any_ce_of<bool> auto         lowk,
-                     meta::maybe_ce_of<uZ> auto         data_size,
-                     T*                                 data_ptr,
-                     tw_data_for<T> auto                tw_data,
-                     meta::any_ce_of<align_node_t> auto align) {
-            constexpr auto single_load_size = width * node_size;
-
-            auto fft_iter = [=]<uZ NodeSizeL> PCX_LAINLINE(uZ_ce<NodeSizeL>,
-                                                           auto  dst_pck,
-                                                           auto  src_pck,
-                                                           auto& k_count,
-                                                           auto& tw_data) {
-                fft_iteration<NodeSizeL, T, Width>(dst_pck,
-                                                   src_pck,
-                                                   lowk,
-                                                   coherent_size,
-                                                   width,
-                                                   width,
-                                                   data_ptr,
-                                                   k_count,
-                                                   tw_data);
-            };
-
-
-            uZ k_count = 1;
-
-            if constexpr (align.node_size_pre != 1) {
-                constexpr auto align_node = uZ_ce<align.node_size_pre>{};
-                fft_iter(align_node, w_pck, src_pck, k_count, tw_data);
-                if constexpr (lowk && !tw_data.local)
-                    tw_data.tw_ptr += k_count;
-            } else {
-                fft_iter(node_size, w_pck, src_pck, k_count, tw_data);
-            }
-
-            while (data_size / (k_count * node_size) >= single_load_size)
-                fft_iter(node_size, w_pck, w_pck, k_count, tw_data);
-
-            if constexpr (lowk && !tw_data.local) {
-                if (k_count > align.node_size_pre)
-                    tw_data.tw_ptr += k_count;
-            }
-
-            if constexpr (align.node_size_post != 1) {
-                constexpr auto align_node = uZ_ce<align.node_size_post>{};
-                fft_iter(align_node, w_pck, src_pck, k_count, tw_data);
-                if constexpr (lowk && !tw_data.local)
-                    tw_data.tw_ptr += k_count;
-            }
-        };
-
-        template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
-        PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
-            using btfly_node = btfly_node_dit<NodeSize, T, Width>;
-            auto data        = []<uZ... Is> PCX_LAINLINE(auto data_ptr, std::index_sequence<Is...>) {
-                return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(data_ptr + Width * 2 * Is)...);
-            }(src_ptr, std::make_index_sequence<NodeSize>{});
-            auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
-
-            auto get_tw = [&tw_data] {
-                if constexpr (LocalTw) {
-                    return [=]<uZ... Is>(uZ_seq<Is...>) {
-                        auto tws    = make_tw_node<T, NodeSize>(tw_data.start_fft_size * 2, tw_data.start_k);
-                        auto tw_ptr = reinterpret_cast<T*>(tws.data());
-                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
-                    }(make_uZ_seq<NodeSize / 2>{});
-                } else {
-                    auto tw0 = [tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                        return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_data.tw_ptr + 2 * Is)...);
-                    }(make_uZ_seq<NodeSize / 2>{});
-                    tw_data.tw_ptr += NodeSize;
-                    return tw0;
-                }
-            };
-            auto btfly_res_0 = [&] PCX_LAINLINE {
-                if constexpr (LowK) {
-                    get_tw();
-                    return btfly_node::forward(data_rep);
-                } else {
-                    return btfly_node::forward(data_rep, get_tw());
-                }
-            }();
-
-            auto regroup_tw_fact = [&]<uZ TwCount> PCX_LAINLINE(uZ_ce<TwCount>) {
-                if constexpr (LocalTw) {
-                    return [=]<uZ KGroup>(uZ_ce<KGroup>) {
-                        auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
-                        auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
-                        auto tw_arr   = [=]<uZ... Is>(uZ_seq<Is...>) {
-                            return std::array{wnk_br<T>(fft_size, k + Is)...};
-                        }(make_uZ_seq<TwCount>{});
-                        auto tw = simd::cxload<1, TwCount>(reinterpret_cast<T*>(tw_arr.data()));
-                        return tw;
-                    };
-                } else {
-                    auto l_tw_ptr = tw_data.tw_ptr;
-                    tw_data.tw_ptr += TwCount * 2 * NodeSize / 2;
-                    return [l_tw_ptr]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
-                        auto tw = simd::cxload<1, TwCount>(l_tw_ptr + TwCount * (2 * KGroup));
-                        return tw;
-                    };
-                }
-            };
-
-            auto [data_lo, data_hi] = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                auto lo = tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
-                auto hi = tupi::make_tuple(get<Is * 2 + 1>(btfly_res_0)...);
-                return tupi::make_tuple(lo, hi);
-            }(make_uZ_seq<node_size / 2>{});
-
-            auto [lo, hi] = [regroup_tw_fact]<uZ NGroups = 2> PCX_LAINLINE    //
-                (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
-                    if constexpr (NGroups == Width) {
-                        return regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
-                    } else {
-                        auto [lo, hi] =
-                            regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
-                        return f(lo, hi, uZ_ce<NGroups * 2>{});
-                    }
-                }(data_lo, data_hi);
-            auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
-            auto res         = tupi::make_flat_tuple(btfly_res_1);
-            auto res_rep     = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
-            [data_ptr, res_rep]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
-                (simd::cxstore<DestPackSize>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
-            }(std::make_index_sequence<NodeSize>{});
-            if constexpr (LocalTw) {
-                ++tw_data.start_k;
-            }
-        }
-        using vec_traits = simd::detail_::vec_traits<T, Width>;
-
-        template<uZ NGroups>
-        struct regroup_btfly_t {
-            template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
-            PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo,
-                                               tupi::tuple<Thi...> hi,
-                                               auto&&              get_tw) {
-                auto tw_tup = tupi::make_broadcast_tuple<NodeSize / 2>(get_tw);
-
-                constexpr auto regr_ltw =
-                    tupi::make_tuple
-                    | tupi::pipeline(tupi::apply | tupi::group_invoke(split_regroup<Width / NGroups>),
-                                     tupi::apply | tupi::group_invoke(load_tw<NGroups>));
-                auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
-                                                tupi::forward_as_tuple(tw_tup, half_node_tuple));
-
-                auto lo_re  = tupi::group_invoke(tupi::get<0>, regrouped);
-                auto hi_re  = tupi::group_invoke(tupi::get<1>, regrouped);
-                auto hi_tw  = tupi::group_invoke(simd::mul, hi_re, tw);
-                auto res    = tupi::group_invoke(simd::btfly, lo_re, hi_tw);
-                auto new_lo = tupi::group_invoke(tupi::get_copy<0>, res);
-                auto new_hi = tupi::group_invoke(tupi::get_copy<1>, res);
-                return tupi::make_tuple(new_lo, new_hi);
-            }
-
-        private:
-            static constexpr auto half_node_tuple = []<uZ... Is>(uZ_seq<Is...>) {
-                return tupi::make_tuple(uZ_ce<Is>{}...);
-            }(make_uZ_seq<node_size / 2>{});
-        };
-        /**
-         *  @brief Split-regroups input data, loads twiddles and performs a single butterfly operation.
-         *  see `split_regroup<>`. 
-         *  
-         *  @tparam NGroups - number of fft groups (`k`) that fit in a single simd vector.
-         */
-        template<uZ NGroups>
-        constexpr static auto regroup_btfly = regroup_btfly_t<NGroups>{};
-
-        // clang-format off
-        /**
-         * @brief Loads and upsamples `Count` twiddles.
-         */
-        template<uZ Count>
-        static constexpr auto load_tw =
-            tupi::pass 
-            |[]<uZ KGroup>(auto&& get_tw, uZ_ce<KGroup> k) {
-                auto tw  = get_tw(k);
-                auto twr = simd::repack<Count>(tw);
-                return twr;
-            }
-            | tupi::group_invoke([](auto v) { return vec_traits::upsample(v.value); }) 
-            | tupi::apply 
-            | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
-
-
-        /**
-         * @brief Regroups input sismd vectors, similar to `simd::repack`, except
-         * that the real and imaginary part are processed separately.
-         */
-        template<uZ GroupTo, uZ GroupFrom>
-        static constexpr auto regroup = 
-        tupi::pass 
-        | []<simd::any_cx_vec V>(V a, V b) 
-            requires(GroupTo <= V::width()) && (GroupFrom <= V::width()) 
-          {
-            auto re = tupi::make_tuple(a.real_v(), b.real_v());
-            auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
-            return tupi::make_tuple(re, im, meta::types<V>{});
-          }
-        | tupi::pipeline(tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>, 
-                         tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,
-                         tupi::pass)
-        | tupi::apply
-        | []<typename V>(auto re, auto im, meta::types<V>){
-            return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    
-                                    V{.m_real = get<1>(re), .m_imag = get<1>(im)});
-          };
-        /**
-         *  @brief Splits the input simd vectors into even/odd chunks of `ChunkSize`,
-         *  interleaves the matching chunks of `a` and `b`.
-         *
-         *  @return `tupi::tuple<>` the interleaved even/odd chunks.
-         *
-         *  Example: 
-         *  Width     == 8
-         *  ChunkSize == 2
-         *  a = [a0 a1 a2 a3 a4 a5 a6 a7]  
-         *  b = [b0 b1 b2 b3 b4 b5 b6 b7]  
-         * 
-         *  result<0> = [a0 a1 b0 b1 a4 a5 b4 b5]
-         *  result<1> = [a2 a3 b2 b3 a6 a7 b6 b7]
-         */
-        template<uZ ChunkSize>
-        static constexpr auto split_regroup =
-            tupi::pass 
-            | []<simd::eval_cx_vec V>(V a, V b)
-                requires(ChunkSize <= V::width())
-            {
-                auto re = tupi::make_tuple(a.real_v(), b.real_v());
-                auto im = tupi::make_tuple(a.imag_v(), b.imag_v());
-                return tupi::make_tuple(re, im, meta::types<V>{});
-            }
-            | tupi::pipeline(tupi::apply | vec_traits::template split_interleave<ChunkSize>,
-                             tupi::apply | vec_traits::template split_interleave<ChunkSize>,
-                             tupi::pass)
-            | tupi::apply | []<typename V>(auto re, auto im, meta::types<V>) {
-                  return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},
-                                          V{.m_real = get<1>(re), .m_imag = get<1>(im)});
-            };
-        // clang-format on
-    };
-
     /**
      * Subdivides the data into buckets. Default bucket size is `coherent_size`.
      * A bucket represents contiguous batches of data, distributed with a constant stride. Default batch size is `lane_size`.
@@ -1183,12 +882,12 @@ struct transform {
                 auto l_tw_data  = tw_data_t<T, LocalTw>{bucket_group_count, 0};
                 uZ   bs         = batch_size;
                 auto bucket_ptr = dest_ptr + i_b * batch_size * 2;
-                sparse_subtform<SrcPackSize, AlignNodeSize, false>(bucket_size,
-                                                                   stride,
-                                                                   batch_size,
-                                                                   k_count,
-                                                                   bucket_ptr,
-                                                                   l_tw_data);
+                sparse_subtform<SrcPackSize, AlignNodeSize, true>(bucket_size,
+                                                                  stride,
+                                                                  batch_size,
+                                                                  k_count,
+                                                                  bucket_ptr,
+                                                                  l_tw_data);
             }
             for (uZ i_bg: stdv::iota(1U, bucket_group_count)) {
                 auto bucket_group_start = dest_ptr + i_bg * bucket_count * bucket_size * 2;
@@ -1282,109 +981,6 @@ struct transform {
         while (k_count < final_k_count)
             fft_iter(uZ_ce<NodeSize>{}, w_pck, w_pck, k_count, tw_data);
     };
-
-
-    /**
-     *  [k0, k0,     ...,  k0                     , k1, k1, ..., k_count - 1, k_count - 1, ...]
-     *  [i0, i1,     ..., i<data_size / lane_size>, i0, i1, ..., i0,          i1,          ...]
-     *  [0 , stride, ...                                                                      ]
-     */
-    // template<uZ NodeSizeL, uZ PackDst, uZ PackSrc, bool LowK, bool LocalTw>
-    // PCX_AINLINE static auto fft_iteration(meta::maybe_ce_of<uZ> auto bucket_size,
-    //                                       meta::maybe_ce_of<uZ> auto stride,        //
-    //                                       meta::maybe_ce_of<uZ> auto batch_size,    //
-    //                                       auto                       data_ptr,
-    //                                       uZ&                        k_count,
-    //                                       tw_data_t<T, LocalTw>&     tw_data) {
-    //     using btfly_node        = btfly_node_dit<NodeSizeL, T, Width>;
-    //     constexpr auto settings = val_ce<typename btfly_node::settings{
-    //         .pack_dest = PackDst,
-    //         .pack_src  = PackSrc,
-    //         .reverse   = false,
-    //     }>{};
-    //
-    //     using l_twd_t = std::conditional_t<LowK && !LocalTw, tw_data_t<T, LocalTw>, tw_data_t<T, LocalTw>&>;
-    //     l_twd_t l_tw_data = tw_data;
-    //
-    //     const auto batch_count = bucket_size / k_count / batch_size;
-    //     const auto k_stride    = stride * batch_count;
-    //
-    //     // data division:
-    //     // E - even, O - odd
-    //     // [E0, E0,     ..., E0                  , O0, O0, ... , O<k_count - 1>, O<k_count - 1>, ...] subtform indexes
-    //     // [i0, i1,     ..., i<batch_count/2 - 1>, i0, i1, ... , i0,             i1,             ...] batches
-    //     // [0 , stride, ...                                                                         ]
-    //     // iX is batch X
-    //     //
-    //     //
-    //     // k is an index of O elements
-    //
-    //     // data for a butterfly:
-    //     // k == 0, i == 0
-    //     // [0,     ... , NodeSizeL/4 - 1,          ... , NodeSizeL/2 - 1, ... ] - tuple index
-    //     // [E0:i0, ... , E0:i<k_group_size/2 - 1>, ... , O1:i0,           ... ]
-    //     //
-    //     //
-    //     auto make_data_tup = [=] PCX_LAINLINE(uZ i, uZ k, uZ offset) {
-    //         auto base_ptr = data_ptr              //
-    //                         + i * stride * 2      //
-    //                         + k * k_stride * 2    //
-    //                         + offset * 2;
-    //         return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-    //             return tupi::make_tuple((base_ptr + k_stride * 2 / NodeSizeL * Is)...);
-    //         }(make_uZ_seq<NodeSizeL>{});
-    //     };
-    //
-    //     constexpr auto n_tw = NodeSizeL / 2;
-    //
-    //     auto make_tw_tup = [&l_tw_data] {
-    //         constexpr uZ n_tw = NodeSizeL / 2;
-    //         if constexpr (LocalTw) {
-    //             return [l_tw_data] PCX_LAINLINE(uZ k) {
-    //                 return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-    //                     auto tws = make_tw_node<T, NodeSizeL>(l_tw_data.start_fft_size * 2,    //
-    //                                                           l_tw_data.start_k + k);
-    //
-    //                     auto tw_ptr = reinterpret_cast<T*>(tws.data());
-    //                     return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
-    //                 }(make_uZ_seq<n_tw>{});
-    //             };
-    //         } else {
-    //             // return [&tw_data] PCX_LAINLINE(uZ) {
-    //             //     return [&tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-    //             //         auto l_tw_ptr = tw_data.tw_ptr;
-    //             //         tw_data.tw_ptr += n_tw * 2;
-    //             //         return tupi::make_tuple(simd::cxbroadcast<1, Width>(l_tw_ptr + Is * 2)...);
-    //             //     }(make_uZ_seq<n_tw>{});
-    //             // };
-    //         }
-    //     }();
-    //
-    //     if constexpr (LowK) {
-    //         auto tw = make_tw_tup(0);
-    //         for (auto i_batch: stdv::iota(0U, batch_count / NodeSizeL)) {
-    //             for (auto r: stdv::iota(0U, batch_size / Width)) {
-    //                 auto data = make_data_tup(i_batch, 0, r * Width);
-    //                 btfly_node::perform(settings, data);
-    //             }
-    //         }
-    //     }
-    //     constexpr auto k_start = LowK ? 1U : 0U;
-    //     for (auto k_group: stdv::iota(k_start, k_count)) {
-    //         auto tw = make_tw_tup(k_group);
-    //         for (auto i_batch: stdv::iota(0U, batch_count / NodeSizeL)) {
-    //             for (auto r: stdv::iota(0U, batch_size / Width)) {
-    //                 auto data = make_data_tup(i_batch, k_group, r * Width);
-    //                 btfly_node::perform(settings, data, tw);
-    //             }
-    //         }
-    //     }
-    //     k_count *= NodeSizeL;
-    //     if constexpr (LocalTw) {
-    //         l_tw_data.start_fft_size *= NodeSizeL;
-    //         l_tw_data.start_k *= NodeSizeL;
-    //     }
-    // }
 };
 
 }    // namespace pcx::detail_
