@@ -538,6 +538,38 @@ struct subtransform {
                 tw_data.tw_ptr += k_count;
         }
     }
+
+    // template<uZ DestPackSize, uZ SrcPackSize, bool LowK, align_node_t AlignNode, bool LocalTw>
+    // void insert_impl(auto r, uZ data_size, auto tw_data) {
+    //     constexpr auto single_load_size = NodeSize * Width;
+    //
+    //     uZ k_count = 1;
+    //     if constexpr (AlignNode.node_size_pre != 1) {
+    //         constexpr auto align_node = AlignNode.node_size_pre;
+    //         insert_iteration_tw<align_node, LowK>(r, k_count, tw_data);
+    //     }
+    //
+    //     while (data_size / (k_count * NodeSize) >= single_load_size) {
+    //         if constexpr (!LowK) {
+    //             k_count *= NodeSize;
+    //         } else {
+    //             insert_iteration_tw<NodeSize, LowK>(r, k_count, tw_data);
+    //         }
+    //     }
+    //     if constexpr (!LowK)
+    //         insert_iteration_tw<NodeSize, LowK>(r, k_count, tw_data);
+    //
+    //     if constexpr (AlignNode.node_size_post != 1) {
+    //         constexpr auto align_node = AlignNode.node_size_post;
+    //         insert_iteration_tw<align_node, LowK>(r, k_count, tw_data);
+    //     }
+    //
+    //     insert_single_load_tw<LowK>(r, tw_data);
+    //     for (auto i: stdv::iota(1U, data_size / single_load_size)) {
+    //         insert_single_load_tw<false>(r, tw_data);
+    //     }
+    // }
+    //
 };
 
 template<uZ NodeSize, typename T, uZ Width>
@@ -548,11 +580,6 @@ struct coherent_subtransform {
     static constexpr auto width     = uZ_ce<Width>{};
     static constexpr auto w_pck     = cxpack<width, T>{};
     static constexpr auto node_size = uZ_ce<NodeSize>{};
-
-    struct align_node_t {
-        uZ node_size_pre  = 1;
-        uZ node_size_post = 1;
-    };
 
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK = false, bool LocalTw = false>
     static void perform(uZ data_size, T* dest_ptr, tw_data_t<T, LocalTw> tw) {
@@ -591,9 +618,9 @@ struct coherent_subtransform {
                              tw_data_for<T> auto        tw_data) {
         constexpr auto single_load_size = NodeSize * Width;
 
-        using fnode  = subtransform<NodeSize, T, Width>;
-        auto final_k = data_size / single_load_size;
-        fnode::perform(src_pck, align, lowk, data_size, width, width, final_k, data_ptr, tw_data);
+        using fnode        = subtransform<NodeSize, T, Width>;
+        auto final_k_count = data_size / single_load_size;
+        fnode::perform(src_pck, align, lowk, data_size, width, width, final_k_count, data_ptr, tw_data);
 
         constexpr auto skip_single_load = false;
         if constexpr (skip_single_load) {
@@ -609,42 +636,11 @@ struct coherent_subtransform {
             single_load<dst_pck, width, lowk>(data_ptr, data_ptr, tw_data);
         }
         constexpr auto start = lowk ? 1UZ : 0UZ;
-        for (auto i: stdv::iota(start, data_size / single_load_size)) {
-            auto dest = data_ptr + i * single_load_size * 2;
+        for (auto k: stdv::iota(start, final_k_count)) {
+            auto dest = data_ptr + k * single_load_size * 2;
             single_load<dst_pck, width, false>(dest, dest, tw_data);
         }
     };
-
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, align_node_t AlignNode, bool LocalTw>
-    void insert_impl(auto r, uZ data_size, auto tw_data) {
-        constexpr auto single_load_size = NodeSize * Width;
-
-        uZ k_count = 1;
-        if constexpr (AlignNode.node_size_pre != 1) {
-            constexpr auto align_node = AlignNode.node_size_pre;
-            insert_iteration_tw<align_node, LowK>(r, k_count, tw_data);
-        }
-
-        while (data_size / (k_count * NodeSize) >= single_load_size) {
-            if constexpr (!LowK) {
-                k_count *= NodeSize;
-            } else {
-                insert_iteration_tw<NodeSize, LowK>(r, k_count, tw_data);
-            }
-        }
-        if constexpr (!LowK)
-            insert_iteration_tw<NodeSize, LowK>(r, k_count, tw_data);
-
-        if constexpr (AlignNode.node_size_post != 1) {
-            constexpr auto align_node = AlignNode.node_size_post;
-            insert_iteration_tw<align_node, LowK>(r, k_count, tw_data);
-        }
-
-        insert_single_load_tw<LowK>(r, tw_data);
-        for (auto i: stdv::iota(1U, data_size / single_load_size)) {
-            insert_single_load_tw<false>(r, tw_data);
-        }
-    }
 
     // private:
     static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
