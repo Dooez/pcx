@@ -482,7 +482,7 @@ template<typename T>
 concept any_align = is_align_param<T>::value;
 
 template<uZ NodeSize, typename T, uZ Width>
-struct fft_node {
+struct subtransform {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     static constexpr auto width     = uZ_ce<Width>{};
     static constexpr auto w_pck     = cxpack<Width, T>{};
@@ -541,7 +541,7 @@ struct fft_node {
 };
 
 template<uZ NodeSize, typename T, uZ Width>
-struct subtransform {
+struct coherent_subtransform {
     using btfly_node = btfly_node_dit<NodeSize, T, Width>;
     using vec_traits = simd::detail_::vec_traits<T, Width>;
 
@@ -593,7 +593,7 @@ struct subtransform {
         constexpr auto single_load_size = NodeSize * Width;
 
         auto aligngg = align_param<align().node_size_pre, true>{};
-        using fnode  = fft_node<NodeSize, T, Width>;
+        using fnode  = subtransform<NodeSize, T, Width>;
         auto final_k = data_size / single_load_size;
         fnode::perform(src_pck, aligngg, lowk, data_size, width, width, final_k, data_ptr, tw_data);
 
@@ -874,8 +874,8 @@ struct subtransform {
 
 template<uZ NodeSize, typename T, uZ Width>
 struct transform {
-    using subtf = subtransform<NodeSize, T, Width>;
-    using fnode = fft_node<NodeSize, T, Width>;
+    using subtf = coherent_subtransform<NodeSize, T, Width>;
+    using fnode = subtransform<NodeSize, T, Width>;
 
     /**
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.

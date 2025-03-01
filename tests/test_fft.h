@@ -206,7 +206,7 @@ int test_single_load() {
     naive_single_load<Width, NodeSize>(datavec.data(), twvec.data());
     //
     // auto twvec_lo_k  = make_tw_vec_lo_k<vec_size, vec_count>();
-    using fimpl    = pcx::detail_::subtransform<NodeSize, fX, Width>;
+    using fimpl    = pcx::detail_::coherent_subtransform<NodeSize, fX, Width>;
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto* tw_ptr   = reinterpret_cast<fX*>(twvec.data());
     // auto* tw_lok_ptr = reinterpret_cast<fX*>(twvec_lo_k.data());
@@ -351,7 +351,7 @@ int test_subtranform(uZ fft_size) {
     auto datavec2 = datavec;
     naive_fft(datavec, NodeSize, Width);
 
-    using fimpl = pcx::detail_::subtransform<NodeSize, fX, Width>;
+    using fimpl = pcx::detail_::coherent_subtransform<NodeSize, fX, Width>;
     auto twvec  = make_tw_vec<fX>(fft_size, Width, NodeSize, LowK);
     // auto  twvec    = make_tw_vec_lok<fX>(fft_size, Width, NodeSize);
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
