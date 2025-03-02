@@ -646,8 +646,10 @@ struct coherent_subtransform {
         }
     };
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw, bool HalfTw = false>
     PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
+        constexpr auto half_tw = std::bool_constant<HalfTw>{};
+
         auto data = [src_ptr]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(src_ptr + Width * 2 * Is)...);
         }(make_uZ_seq<node_size>{});
@@ -678,15 +680,27 @@ struct coherent_subtransform {
 
         auto regroup_tw_fact = [&]<uZ TwCount> PCX_LAINLINE(uZ_ce<TwCount>) {
             if constexpr (LocalTw) {
-                return [=]<uZ KGroup>(uZ_ce<KGroup>) {
-                    auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
-                    auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
-                    auto tw_arr   = [=]<uZ... Is>(uZ_seq<Is...>) {
-                        return std::array{wnk_br<T>(fft_size, k + Is)...};
-                    }(make_uZ_seq<TwCount>{});
-                    auto tw = simd::cxload<1, TwCount>(reinterpret_cast<T*>(tw_arr.data()));
-                    return tw;
-                };
+                if constexpr (HalfTw) {
+                    return [=]<uZ KGroup>(uZ_ce<KGroup>) {
+                        auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
+                        auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * 2 * TwCount;
+                        auto tw_arr   = [=]<uZ... Is>(uZ_seq<Is...>) {
+                            return std::array{wnk_br<T>(fft_size, k + Is * 2)...};
+                        }(make_uZ_seq<TwCount>{});
+                        auto tw = simd::cxload<1, TwCount>(reinterpret_cast<T*>(tw_arr.data()));
+                        return tw;
+                    };
+                } else {
+                    return [=]<uZ KGroup>(uZ_ce<KGroup>) {
+                        auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
+                        auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
+                        auto tw_arr   = [=]<uZ... Is>(uZ_seq<Is...>) {
+                            return std::array{wnk_br<T>(fft_size, k + Is)...};
+                        }(make_uZ_seq<TwCount>{});
+                        auto tw = simd::cxload<1, TwCount>(reinterpret_cast<T*>(tw_arr.data()));
+                        return tw;
+                    };
+                }
             } else {
                 auto l_tw_ptr = tw_data.tw_ptr;
                 tw_data.tw_ptr += TwCount * 2 * NodeSize / 2;
@@ -703,16 +717,41 @@ struct coherent_subtransform {
             return tupi::make_tuple(lo, hi);
         }(make_uZ_seq<node_size / 2>{});
 
-        auto [lo, hi] = [regroup_tw_fact]<uZ NGroups = 2> PCX_LAINLINE    //
+        if constexpr (HalfTw) {
+            // lo: [0 0 1 1] [4 4 5 5] hi: [2 2 3 3] [6 6 7 7]
+            // lo: [0 0 1 1] [2 2 3 3] hi: [4 4 5 5] [6 6 7 7]
+            std::tie(data_lo, data_hi) = switch_1_2(data_lo, data_hi);
+
+            // after split-ileave
+            // lo: [0 0 4 4] [2 2 6 6] hi: [1 1 5 5] [3 3 7 7]
+            //
+            // [  1   1   5   5] [        3         3         7         7]
+            // [tw0 tw0 tw1 tw1] [conj(tw0) conj(tw0) conj(tw1) conj(tw1)]
+        }
+        auto [lo, hi] = [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
                 if constexpr (NGroups == Width) {
-                    return regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
+                    // return regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
+                    return regroup_btfly_half<NGroups>(data_lo,
+                                                       data_hi,
+                                                       regroup_tw_fact(uZ_ce<NGroups>{}),
+                                                       half_tw);
                 } else {
-                    auto [lo, hi] =
-                        regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
+                    // auto [lo, hi] =
+                    //     regroup_btfly<NGroups>(data_lo, data_hi, regroup_tw_fact(uZ_ce<NGroups>{}));
+                    auto [lo, hi] = regroup_btfly_half<NGroups>(data_lo,
+                                                                data_hi,
+                                                                regroup_tw_fact(uZ_ce<NGroups>{}),
+                                                                half_tw);
                     return f(lo, hi, uZ_ce<NGroups * 2>{});
                 }
             }(data_lo, data_hi);
+        if constexpr (HalfTw) {
+            // [ 0  4  8 12] [ 2  6 10 14] before
+            // [ 0  2  4  6] [ 8 10 12 14]
+            lo = regroup_half_tw(lo);
+            hi = regroup_half_tw(hi);
+        }
         auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
         auto res_rep     = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
@@ -752,6 +791,72 @@ struct coherent_subtransform {
         ++tw_data.start_k;
     }
     // insert_single_load_tw(cx_range auto r, tw_data);
+
+    template<uZ NGroups>
+    struct regroup_btfly_half_tw_t {
+        template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi, bool HalfTw = false>
+            requires(node_size > 2)
+        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo,
+                                           tupi::tuple<Thi...> hi,
+                                           auto&&              get_tw,
+                                           std::bool_constant<HalfTw> = {}) {
+            auto tw_tup = tupi::make_broadcast_tuple<HalfTw ? node_size / 4 : node_size / 2>(get_tw);
+
+            constexpr auto ltw = [] {
+                if constexpr (HalfTw) {
+                    return tupi::apply                                                 //
+                           | tupi::group_invoke(load_tw<NGroups> | make_conj_tuple)    //
+                           | tupi::make_flat_tuple;
+                } else {
+                    return tupi::apply | tupi::group_invoke(load_tw<NGroups>);
+                }
+            }();
+
+            constexpr auto regr_ltw =
+                tupi::make_tuple
+                | tupi::pipeline(tupi::apply | tupi::group_invoke(split_regroup<width / NGroups>),    //
+                                 ltw);
+
+            auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
+                                            tupi::forward_as_tuple(tw_tup, half_node_tuple));
+
+            auto lo_re  = tupi::group_invoke(tupi::get<0>, regrouped);
+            auto hi_re  = tupi::group_invoke(tupi::get<1>, regrouped);
+            auto hi_tw  = tupi::group_invoke(simd::mul, hi_re, tw);
+            auto res    = tupi::group_invoke(simd::btfly, lo_re, hi_tw);
+            auto new_lo = tupi::group_invoke(tupi::get_copy<0>, res);
+            auto new_hi = tupi::group_invoke(tupi::get_copy<1>, res);
+            return tupi::make_tuple(new_lo, new_hi);
+        }
+        static constexpr auto half_node_tuple = []<uZ... Is>(uZ_seq<Is...>) {
+            return tupi::make_tuple(uZ_ce<Is>{}...);
+        }(make_uZ_seq<node_size / 2>{});
+    };
+    template<uZ NGroups>
+    constexpr static auto regroup_btfly_half = regroup_btfly_half_tw_t<NGroups>{};
+
+    static constexpr struct {
+        template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
+        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi) {
+            return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                auto new_lo = tupi::tuple_cat(tupi::make_tuple(tupi::get<Is * 2>(lo),    //
+                                                               tupi::get<Is * 2>(hi))...);
+                auto new_hi = tupi::tuple_cat(tupi::make_tuple(tupi::get<Is * 2 + 1>(lo),    //
+                                                               tupi::get<Is * 2 + 1>(hi))...);
+                return tupi::make_tuple(new_lo, new_hi);
+            }(make_uZ_seq<sizeof...(Tlo) / 2>{});
+        }
+    } switch_1_2;
+    static constexpr struct {
+        template<simd::any_cx_vec... Ts>
+            requires(sizeof...(Ts) > 1)
+        PCX_AINLINE static auto operator()(tupi::tuple<Ts...> vecs) {
+            return [&]<uZ... IPairs> PCX_LAINLINE(uZ_seq<IPairs...>) {
+                return tupi::tuple_cat(regroup<1, width>(tupi::get<IPairs * 2>(vecs),    //
+                                                         tupi::get<IPairs * 2 + 1>(vecs))...);
+            }(make_uZ_seq<sizeof...(Ts) / 2>{});
+        }
+    } regroup_half_tw;
 
     template<uZ NGroups>
     struct regroup_btfly_t {
@@ -807,6 +912,9 @@ struct coherent_subtransform {
         | tupi::apply                                                  
         | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
 
+    static constexpr auto make_conj_tuple = tupi::pass | [](simd::any_cx_vec auto tw){
+        return tupi::make_tuple(tw, conj(tw));
+    };
 
     /**
      * @brief Regroups input sismd vectors, similar to `simd::repack`, except
