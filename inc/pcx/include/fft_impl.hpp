@@ -581,24 +581,28 @@ struct coherent_subtransform {
     static constexpr auto w_pck     = cxpack<width, T>{};
     static constexpr auto node_size = uZ_ce<NodeSize>{};
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK = false, bool LocalTw = false>
-    static void perform(uZ data_size, T* dest_ptr, tw_data_t<T, LocalTw> tw) {
-        constexpr auto single_load_size = NodeSize * Width;
+    static constexpr auto get_align_node(uZ data_size) {
+        constexpr auto single_load_size = node_size * width;
 
-        auto lsize          = data_size / single_load_size;
-        auto slog           = log2i(lsize);
-        auto a              = slog / log2i(NodeSize);
-        auto b              = a * log2i(NodeSize);
-        auto pre_align_node = powi(2, slog - b);
+        auto lsize      = data_size / single_load_size;
+        auto slog       = log2i(lsize);
+        auto a          = slog / log2i(node_size);
+        auto b          = a * log2i(node_size);
+        auto align_node = powi(2, slog - b);
+        return align_node;
+    }
 
-        constexpr auto dst_pck = cxpack<DestPackSize, T>{};
-        constexpr auto src_pck = cxpack<SrcPackSize, T>{};
-        constexpr auto lowk    = val_ce<LowK>{};
-
-        [&]<uZ... Is>(std::index_sequence<Is...>) {
+    static void perform(cxpack_for<T> auto         dst_pck,
+                        cxpack_for<T> auto         src_pck,
+                        meta::any_ce_of<bool> auto lowk,
+                        uZ                         data_size,
+                        T*                         dest_ptr,
+                        meta::maybe_ce_of<uZ> auto align_node,
+                        tw_data_for<T> auto        tw) {
+        [&]<uZ... Is>(uZ_seq<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
-                if (l_node_size != pre_align_node)
+                if (l_node_size != align_node)
                     return false;
 
                 constexpr auto align = align_param<l_node_size, true>{};
@@ -606,7 +610,7 @@ struct coherent_subtransform {
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
-        }(std::make_index_sequence<log2i(NodeSize)>{});
+        }(make_uZ_seq<log2i(NodeSize)>{});
     }
 
     static void perform_impl(cxpack_for<T> auto         dst_pck,
@@ -642,37 +646,33 @@ struct coherent_subtransform {
         }
     };
 
-    // private:
-    static constexpr auto half_node_idxs = std::make_index_sequence<NodeSize / 2>{};
-
     template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
     PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
-        auto data = []<uZ... Is> PCX_LAINLINE(auto data_ptr, std::index_sequence<Is...>) {
-            return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(data_ptr + Width * 2 * Is)...);
-        }(src_ptr, std::make_index_sequence<NodeSize>{});
-        auto data_rep = tupi::group_invoke(simd::repack<Width>, data);
+        auto data = [src_ptr]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+            return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(src_ptr + Width * 2 * Is)...);
+        }(make_uZ_seq<node_size>{});
 
         auto get_tw = [&tw_data] {
             if constexpr (LocalTw) {
                 return [=]<uZ... Is>(uZ_seq<Is...>) {
-                    auto tws    = make_tw_node<T, NodeSize>(tw_data.start_fft_size * 2, tw_data.start_k);
+                    auto tws    = make_tw_node<T, node_size>(tw_data.start_fft_size * 2, tw_data.start_k);
                     auto tw_ptr = reinterpret_cast<T*>(tws.data());
-                    return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_ptr + 2 * Is)...);
-                }(make_uZ_seq<NodeSize / 2>{});
+                    return tupi::make_tuple(simd::cxbroadcast<1, width>(tw_ptr + 2 * Is)...);
+                }(make_uZ_seq<node_size / 2>{});
             } else {
                 auto tw0 = [tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                    return tupi::make_tuple(simd::cxbroadcast<1, Width>(tw_data.tw_ptr + 2 * Is)...);
-                }(make_uZ_seq<NodeSize / 2>{});
-                tw_data.tw_ptr += NodeSize;
+                    return tupi::make_tuple(simd::cxbroadcast<1, width>(tw_data.tw_ptr + 2 * Is)...);
+                }(make_uZ_seq<node_size / 2>{});
+                tw_data.tw_ptr += node_size;
                 return tw0;
             }
         };
         auto btfly_res_0 = [&] PCX_LAINLINE {
             if constexpr (LowK) {
                 get_tw();
-                return btfly_node::forward(data_rep);
+                return btfly_node::forward(data);
             } else {
-                return btfly_node::forward(data_rep, get_tw());
+                return btfly_node::forward(data, get_tw());
             }
         }();
 
@@ -697,11 +697,11 @@ struct coherent_subtransform {
             }
         };
 
-        auto [data_lo, data_hi] = [&]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+        auto [data_lo, data_hi] = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             auto lo = tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
             auto hi = tupi::make_tuple(get<Is * 2 + 1>(btfly_res_0)...);
             return tupi::make_tuple(lo, hi);
-        }(half_node_idxs);
+        }(make_uZ_seq<node_size / 2>{});
 
         auto [lo, hi] = [regroup_tw_fact]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
@@ -716,9 +716,9 @@ struct coherent_subtransform {
         auto btfly_res_1 = tupi::group_invoke(regroup<1, Width>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
         auto res_rep     = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
-        [data_ptr, res_rep]<uZ... Is> PCX_LAINLINE(std::index_sequence<Is...>) {
+        [data_ptr, res_rep]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             (simd::cxstore<DestPackSize>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
-        }(std::make_index_sequence<NodeSize>{});
+        }(make_uZ_seq<node_size>{});
         if constexpr (LocalTw) {
             ++tw_data.start_k;
         }
@@ -776,9 +776,9 @@ struct coherent_subtransform {
         }
 
     private:
-        static constexpr auto half_node_tuple = []<uZ... Is>(std::index_sequence<Is...>) {
+        static constexpr auto half_node_tuple = []<uZ... Is>(uZ_seq<Is...>) {
             return tupi::make_tuple(uZ_ce<Is>{}...);
-        }(half_node_idxs);
+        }(make_uZ_seq<node_size / 2>{});
     };
     /**
      *  @brief Split-regroups input data, loads twiddles and performs a single butterfly operation.
@@ -894,12 +894,9 @@ struct transform {
      * Subdivides the data into buckets. Default bucket size is `coherent_size`.
      * A bucket represents contiguous batches of data, distributed with a constant stride. Default batch size is `lane_size`.
      * A single subdivision can perform a maximum of `coherent_k_cnt` levels of fft.
-     *
      */
     template<uZ DestPackSize, uZ SrcPackSize, bool LocalTw>
     static void perform(uZ data_size, T* const dest_ptr, tw_data_t<T, LocalTw> tw_data) {
-        // constexpr bool LocalTw = true;
-
         constexpr auto src_pck = cxpack<SrcPackSize, T>{};
         constexpr auto dst_pck = cxpack<DestPackSize, T>{};
 
@@ -961,7 +958,7 @@ struct transform {
         };
 
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
-        [&]<uZ... Is>(std::index_sequence<Is...>) {
+        [&]<uZ... Is>(uZ_seq<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
                 if (l_node_size != pre_pass_align_node)
@@ -970,21 +967,32 @@ struct transform {
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
-        }(std::make_index_sequence<log2i(NodeSize)>{});
+        }(make_uZ_seq<log2i(NodeSize)>{});
 
-
-        // return;
         constexpr auto pass_align_node = get_align_node(pass_k_count);
         for (uZ pass: stdv::iota(0U, pass_count)) {
             iterate_buckets(uZ_ce<pass_align_node>{}, w_pck, pass_k_count);
         }
 
-        for (uZ i_bg: stdv::iota(0U, bucket_group_count)) {
+        constexpr auto coherent_align_node = uZ_ce<subtf::get_align_node(bucket_size)>{};
+        auto           l_tw_data           = tw_data_t<T, LocalTw>{bucket_group_count, 0};
+        subtf::perform(dst_pck,
+                       w_pck,
+                       std::true_type{},
+                       bucket_size,
+                       dest_ptr,
+                       coherent_align_node,
+                       l_tw_data);
+        for (uZ i_bg: stdv::iota(1U, bucket_group_count)) {
             auto l_tw_data  = tw_data_t<T, LocalTw>{bucket_group_count, i_bg};
             auto bucket_ptr = dest_ptr + i_bg * bucket_count * bucket_size * 2;
-            subtf::template perform<DestPackSize, Width, false>(bucket_size, bucket_ptr, l_tw_data);
-            // TODO: handle small size
-            // subtf::template perform<DestPackSize, SrcPackSize, false>(bucket_size, bucket_ptr, l_tw_data);
+            subtf::perform(dst_pck,
+                           w_pck,
+                           std::false_type{},
+                           bucket_size,
+                           bucket_ptr,
+                           coherent_align_node,
+                           l_tw_data);
         }
     };
 };
