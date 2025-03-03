@@ -60,13 +60,13 @@ int main() {
             };
             return (ns_passed(uZ_ce<NodeSizes>{}) && ...);
         };
-    constexpr auto node_sizes = std::index_sequence<2>{};
+    // constexpr auto node_sizes = std::index_sequence<2>{};
     constexpr auto f64_widths = std::index_sequence<8>{};
     constexpr auto f32_widths = std::index_sequence<16>{};
     constexpr auto low_k      = pcx::meta::val_seq<false>{};
     constexpr auto local_tw   = pcx::meta::val_seq<true>{};
 
-    // constexpr auto node_sizes = std::index_sequence<2, 4, 8, 16>{};
+    constexpr auto node_sizes = std::index_sequence<2, 4, 8, 16>{};
     // constexpr auto f64_widths = std::index_sequence<2, 4, 8>{};
     // constexpr auto f32_widths = std::index_sequence<4, 8, 16>{};
     // constexpr auto low_k    = pcx::meta::val_seq<false, true>{};
@@ -87,7 +87,7 @@ int main() {
         fft_size *= 2;
     }
     fft_size = 2048 * 2;
-    while (fft_size <= 2048 * 4) {
+    while (fft_size <= 2048 * 16) {
         if (!exec_test(node_sizes, f32_widths, low_k, local_tw, f32t, fft_size))
             return -1;
         fft_size *= 2;

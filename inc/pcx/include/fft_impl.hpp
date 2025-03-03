@@ -646,7 +646,7 @@ struct coherent_subtransform {
         }
     };
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw, bool HalfTw = false>
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw, bool HalfTw = true>
     PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
         constexpr auto half_tw = std::bool_constant<HalfTw>{};
 
