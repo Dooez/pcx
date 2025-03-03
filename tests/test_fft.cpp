@@ -73,6 +73,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
         //     break;
         step /= 2;
         n_groups *= 2;
+        // break;
     }
 }
 template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
