@@ -122,12 +122,12 @@ struct btfly_node_dit {
         bool reverse;
     };
 
-    using dest_t     = tupi::broadcast_tuple_t<T*, NodeSize>;
-    using data_t     = tupi::broadcast_tuple_t<cx_vec, NodeSize>;
-    using src_t      = tupi::broadcast_tuple_t<const T*, NodeSize>;
-    using tw_t       = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
-    using low_k_tw_t = decltype([] {});
-
+    using dest_t = tupi::broadcast_tuple_t<T*, NodeSize>;
+    using data_t = tupi::broadcast_tuple_t<cx_vec, NodeSize>;
+    using src_t  = tupi::broadcast_tuple_t<const T*, NodeSize>;
+    using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
+    struct low_k_tw_t {};
+ 
     PCX_LAINLINE static auto forward(data_t data, low_k_tw_t = {}) {
         return fwd_impl(data, const_tw_getter);
     }
@@ -856,7 +856,7 @@ struct coherent_subtransform {
                 return tupi::make_tuple(new_lo, new_hi);
             }(make_uZ_seq<sizeof...(Tlo) / 2>{});
         }
-    } switch_1_2;
+    } switch_1_2{};
     static constexpr struct {
         template<simd::any_cx_vec... Ts>
             requires(sizeof...(Ts) > 1)
@@ -866,7 +866,7 @@ struct coherent_subtransform {
                                                          tupi::get<IPairs * 2 + 1>(vecs))...);
             }(make_uZ_seq<sizeof...(Ts) / 2>{});
         }
-    } regroup_half_tw;
+    } regroup_half_tw{};
 
 
     // clang-format off

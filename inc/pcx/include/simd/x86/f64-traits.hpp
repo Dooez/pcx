@@ -102,7 +102,7 @@ struct vec_traits<f64, 2>::repack_t<2, 1> {
 template<>
 struct vec_traits<f64, 2>::split_interleave_t<1> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto x = _mm_movelh_ps(a, b);
+        auto x = _mm_movelh_ps(_mm_castpd_ps(a), _mm_castpd_ps(b));
         auto y = _mm_unpackhi_pd(a, b);
         return tupi::make_tuple(x, y);
     }

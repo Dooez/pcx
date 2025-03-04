@@ -64,7 +64,7 @@ struct vec_traits<f32, 2> {
         static auto operator()(impl_vec v) -> impl_vec {
             return v;
         };
-    } upsample;
+    } upsample{};
 
     template<uZ ChunkSize>
         requires(ChunkSize <= width)
@@ -246,9 +246,9 @@ struct vec_traits<f32, 4>::split_interleave_t<1>
 template<>
 struct vec_traits<f32, 4>::split_interleave_t<2> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        auto x = _mm_unpacklo_pd(a, b);
-        auto y = _mm_unpackhi_pd(a, b);
-        return tupi::make_tuple(x, y);
+        auto x = _mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b));
+        auto y = _mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b));
+        return tupi::make_tuple(_mm_castpd_ps(x), _mm_castpd_ps(y));
     };
 };
 template<>

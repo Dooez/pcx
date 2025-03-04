@@ -131,7 +131,7 @@ struct vec_traits {
         // static auto operator()(vec_traits<T, Width / 2>::impl_vec v) -> impl_vec;
         // . . .
         // static auto operator()(vec_traits<T, 2>::impl_vec) -> impl_vec;
-    } upsample;
+    } upsample{};
 
     template<uZ To, uZ From>
         requires(To <= Width && From <= Width)
