@@ -783,15 +783,15 @@ struct coherent_subtransform {
      */
     template<uZ NGroups>
     struct regroup_btfly_t {
-        template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi, bool HalfTw>
+        template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
         // requires(node_size > 2)
-        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo,
-                                           tupi::tuple<Thi...> hi,
-                                           auto&&              get_tw,
-                                           std::bool_constant<HalfTw> = {}) {
-            constexpr uZ   raw_tw_count = HalfTw && node_size > 2 ? node_size / 4 : node_size / 2;
-            constexpr auto tw_idx_tup   = []<uZ... Is>(uZ_seq<Is...>) {
-                return tupi::make_tuple(uZ_ce<HalfTw ? Is * 2 : Is>{}...);
+        PCX_AINLINE static auto operator()(tupi::tuple<Tlo...>        lo,
+                                           tupi::tuple<Thi...>        hi,
+                                           auto&&                     get_tw,
+                                           meta::any_ce_of<bool> auto half_tw) {
+            constexpr uZ   raw_tw_count = half_tw && node_size > 2 ? node_size / 4 : node_size / 2;
+            constexpr auto tw_idx_tup   = [=]<uZ... Is>(uZ_seq<Is...>) {
+                return tupi::make_tuple(uZ_ce<half_tw ? Is * 2 : Is>{}...);
             }(make_uZ_seq<raw_tw_count>{});
 
             auto get_tw_tup = tupi::make_broadcast_tuple<raw_tw_count>(get_tw);
@@ -811,7 +811,7 @@ struct coherent_subtransform {
             }();
 
             constexpr auto ltw = [=] {
-                if constexpr (HalfTw) {
+                if constexpr (half_tw) {
                     return tupi::apply                                                 //
                            | tupi::group_invoke(load_tw<NGroups> | make_conj_tuple)    //
                            | tupi::make_flat_tuple;
