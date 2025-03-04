@@ -5,9 +5,13 @@
 #include <vector>
 
 namespace pcx::testing {
+#ifdef FULL_FFT_TEST
+inline constexpr auto f32_widths = uZ_seq<4, 8, 16>{};
+inline constexpr auto f64_widths = uZ_seq<2, 4, 8>{};
+#else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
-
+#endif
 inline constexpr auto low_k    = meta::val_seq<true>{};
 inline constexpr auto local_tw = meta::val_seq<true>{};
 

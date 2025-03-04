@@ -82,20 +82,20 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
 template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
 template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 }    // namespace pcx::testing
+#ifdef FULL_FFT_TEST
+inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
+#else
+inline constexpr auto node_sizes = pcx::uZ_seq<8>{};
+#endif
+
 int main() {
-    auto test_size = [](uZ fft_size) {
-        return pcx::testing::test_fft<f32, 2>(fft_size)        //
-               && pcx::testing::test_fft<f32, 4>(fft_size)     //
-               && pcx::testing::test_fft<f32, 8>(fft_size)     //
-               && pcx::testing::test_fft<f32, 16>(fft_size)    //
-               && pcx::testing::test_fft<f64, 2>(fft_size)     //
-               && pcx::testing::test_fft<f64, 4>(fft_size)     //
-               && pcx::testing::test_fft<f64, 8>(fft_size)     //
-               && pcx::testing::test_fft<f64, 16>(fft_size);
+    auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size) {
+        return (pcx::testing::test_fft<f32, Is>(fft_size) && ...)
+               && (pcx::testing::test_fft<f64, Is>(fft_size) && ...);
     };
     uZ fft_size = 2048 * 2;
     while (fft_size <= 2048 * 64) {
-        if (!test_size(fft_size))
+        if (!test_size(node_sizes, fft_size))
             return -1;
         fft_size *= 2;
     }

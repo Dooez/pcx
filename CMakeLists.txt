@@ -11,7 +11,10 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-    set(FFT_TEST_SOURCES
+    add_executable(test_fft)
+    set(FULL_FFT_TEST OFF)
+    if(${FULL_FFT_TEST})
+        target_sources(test_fft PUBLIC
         tests/fft/f32_node2.cpp
         tests/fft/f32_node4.cpp
         tests/fft/f32_node8.cpp
@@ -21,10 +24,16 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
         tests/fft/f64_node8.cpp
         tests/fft/f64_node16.cpp
         tests/fft/fft_main.cpp
-    )
+        )
+        target_compile_definitions(test_fft PUBLIC FULL_FFT_TEST)
+    else()
+        target_sources(test_fft PUBLIC
+        tests/fft/f32_node8.cpp
+        tests/fft/f64_node8.cpp
+        tests/fft/fft_main.cpp
+        )
+    endif()
 
-    # add_executable(test_fft tests/test_fft.cpp tests/test_fft_main.cpp)
-    add_executable(test_fft ${FFT_TEST_SOURCES})
     add_executable(test_simd tests/test_simd.cpp)
     add_executable(test_tuples tests/test_tuples.cpp)
 
