@@ -4,8 +4,16 @@
 #include <print>
 #include <vector>
 
-using pcx::f32;
-using pcx::f64;
+namespace pcx::testing {
+inline constexpr auto f32_widths = uZ_seq<16>{};
+inline constexpr auto f64_widths = uZ_seq<8>{};
+
+inline constexpr auto low_k    = meta::val_seq<true>{};
+inline constexpr auto local_tw = meta::val_seq<true>{};
+
+template<typename T, uZ NodeSize>
+bool test_fft(uZ fft_size);
+}    // namespace pcx::testing
 
 template<typename T>
 struct std::formatter<std::complex<T>, char> {
@@ -26,10 +34,10 @@ struct std::formatter<std::complex<T>, char> {
         return out;
     }
 };
-static auto get_type_name(pcx::meta::types<f32>) {
+static auto get_type_name(pcx::meta::types<pcx::f32>) {
     return std::string_view("f32");
 }
-static auto get_type_name(pcx::meta::types<f64>) {
+static auto get_type_name(pcx::meta::types<pcx::f64>) {
     return std::string_view("f64");
 }
 template<typename T>
@@ -52,15 +60,6 @@ struct std::formatter<pcx::meta::types<T>> {
 };
 
 namespace pcx::testing {
-inline constexpr auto f32_widths = uZ_seq<4, 8, 16>{};
-inline constexpr auto f64_widths = uZ_seq<2, 4, 8>{};
-
-inline constexpr auto low_k    = meta::val_seq<true>{};
-inline constexpr auto local_tw = meta::val_seq<true>{};
-
-template<typename T, uZ NodeSize>
-bool test_fft(uZ fft_size);
-
 template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
 
