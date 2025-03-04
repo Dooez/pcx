@@ -79,9 +79,9 @@ bool test_prototype(uZ fft_size) {
         }
         return vec;
     }();
+    auto datavec2 = datavec;
     naive_fft(datavec, NodeSize, Width);
 
-    auto  datavec2 = datavec;
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
     auto  tw       = [=] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
