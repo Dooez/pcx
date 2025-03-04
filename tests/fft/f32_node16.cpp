@@ -1,0 +1,11 @@
+
+#include "common.hpp"
+
+namespace pcx::testing {
+template<>
+bool test_fft<f32, 16>(uZ fft_size) {
+    return run_tests<f32, 16>(f32_widths, low_k, local_tw, fft_size);
+};
+template bool test_fft<f32, 16>(uZ);
+
+}    // namespace pcx::testing

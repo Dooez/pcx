@@ -11,7 +11,20 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-    add_executable(test_fft tests/test_fft.cpp tests/test_fft_main.cpp)
+    set(FFT_TEST_SOURCES
+        tests/fft/f32_node2.cpp
+        tests/fft/f32_node4.cpp
+        tests/fft/f32_node8.cpp
+        tests/fft/f32_node16.cpp
+        tests/fft/f64_node2.cpp
+        tests/fft/f64_node4.cpp
+        tests/fft/f64_node8.cpp
+        tests/fft/f64_node16.cpp
+        tests/fft/fft_main.cpp
+    )
+
+    # add_executable(test_fft tests/test_fft.cpp tests/test_fft_main.cpp)
+    add_executable(test_fft ${FFT_TEST_SOURCES})
     add_executable(test_simd tests/test_simd.cpp)
     add_executable(test_tuples tests/test_tuples.cpp)
 

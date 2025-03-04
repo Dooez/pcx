@@ -4,6 +4,12 @@
 #include <utility>
 namespace pcx::meta {
 
+template<auto... Vs>
+struct value_sequence {};
+
+template<auto... Vs>
+using val_seq = value_sequence<Vs...>;
+
 namespace detail_ {
 template<auto...>
 struct are_equal : std::false_type {};
@@ -27,6 +33,7 @@ struct is_ce_of : std::false_type {};
 template<typename T, T Val>
 struct is_ce_of<val_ce<Val>, T> : std::true_type {};
 
+
 }    // namespace detail_
 
 template<auto... Vs>
@@ -39,12 +46,6 @@ concept any_ce_of = detail_::is_ce_of<T, U>::value;
 template<typename T, typename U>
 concept maybe_ce_of = any_ce_of<T, U> || std::same_as<T, U>;
 
-template<auto... Vs>
-struct value_sequence {};
-// using value_sequence = detail_::value_sequence<Vs...>::type;
-
-template<auto... Vs>
-using val_seq = value_sequence<Vs...>;
 
 namespace detail_ {
 template<typename>
@@ -58,6 +59,11 @@ template<auto... Vs>
 struct is_value_seq_of_unique<value_sequence<Vs...>> {
     static constexpr bool value = unique_values<Vs...>;
 };
+
+template<typename S, typename T>
+struct is_value_seq_of : std::false_type {};
+template<typename T, T... Vs>
+struct is_value_seq_of<val_seq<Vs...>, T> : std::true_type {};
 
 template<typename, auto...>
 struct expand_value_seq;
@@ -101,6 +107,10 @@ struct index_to_value_seq<std::index_sequence<Is...>> {
 }    // namespace detail_
 template<typename T>
 concept any_value_sequence = detail_::is_value_seq<T>::value;
+template<typename T>
+concept any_val_seq = detail_::is_value_seq<T>::value;
+template<typename S, typename T>
+concept any_val_seq_of = detail_::is_value_seq_of<S, T>::value;
 
 template<typename T>
 concept any_index_sequence = detail_::is_index_seq<T>::value;

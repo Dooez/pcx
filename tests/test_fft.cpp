@@ -28,32 +28,10 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
     if (!is_pow_of_two(rsize))
         throw std::invalid_argument("Data size is not a power of two.");
 
-    // constexpr auto vec_width = pcx::simd::max_width<fX>;
-
-
     auto fft_size         = 1;
     auto step             = rsize / 2;
     auto n_groups         = 1;
     auto single_load_size = vec_width * node_size;
-    // while (step >= 1) {
-    //     if (!(rsize / (fft_size * node_size) >= single_load_size)) {
-    //         break;
-    //     }
-    //     for (auto l: stdv::iota(0U, log2i(node_size))) {
-    //         fft_size *= 2;
-    //         for (uZ k = 0; k < n_groups; ++k) {
-    //             uZ start = k * step * 2;
-    //             // auto rk    = pcx::detail_::reverse_bit_order(k, log2i(fft_size) - 1);
-    //             auto tw = pcx::detail_::wnk_br<fX>(fft_size, k);
-    //             for (uZ i = 0; i < step; ++i) {
-    //                 pcxt::btfly(&data[start + i], &data[start + i + step], tw);    //
-    //             }
-    //         }
-    //         step /= 2;
-    //         n_groups *= 2;
-    //     }
-    // }
-    // return;
     while (step >= 1) {
         if (step == vec_width * node_size / 2) {    // skip single load
             // break;
