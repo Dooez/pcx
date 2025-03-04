@@ -595,6 +595,7 @@ struct coherent_subtransform {
     static void perform(cxpack_for<T> auto         dst_pck,
                         cxpack_for<T> auto         src_pck,
                         meta::any_ce_of<bool> auto lowk,
+                        meta::any_ce_of<bool> auto half_tw,
                         uZ                         data_size,
                         T*                         dest_ptr,
                         meta::maybe_ce_of<uZ> auto align_node,
@@ -606,7 +607,7 @@ struct coherent_subtransform {
                     return false;
 
                 constexpr auto align = align_param<l_node_size, true>{};
-                perform_impl(dst_pck, src_pck, align, lowk, data_size, dest_ptr, tw);
+                perform_impl(dst_pck, src_pck, align, lowk, half_tw, data_size, dest_ptr, tw);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -617,6 +618,7 @@ struct coherent_subtransform {
                              cxpack_for<T> auto         src_pck,
                              any_align auto             align,
                              meta::any_ce_of<bool> auto lowk,
+                             meta::any_ce_of<bool> auto half_tw,
                              meta::maybe_ce_of<uZ> auto data_size,
                              T*                         data_ptr,
                              tw_data_for<T> auto        tw_data) {
@@ -637,18 +639,21 @@ struct coherent_subtransform {
         }
 
         if constexpr (lowk) {
-            single_load<dst_pck, width, lowk>(data_ptr, data_ptr, tw_data);
+            single_load<dst_pck, width, lowk>(data_ptr, data_ptr, tw_data, half_tw);
         }
         constexpr auto start = lowk ? 1UZ : 0UZ;
         for (auto k: stdv::iota(start, final_k_count)) {
             auto dest = data_ptr + k * single_load_size * 2;
-            single_load<dst_pck, width, false>(dest, dest, tw_data);
+            single_load<dst_pck, width, false>(dest, dest, tw_data, half_tw);
         }
     };
 
-    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw, bool HalfTw = true>
-    PCX_AINLINE static auto single_load(T* data_ptr, const T* src_ptr, tw_data_t<T, LocalTw>& tw_data) {
-        constexpr auto half_tw = std::bool_constant<HalfTw>{};
+    template<uZ DestPackSize, uZ SrcPackSize, bool LowK, bool LocalTw>
+    PCX_AINLINE static auto single_load(T*                         data_ptr,
+                                        const T*                   src_ptr,
+                                        tw_data_t<T, LocalTw>&     tw_data,
+                                        meta::any_ce_of<bool> auto half_tw) {
+        // constexpr auto half_tw = std::bool_constant<HalfTw>{};
 
         auto data = [src_ptr]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(src_ptr + Width * 2 * Is)...);
@@ -705,7 +710,7 @@ struct coherent_subtransform {
             return tupi::make_tuple(lo, hi);
         }(make_uZ_seq<node_size / 2>{});
 
-        if constexpr (HalfTw && node_size > 2) {
+        if constexpr (half_tw && node_size > 2) {
             // lo: [0 0 1 1] [4 4 5 5] hi: [2 2 3 3] [6 6 7 7]
             // lo: [0 0 1 1] [2 2 3 3] hi: [4 4 5 5] [6 6 7 7]
             std::tie(data_lo, data_hi) = switch_1_2(data_lo, data_hi);
@@ -729,7 +734,7 @@ struct coherent_subtransform {
                     return f(lo, hi, uZ_ce<NGroups * 2>{});
                 }
             }(data_lo, data_hi);
-        if constexpr (HalfTw && node_size > 2) {
+        if constexpr (half_tw && node_size > 2) {
             // [ 0  4  8 12] [ 2  6 10 14] before
             // [ 0  2  4  6] [ 8 10 12 14]
             lo = regroup_half_tw(lo);
@@ -971,7 +976,10 @@ struct transform {
      * A single subdivision can perform a maximum of `coherent_k_cnt` levels of fft.
      */
     template<uZ DestPackSize, uZ SrcPackSize, bool LocalTw>
-    static void perform(uZ data_size, T* const dest_ptr, tw_data_t<T, LocalTw> tw_data) {
+    static void perform(uZ                         data_size,
+                        T* const                   dest_ptr,
+                        tw_data_t<T, LocalTw>      tw_data,
+                        meta::any_ce_of<bool> auto half_tw) {
         constexpr auto src_pck = cxpack<SrcPackSize, T>{};
         constexpr auto dst_pck = cxpack<DestPackSize, T>{};
 
@@ -1064,6 +1072,7 @@ struct transform {
         subtf::perform(dst_pck,
                        w_pck,
                        std::true_type{},
+                       half_tw,
                        bucket_size,
                        dest_ptr,
                        coherent_align_node,
@@ -1074,6 +1083,7 @@ struct transform {
             subtf::perform(dst_pck,
                            w_pck,
                            std::false_type{},
+                           half_tw,
                            bucket_size,
                            bucket_ptr,
                            coherent_align_node,

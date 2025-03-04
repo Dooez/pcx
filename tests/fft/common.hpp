@@ -8,9 +8,11 @@ namespace pcx::testing {
 #ifdef FULL_FFT_TEST
 inline constexpr auto f32_widths = uZ_seq<4, 8, 16>{};
 inline constexpr auto f64_widths = uZ_seq<2, 4, 8>{};
+inline constexpr auto half_tw    = meta::val_seq<false, true>{};
 #else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
+inline constexpr auto half_tw    = meta::val_seq<true>{};
 #endif
 inline constexpr auto low_k    = meta::val_seq<true>{};
 inline constexpr auto local_tw = meta::val_seq<true>{};
@@ -67,9 +69,10 @@ namespace pcx::testing {
 template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
 
-template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw>
+template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
 bool test_prototype(uZ fft_size) {
-    const uZ freq_n = 0;
+    constexpr auto half_tw = std::bool_constant<HalfTw>{};
+    const uZ       freq_n  = 0;
 
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
@@ -97,7 +100,7 @@ bool test_prototype(uZ fft_size) {
     }();
 
     using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
-    fimpl::template perform<1, 1>(fft_size, data_ptr, tw);
+    fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw);
 
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
@@ -139,13 +142,20 @@ bool test_prototype(uZ fft_size) {
     return true;
 }
 
-template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw>
-bool run_tests(uZ_seq<VecWidth...>, meta::val_seq<low_k...>, meta::val_seq<local_tw...>, uZ fft_size) {
+template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw, bool... half_tw>
+bool run_tests(uZ_seq<VecWidth...>,
+               meta::val_seq<low_k...>,
+               meta::val_seq<local_tw...>,
+               meta::val_seq<half_tw...>,
+               uZ fft_size) {
     auto lk_passed = [=]<bool LowK>(val_ce<LowK>) {
         auto ltw_passed = [=]<bool LocalTw>(val_ce<LocalTw>) {
-            return ((fft_size <= NodeSize * VecWidth
-                     || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw>(fft_size))
-                    && ...);
+            auto htw_passed = [=]<bool HalfTw>(val_ce<HalfTw>) {
+                return ((fft_size <= NodeSize * VecWidth
+                         || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(fft_size))
+                        && ...);
+            };
+            return (htw_passed(val_ce<half_tw>{}) && ...);
         };
         return (ltw_passed(val_ce<local_tw>{}) && ...);
     };
