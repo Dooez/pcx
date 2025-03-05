@@ -58,10 +58,16 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
     auto n_groups         = 1;
     auto single_load_size = vec_width * node_size;
     while (step >= 1) {
+        if (step == vec_width / 2) {    // skip single load small vector
+            // break;
+        }
         if (step == vec_width * node_size / 2) {    // skip single load
             break;
         }
-        if (step == 2048 / 2) {
+        if (step == rsize / 4) {
+            // break;
+        }
+        if (step == 2048 / 2) {    // skip coherent
             // break;
         }
         if (step < vec_width) {
@@ -88,17 +94,17 @@ template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 #ifdef FULL_FFT_TEST
 inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
 #else
-inline constexpr auto node_sizes = pcx::uZ_seq<8>{};
+inline constexpr auto node_sizes = pcx::uZ_seq<2>{};
 #endif
 
 int main() {
-    auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size) {
-        return (pcx::testing::test_fft<f32, Is>(fft_size) && ...)
-               && (pcx::testing::test_fft<f64, Is>(fft_size) && ...);
+    auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size, uZ freq_n) {
+        return (pcx::testing::test_fft<f32, Is>(fft_size, freq_n) && ...)
+               && (pcx::testing::test_fft<f64, Is>(fft_size, freq_n) && ...);
     };
     uZ fft_size = 2048 * 2;
     while (fft_size <= 2048 * 64) {
-        if (!test_size(node_sizes, fft_size))
+        if (!test_size(node_sizes, fft_size, 17))
             return -1;
         fft_size *= 2;
     }
