@@ -59,6 +59,9 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
     auto single_load_size = vec_width * node_size;
     while (step >= 1) {
         if (step == vec_width * node_size / 2) {    // skip single load
+            break;
+        }
+        if (step == 2048 / 2) {
             // break;
         }
         if (step < vec_width) {

@@ -14,8 +14,8 @@ inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 #endif
-inline constexpr auto low_k    = meta::val_seq<true>{};
-inline constexpr auto local_tw = meta::val_seq<true>{};
+inline constexpr auto low_k    = meta::val_seq<false>{};
+inline constexpr auto local_tw = meta::val_seq<false>{};
 
 template<typename T, uZ NodeSize>
 bool test_fft(uZ fft_size);
@@ -89,17 +89,29 @@ bool test_prototype(uZ fft_size) {
     auto datavec2 = datavec;
     naive_fft(datavec, NodeSize, Width);
 
+    using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
+
     auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
-    auto  tw       = [=] {
+    auto  twvec    = [=] {
+        if constexpr (LocalTw) {
+            return [] {};
+        } else {
+            auto tws = std::vector<fX>{};
+            tws.reserve(fft_size * 10);
+            fimpl::insert_tw(tws, fft_size, half_tw);
+            return tws;
+        }
+    }();
+
+    auto tw = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
             return tw_t{1, 0};
         } else {
-            // return tw_t{tw_ptr};
+            return tw_t{twvec.data()};
         }
     }();
 
-    using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
     fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw);
 
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
