@@ -607,7 +607,7 @@ struct coherent_subtransform {
     static constexpr auto width            = uZ_ce<Width>{};
     static constexpr auto w_pck            = cxpack<width, T>{};
     static constexpr auto node_size        = uZ_ce<NodeSize>{};
-    static constexpr auto skip_single_load = true;
+    static constexpr auto skip_single_load = false;
 
     static constexpr auto get_align_node(uZ data_size) {
         constexpr auto single_load_size = node_size * width;
@@ -665,11 +665,15 @@ struct coherent_subtransform {
             return;
         }
 
+        if constexpr (tw_data.is_local()) {
+            tw_data.start_fft_size *= final_k_count * 2;
+            tw_data.start_k *= final_k_count * 2;
+        }
         if constexpr (lowk) {
             single_load<dst_pck, width, lowk>(data_ptr, data_ptr, tw_data, half_tw);
         }
         constexpr auto start = lowk ? 1UZ : 0UZ;
-        for (auto k: stdv::iota(start, final_k_count)) {
+        for (auto k: stdv::iota(start, final_k_count * 2)) {
             auto dest = data_ptr + k * single_load_size * 2;
             single_load<dst_pck, width, false>(dest, dest, tw_data, half_tw);
         }
@@ -1126,7 +1130,6 @@ struct transform {
             tw_data = tw_data_bak;
             iterate_buckets(uZ_ce<pass_align_node>{}, w_pck, pass_k_count);
         }
-        tw_data_bak                        = tw_data;
         constexpr auto skip_coherent_subtf = false;
         if constexpr (skip_coherent_subtf) {
             for (auto i: stdv::iota(0U, data_size / Width)) {
@@ -1137,6 +1140,10 @@ struct transform {
             return;
         }
 
+        if constexpr (tw_data.is_local()) {
+            tw_data.start_fft_size = bucket_group_count;
+            tw_data.start_k        = 0;
+        }
         constexpr auto coherent_align_node = uZ_ce<coh_subtf::get_align_node(bucket_size)>{};
         coh_subtf::perform(dst_pck,
                            w_pck,
@@ -1148,8 +1155,9 @@ struct transform {
                            tw_data);
         for (uZ i_bg: stdv::iota(1U, bucket_group_count)) {
             if constexpr (tw_data.is_local()) {
-                tw_data         = tw_data_bak;
-                tw_data.start_k = i_bg;
+                tw_data                = tw_data_bak;
+                tw_data.start_fft_size = bucket_group_count;
+                tw_data.start_k        = i_bg;
             }
             auto bucket_ptr = dest_ptr + i_bg * bucket_count * bucket_size * 2;
             coh_subtf::perform(dst_pck,

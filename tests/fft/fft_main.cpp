@@ -62,7 +62,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
             // break;
         }
         if (step == vec_width * node_size / 2) {    // skip single load
-            break;
+            // break;
         }
         if (step == rsize / 4) {
             // break;
@@ -94,7 +94,7 @@ template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 #ifdef FULL_FFT_TEST
 inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
 #else
-inline constexpr auto node_sizes = pcx::uZ_seq<2>{};
+inline constexpr auto node_sizes = pcx::uZ_seq<8>{};
 #endif
 
 int main() {
