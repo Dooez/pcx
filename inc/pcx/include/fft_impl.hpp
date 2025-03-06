@@ -866,7 +866,6 @@ struct coherent_subtransform {
                     return tupi::pass |
                            [](simd::any_cx_vec auto tw) { return tupi::make_tuple(tw, mul_by_j<-1>(tw)); };
                 } else {
-                    static_assert(false);
                     return tupi::pass    //
                            | [](simd::any_cx_vec auto tw) { return tupi::make_tuple(tw, mul_by_j<-1>(tw)); }
                            | tupi::pipeline(tupi::pass, simd::evaluate)    //
@@ -890,7 +889,7 @@ struct coherent_subtransform {
                 | tupi::pipeline(tupi::apply | tupi::group_invoke(split_regroup<width / NGroups>),    //
                                  ltw);
 
-            if constexpr (half_tw) {
+            if constexpr (half_tw && node_size > 2) {
                 std::tie(lo, hi) = switch_1_2(lo, hi);
             }
             auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
