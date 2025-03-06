@@ -12,7 +12,7 @@ inline constexpr auto half_tw    = meta::val_seq<false, true>{};
 #else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
-inline constexpr auto half_tw    = meta::val_seq<false>{};
+inline constexpr auto half_tw    = meta::val_seq<true>{};
 #endif
 inline constexpr auto low_k    = meta::val_seq<true>{};
 inline constexpr auto local_tw = meta::val_seq<true>{};
@@ -125,14 +125,14 @@ bool test_prototype(uZ fft_size, uZ freq_n = 17) {
                      LocalTw ? ", local tw" : "");
         uZ err_cnt = 0;
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999999999)) {
-            if (naive != pcx) {
+            // if (naive != pcx) {
                 std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
                              i,
                              (naive),
                              (pcx),
                              (naive - pcx));
                 ++err_cnt;
-            }
+            // }
             // if (err_cnt > 1000)
             //     break;
             if (std::abs(naive - pcx) > 1) {
