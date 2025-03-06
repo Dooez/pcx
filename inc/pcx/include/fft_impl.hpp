@@ -778,7 +778,7 @@ struct coherent_subtransform {
         }
         auto [lo, hi] = [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
-                if constexpr (NGroups == 2) {
+                if constexpr (NGroups == width) {
                     return regroup_btfly<NGroups>(data_lo,
                                                   data_hi,
                                                   regroup_tw_fact(uZ_ce<NGroups>{}),
@@ -792,11 +792,11 @@ struct coherent_subtransform {
         if constexpr (half_tw && node_size > 2) {
             // [ 0  4  8 12] [ 2  6 10 14] before
             // [ 0  2  4  6] [ 8 10 12 14]
-            // lo = regroup_half_tw(lo);
-            // hi = regroup_half_tw(hi);
+            lo = regroup_half_tw(lo);
+            hi = regroup_half_tw(hi);
             // std::tie(lo, hi) = switch_1_2(lo, hi);
         }
-        auto btfly_res_1 = tupi::group_invoke(regroup<width / 2, width>, lo, hi);
+        auto btfly_res_1 = tupi::group_invoke(regroup<1, width>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
         if constexpr (half_tw && node_size > 2) {
             // [ 0  4  8 12] [ 2  6 10 14] before
@@ -804,12 +804,12 @@ struct coherent_subtransform {
             // lo = regroup_half_tw(lo);
             // hi = regroup_half_tw(hi);
             // std::tie(lo, hi) = switch_1_2(lo, hi);
-            res = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                return tupi::tuple_cat(tupi::make_tuple(get<Is * 4>(res),
-                                                        get<Is * 4 + 2>(res),
-                                                        get<Is * 4 + 1>(res),
-                                                        get<Is * 4 + 3>(res))...);
-            }(make_uZ_seq<node_size / 4>{});
+            // [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+            //     return tupi::tuple_cat(tupi::make_tuple(get<Is * 4>(res),
+            //                                             get<Is * 4 + 2>(res),
+            //                                             get<Is * 4 + 1>(res),
+            //                                             get<Is * 4 + 3>(res))...);
+            // }(make_uZ_seq<node_size / 4>{});
             // res = tupi::make_flat_tuple(switch_1_2(xlo, xhi));
         }
         auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
