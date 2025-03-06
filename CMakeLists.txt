@@ -12,7 +12,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(FULL_FFT_TEST OFF)
+    set(FULL_FFT_TEST ON)
     if(${FULL_FFT_TEST})
         target_sources(test_fft PUBLIC
         tests/fft/f32_node2.cpp
@@ -28,8 +28,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
         target_compile_definitions(test_fft PUBLIC FULL_FFT_TEST)
     else()
         target_sources(test_fft PUBLIC
-        tests/fft/f32_node8.cpp
-        tests/fft/f64_node8.cpp
+        tests/fft/f32_node2.cpp
+        tests/fft/f64_node2.cpp
         tests/fft/fft_main.cpp
         )
     endif()

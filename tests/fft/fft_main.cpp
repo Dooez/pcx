@@ -112,9 +112,9 @@ template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
 template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 }    // namespace pcx::testing
 #ifdef FULL_FFT_TEST
-inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
+inline constexpr auto node_sizes = pcx::uZ_seq<4, 8, 16>{};
 #else
-inline constexpr auto node_sizes = pcx::uZ_seq<8>{};
+inline constexpr auto node_sizes = pcx::uZ_seq<2>{};
 #endif
 
 int main() {

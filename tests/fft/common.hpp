@@ -116,22 +116,23 @@ bool test_prototype(uZ fft_size, uZ freq_n = 17) {
     auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
                                        [](auto v) { return std::get<0>(v) != std::get<1>(v); });
     if (subtform_error) {
-        std::println("[Error] {}×{}, width {}, node size {}{}{}.",
+        std::println("[Error] {}×{}, width {}, node size {}{}{}{}.",
                      pcx::meta::types<fX>{},
                      fft_size,
                      Width,
                      NodeSize,
                      LowK ? ", low k" : "",
-                     LocalTw ? ", local tw" : "");
+                     LocalTw ? ", local tw" : "",
+                     half_tw ? ", half tw" : "");
         uZ err_cnt = 0;
         for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999999999)) {
             // if (naive != pcx) {
-                std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                             i,
-                             (naive),
-                             (pcx),
-                             (naive - pcx));
-                ++err_cnt;
+            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                         i,
+                         (naive),
+                         (pcx),
+                         (naive - pcx));
+            ++err_cnt;
             // }
             // if (err_cnt > 1000)
             //     break;
@@ -148,13 +149,14 @@ bool test_prototype(uZ fft_size, uZ freq_n = 17) {
         }
         return false;
     }
-    std::println("[Success] {}×{}, width {}, node size {}{}{}.",
+    std::println("[Success] {}×{}, width {}, node size {}{}{}{}.",
                  pcx::meta::types<fX>{},
                  fft_size,
                  Width,
                  NodeSize,
                  LowK ? ", low k" : "",
-                 LocalTw ? ", local tw" : "");
+                 LocalTw ? ", local tw" : "",
+                 half_tw ? ", half tw" : "");
     return true;
 }
 
