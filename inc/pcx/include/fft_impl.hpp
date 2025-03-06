@@ -908,6 +908,15 @@ struct coherent_subtransform {
     constexpr static auto regroup_btfly = regroup_btfly_t<NGroups>{};
 
     static constexpr struct {
+        // lo: [0 0 1 1] [4 4 5 5] hi: [2 2 3 3] [6 6 7 7]
+        // std::tie(lo, hi) = switch_1_2(lo, hi);
+        // lo: [0 0 1 1] [2 2 3 3] hi: [4 4 5 5] [6 6 7 7]
+
+        // after split-ileave:
+        // lo: [0 0 4 4] [2 2 6 6] hi: [1 1 5 5] [3 3 7 7]
+        // corresponding twiddles:
+        // [  1   1   5   5] [        3         3         7         7]
+        // [tw0 tw0 tw1 tw1] [conj(tw0) conj(tw0) conj(tw1) conj(tw1)]
         template<simd::any_cx_vec... Tlo, simd::any_cx_vec... Thi>
         PCX_AINLINE static auto operator()(tupi::tuple<Tlo...> lo, tupi::tuple<Thi...> hi) {
             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
