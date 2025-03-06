@@ -740,7 +740,7 @@ struct coherent_subtransform {
                     auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
                     auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
                     auto tw_arr   = [=]<uZ... Is>(uZ_seq<Is...>) {
-                        if constexpr (half_tw) {
+                        if constexpr (half_tw && node_size > 2) {
                             return std::array{wnk_br<T>(fft_size, k + Is * 2)...};
                         } else {
                             return std::array{wnk_br<T>(fft_size, k + Is)...};
