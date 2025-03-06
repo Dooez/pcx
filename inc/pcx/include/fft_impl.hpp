@@ -765,17 +765,6 @@ struct coherent_subtransform {
             return tupi::make_tuple(lo, hi);
         }(make_uZ_seq<node_size / 2>{});
 
-        if constexpr (half_tw && node_size > 2) {
-            // lo: [0 0 1 1] [4 4 5 5] hi: [2 2 3 3] [6 6 7 7]
-            // lo: [0 0 1 1] [2 2 3 3] hi: [4 4 5 5] [6 6 7 7]
-            // std::tie(data_lo, data_hi) = switch_1_2(data_lo, data_hi);
-
-            // after split-ileave
-            // lo: [0 0 4 4] [2 2 6 6] hi: [1 1 5 5] [3 3 7 7]
-            //
-            // [  1   1   5   5] [        3         3         7         7]
-            // [tw0 tw0 tw1 tw1] [conj(tw0) conj(tw0) conj(tw1) conj(tw1)]
-        }
         auto [lo, hi] = [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
                 if constexpr (NGroups == width) {
@@ -794,25 +783,10 @@ struct coherent_subtransform {
             // [ 0  2  4  6] [ 8 10 12 14]
             lo = regroup_half_tw(lo);
             hi = regroup_half_tw(hi);
-            // std::tie(lo, hi) = switch_1_2(lo, hi);
         }
         auto btfly_res_1 = tupi::group_invoke(regroup<1, width>, lo, hi);
         auto res         = tupi::make_flat_tuple(btfly_res_1);
-        if constexpr (half_tw && node_size > 2) {
-            // [ 0  4  8 12] [ 2  6 10 14] before
-            // [ 0  2  4  6] [ 8 10 12 14]
-            // lo = regroup_half_tw(lo);
-            // hi = regroup_half_tw(hi);
-            // std::tie(lo, hi) = switch_1_2(lo, hi);
-            // [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-            //     return tupi::tuple_cat(tupi::make_tuple(get<Is * 4>(res),
-            //                                             get<Is * 4 + 2>(res),
-            //                                             get<Is * 4 + 1>(res),
-            //                                             get<Is * 4 + 3>(res))...);
-            // }(make_uZ_seq<node_size / 4>{});
-            // res = tupi::make_flat_tuple(switch_1_2(xlo, xhi));
-        }
-        auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
+        auto res_rep     = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
         [data_ptr, res_rep]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             (simd::cxstore<DestPackSize>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
         }(make_uZ_seq<node_size>{});
@@ -919,7 +893,6 @@ struct coherent_subtransform {
             if constexpr (half_tw) {
                 std::tie(lo, hi) = switch_1_2(lo, hi);
             }
-            // auto [nlo, nhi]      = switch_1_2(lo, hi);
             auto [regrouped, tw] = regr_ltw(tupi::forward_as_tuple(lo, hi),    //
                                             tupi::forward_as_tuple(get_tw_tup, tw_idx_tup));
 
