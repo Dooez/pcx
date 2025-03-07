@@ -739,15 +739,21 @@ struct coherent_subtransform {
                 return [=]<uZ KGroup>(uZ_ce<KGroup>) {
                     auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
                     auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
-                    auto tw_arr   = [=]<uZ... Is>(uZ_seq<Is...>) {
-                        if constexpr (half_tw && node_size > 2) {
+
+                    constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
+
+                    auto tw_arr = [=]<uZ... Is>(uZ_seq<Is...>) {
+                        if constexpr (half_tw) {
                             return std::array{wnk_br<T>(fft_size, k + Is * 2)...};
                         } else {
                             return std::array{wnk_br<T>(fft_size, k + Is)...};
                         }
-                    }(make_uZ_seq<TwCount>{});
-                    auto tw = simd::cxload<1, TwCount>(reinterpret_cast<T*>(tw_arr.data()));
-                    return tw;
+                    }(make_uZ_seq<adj_tw_count>{});
+                    if constexpr (adj_tw_count < 2) {
+                        return simd::cxbroadcast<1, 2>(reinterpret_cast<T*>(tw_arr.data()));
+                    } else {
+                        return simd::cxload<1, adj_tw_count>(reinterpret_cast<T*>(tw_arr.data()));
+                    }
                 };
             } else {
                 auto l_tw_ptr = tw_data.tw_ptr;
@@ -950,7 +956,7 @@ struct coherent_subtransform {
         tupi::pass    
         | []<uZ KGroup>(auto&& get_tw, uZ_ce<KGroup> k) {
             auto tw = get_tw(k);
-            auto twr = simd::repack<Count>(tw);
+            auto twr = simd::repack<decltype(tw)::width()>(tw);
             return twr;
           }
         | tupi::group_invoke([](auto v){

@@ -12,26 +12,28 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(FULL_FFT_TEST ON)
+    set(FULL_FFT_TEST OFF)
     if(${FULL_FFT_TEST})
         target_sources(test_fft PUBLIC
-        tests/fft/f32_node2.cpp
-        tests/fft/f32_node4.cpp
-        tests/fft/f32_node8.cpp
-        tests/fft/f32_node16.cpp
-        tests/fft/f64_node2.cpp
-        tests/fft/f64_node4.cpp
-        tests/fft/f64_node8.cpp
-        tests/fft/f64_node16.cpp
-        tests/fft/fft_main.cpp
+            tests/fft/f32_node2.cpp
+            tests/fft/f32_node4.cpp
+            tests/fft/f32_node8.cpp
+            tests/fft/f32_node16.cpp
+            tests/fft/f64_node2.cpp
+            tests/fft/f64_node4.cpp
+            tests/fft/f64_node8.cpp
+            tests/fft/f64_node16.cpp
+            tests/fft/fft_main.cpp
         )
         target_compile_definitions(test_fft PUBLIC FULL_FFT_TEST)
     else()
+        set(FFT_NODE_SIZE 2)
         target_sources(test_fft PUBLIC
-        tests/fft/f32_node2.cpp
-        tests/fft/f64_node2.cpp
-        tests/fft/fft_main.cpp
+            tests/fft/f32_node${FFT_NODE_SIZE}.cpp
+            tests/fft/f64_node${FFT_NODE_SIZE}.cpp
+            tests/fft/fft_main.cpp
         )
+        target_compile_definitions(test_fft PRIVATE -DFFT_NODE_SIZE=${FFT_NODE_SIZE})
     endif()
 
     add_executable(test_simd tests/test_simd.cpp)
