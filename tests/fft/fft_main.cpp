@@ -69,13 +69,13 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
             // break;
         }
         if (step == vec_width * node_size / 2) {    // skip single load
-            // break;
+            break;
         }
         if (step == rsize / 4) {
             // break;
         }
         if (step == 2048 / 2) {    // skip coherent
-            // break;
+            break;
         }
         if (step < vec_width / 4) {
             // break;
@@ -118,16 +118,91 @@ inline constexpr auto node_sizes = pcx::uZ_seq<FFT_NODE_SIZE>{};
 #endif
 
 int main() {
-    auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size, uZ freq_n) {
+    auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size, f64 freq_n) {
         return (pcx::testing::test_fft<f32, Is>(fft_size, freq_n) && ...)
                && (pcx::testing::test_fft<f64, Is>(fft_size, freq_n) && ...);
     };
-    uZ fft_size = 2048 * 2;
+    uZ fft_size = 2048 * 4;
     while (fft_size <= 2048 * 64) {
         // if (!test_size(node_sizes, fft_size, fft_size / 64))
-        if (!test_size(node_sizes, fft_size, 31 * fft_size / 64))
+        if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
             return -1;
         fft_size *= 2;
     }
     return 0;
 }
+
+namespace pcx::testing {
+
+template<typename fX>
+bool check_correctness(const std::vector<std::complex<fX>>& naive,
+                       const std::vector<std::complex<fX>>& pcx,
+                       uZ                                   width,
+                       uZ                                   node_size,
+                       bool                                 lowk,
+                       bool                                 local_tw,
+                       bool                                 half_tw) {
+    auto fft_size = naive.size();
+
+    auto subtform_error = stdr::any_of(stdv::zip(naive, pcx),    //
+                                       [](auto v) { return std::get<0>(v) != std::get<1>(v); });
+    if (subtform_error) {
+        std::println("[Error] {}×{}, width {}, node size {}{}{}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width,
+                     node_size,
+                     lowk ? ", low k" : "",
+                     local_tw ? ", local tw" : "",
+                     half_tw ? ", half tw" : "");
+        uZ err_cnt = 0;
+        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), naive, pcx) | stdv::take(999999999)) {
+            if (naive != pcx) {
+                std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                             i,
+                             (naive),
+                             (pcx),
+                             abs(naive - pcx));
+                ++err_cnt;
+            }
+            if (err_cnt > 1000)
+                break;
+            if (std::abs(naive - pcx) > 1) {
+                // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
+                //              i,
+                //              (naive),
+                //              (pcx),
+                //              (naive - pcx));
+                std::println("Over 1 found.");
+                // break;
+            }
+            // }
+        }
+        return false;
+    }
+    std::println("[Success] {}×{}, width {}, node size {}{}{}{}.",
+                 pcx::meta::types<fX>{},
+                 fft_size,
+                 width,
+                 node_size,
+                 lowk ? ", low k" : "",
+                 local_tw ? ", local tw" : "",
+                 half_tw ? ", half tw" : "");
+    return true;
+}
+
+template bool check_correctness<f32>(const std::vector<std::complex<f32>>&,
+                                     const std::vector<std::complex<f32>>&,
+                                     uZ,
+                                     uZ,
+                                     bool,
+                                     bool,
+                                     bool);
+template bool check_correctness<f64>(const std::vector<std::complex<f64>>&,
+                                     const std::vector<std::complex<f64>>&,
+                                     uZ,
+                                     uZ,
+                                     bool,
+                                     bool,
+                                     bool);
+}    // namespace pcx::testing

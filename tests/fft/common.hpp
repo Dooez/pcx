@@ -15,10 +15,10 @@ inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 #endif
 inline constexpr auto low_k    = meta::val_seq<true>{};
-inline constexpr auto local_tw = meta::val_seq<true>{};
+inline constexpr auto local_tw = meta::val_seq<false>{};
 
 template<typename T, uZ NodeSize>
-bool test_fft(uZ fft_size, uZ freq_n);
+bool test_fft(uZ fft_size, f64 freq_n);
 }    // namespace pcx::testing
 
 template<typename T>
@@ -69,8 +69,17 @@ namespace pcx::testing {
 template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
 
+template<typename fX>
+bool check_correctness(const std::vector<std::complex<fX>>& naive,
+                       const std::vector<std::complex<fX>>& pcx,
+                       uZ                                   width,
+                       uZ                                   node_size,
+                       bool                                 lowk,
+                       bool                                 local_tw,
+                       bool                                 half_tw);
+
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
-bool test_prototype(uZ fft_size, uZ freq_n = 17) {
+bool test_prototype(uZ fft_size, f64 freq_n) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
 
     auto datavec = [=]() {
@@ -95,8 +104,8 @@ bool test_prototype(uZ fft_size, uZ freq_n = 17) {
         if constexpr (LocalTw) {
             return [] {};
         } else {
-            auto tws = std::vector<fX>{};
-            tws.reserve(fft_size * 10);
+            auto tws = std::vector<fX>(1024, -3);
+            tws.resize(0);
             fimpl::insert_tw(tws, fft_size, half_tw);
             return tws;
         }
@@ -112,52 +121,7 @@ bool test_prototype(uZ fft_size, uZ freq_n = 17) {
     }();
 
     fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw);
-
-    auto subtform_error = stdr::any_of(stdv::zip(datavec, datavec2),    //
-                                       [](auto v) { return std::get<0>(v) != std::get<1>(v); });
-    if (subtform_error) {
-        std::println("[Error] {}×{}, width {}, node size {}{}{}{}.",
-                     pcx::meta::types<fX>{},
-                     fft_size,
-                     Width,
-                     NodeSize,
-                     LowK ? ", low k" : "",
-                     LocalTw ? ", local tw" : "",
-                     half_tw ? ", half tw" : "");
-        uZ err_cnt = 0;
-        for (auto [i, naive, pcx]: stdv::zip(stdv::iota(0U), datavec, datavec2) | stdv::take(999999999)) {
-            // if (naive != pcx) {
-            std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                         i,
-                         (naive),
-                         (pcx),
-                         (naive - pcx));
-            ++err_cnt;
-            // }
-            // if (err_cnt > 1000)
-            //     break;
-            if (std::abs(naive - pcx) > 1) {
-                // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //
-                //              i,
-                //              (naive),
-                //              (pcx),
-                //              (naive - pcx));
-                std::println("Over 1 found.");
-                // break;
-            }
-            // }
-        }
-        return false;
-    }
-    std::println("[Success] {}×{}, width {}, node size {}{}{}{}.",
-                 pcx::meta::types<fX>{},
-                 fft_size,
-                 Width,
-                 NodeSize,
-                 LowK ? ", low k" : "",
-                 LocalTw ? ", local tw" : "",
-                 half_tw ? ", half tw" : "");
-    return true;
+    return check_correctness(datavec, datavec2, Width, NodeSize, LowK, LocalTw, half_tw);
 }
 
 template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw, bool... half_tw>
@@ -165,8 +129,8 @@ bool run_tests(uZ_seq<VecWidth...>,
                meta::val_seq<low_k...>,
                meta::val_seq<local_tw...>,
                meta::val_seq<half_tw...>,
-               uZ fft_size,
-               uZ freq_n) {
+               uZ  fft_size,
+               f64 freq_n) {
     auto lk_passed = [=]<bool LowK>(val_ce<LowK>) {
         auto ltw_passed = [=]<bool LocalTw>(val_ce<LocalTw>) {
             auto htw_passed = [=]<bool HalfTw>(val_ce<HalfTw>) {
