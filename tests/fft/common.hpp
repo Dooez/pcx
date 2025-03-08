@@ -12,7 +12,7 @@ inline constexpr auto half_tw    = meta::val_seq<false, true>{};
 #else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
-inline constexpr auto half_tw    = meta::val_seq<false>{};
+inline constexpr auto half_tw    = meta::val_seq<true>{};
 #endif
 inline constexpr auto low_k    = meta::val_seq<true>{};
 inline constexpr auto local_tw = meta::val_seq<false>{};

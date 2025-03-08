@@ -752,11 +752,17 @@ struct coherent_subtransform {
                     }
                 };
             } else {
+                constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
+
                 auto l_tw_ptr = tw_data.tw_ptr;
-                tw_data.tw_ptr += TwCount * 2 * NodeSize / 2;
-                return [l_tw_ptr]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
-                    auto tw = simd::cxload<1, TwCount>(l_tw_ptr + TwCount * (2 * KGroup));
-                    return tw;
+                tw_data.tw_ptr += adj_tw_count * 2 * NodeSize / 2;
+                return [=]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
+                    constexpr uZ offset = (half_tw ? KGroup / 2 : KGroup) * adj_tw_count * 2;
+                    if constexpr (adj_tw_count < 2) {
+                        return simd::cxbroadcast<1, 2>(l_tw_ptr + offset);
+                    } else {
+                        return simd::cxload<1, adj_tw_count>(l_tw_ptr + offset);
+                    }
                 };
             }
         };
@@ -853,7 +859,6 @@ struct coherent_subtransform {
                 (insert_tw(uZ_ce<half_tw ? Is * 2 : Is>{}), ...);
             }(make_uZ_seq<raw_tw_count>{});
         };
-
 
         [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, uZ_ce<NGroups> = {}) {
