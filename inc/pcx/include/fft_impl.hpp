@@ -53,6 +53,9 @@ constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
 }
 template<typename T = f64>
 inline auto wnk(uZ n, uZ k) -> std::complex<T> {
+    if (n == 0)
+        throw std::runtime_error("N should be non-zero\n");
+
     while ((k > 0) && (k % 2 == 0)) {
         k /= 2;
         n /= 2;
@@ -489,7 +492,7 @@ struct subtransform {
         }
     }
     template<uZ NodeSizeL>
-    static void insert_iteration_tw(twiddle_range_for<T> auto& r, auto& tw_data, uZ k_count, bool lowk) {
+    static void insert_iteration_tw(twiddle_range_for<T> auto& r, auto& tw_data, uZ& k_count, bool lowk) {
         auto insert = [&](uZ k) {
             constexpr uZ n_tw = NodeSizeL / 2;
             auto         tws  = make_tw_node<T, NodeSizeL>(tw_data.start_fft_size * 2, tw_data.start_k + k);
@@ -506,6 +509,7 @@ struct subtransform {
         for (auto k_group: stdv::iota(k_start, k_count)) {
             insert(k_group);
         }
+        k_count *= NodeSizeL;
         tw_data.start_fft_size *= NodeSizeL;
         tw_data.start_k *= NodeSizeL;
     };
@@ -1226,9 +1230,12 @@ struct transform {
         if constexpr (skip_coherent_subtf) {
             return;
         };
+
+        auto bucket_count = data_size / bucket_size;
+
         constexpr auto coherent_align = align_param<coh_subtf::get_align_node(bucket_size), true>{};
-        for (uZ i_bg: stdv::iota(0U, final_bucket_group_count)) {
-            auto l_tw_data = tw_data_t<T, true>{final_bucket_group_count, i_bg};
+        for (uZ i_bg: stdv::iota(0U, bucket_count)) {
+            auto l_tw_data = tw_data_t<T, true>{bucket_count, i_bg};
             coh_subtf::insert_tw(r, coherent_align, i_bg == 0, bucket_size, l_tw_data, half_tw);
         }
     };

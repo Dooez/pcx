@@ -75,7 +75,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
             // break;
         }
         if (step == 2048 / 2) {    // skip coherent
-            break;
+            // break;
         }
         if (step < vec_width / 4) {
             // break;
