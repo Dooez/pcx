@@ -69,7 +69,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
             // break;
         }
         if (step == vec_width * node_size / 2) {    // skip single load
-            break;
+            // break;
         }
         if (step == rsize / 4) {
             // break;

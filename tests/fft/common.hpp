@@ -12,7 +12,7 @@ inline constexpr auto half_tw    = meta::val_seq<false, true>{};
 #else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
-inline constexpr auto half_tw    = meta::val_seq<true>{};
+inline constexpr auto half_tw    = meta::val_seq<false>{};
 #endif
 inline constexpr auto low_k    = meta::val_seq<true>{};
 inline constexpr auto local_tw = meta::val_seq<false>{};
@@ -104,7 +104,7 @@ bool test_prototype(uZ fft_size, f64 freq_n) {
         if constexpr (LocalTw) {
             return [] {};
         } else {
-            auto tws = std::vector<fX>(1024, -3);
+            auto tws = std::vector<fX>(fft_size * 2, -3);
             tws.resize(0);
             fimpl::insert_tw(tws, fft_size, half_tw);
             return tws;

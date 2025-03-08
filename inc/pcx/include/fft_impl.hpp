@@ -601,7 +601,8 @@ struct coherent_subtransform {
     static constexpr auto width            = uZ_ce<Width>{};
     static constexpr auto node_size        = uZ_ce<NodeSize>{};
     static constexpr auto w_pck            = cxpack<width, T>{};
-    static constexpr auto skip_single_load = true;
+    static constexpr auto skip_single_load = false;
+    static constexpr auto skip_sub_width   = false;
 
     static constexpr auto get_align_node(uZ data_size) {
         constexpr auto single_load_size = node_size * width;
@@ -690,7 +691,7 @@ struct coherent_subtransform {
             insert_single_load_tw(r, tw_data, lowk, half_tw);
         }
         auto k_start = lowk ? 1UZ : 0UZ;
-        for (auto k: stdv::iota(k_start, final_k_count)) {
+        for (auto k: stdv::iota(k_start, final_k_count * 2)) {
             insert_single_load_tw(r, tw_data, false, half_tw);
         }
     }
@@ -759,6 +760,18 @@ struct coherent_subtransform {
                 };
             }
         };
+        if constexpr (skip_sub_width) {
+            auto res     = tupi::make_flat_tuple(btfly_res_0);
+            auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
+            [data_ptr, res_rep]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                (simd::cxstore<DestPackSize>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
+            }(make_uZ_seq<node_size>{});
+
+            if constexpr (LocalTw) {
+                ++tw_data.start_k;
+            }
+            return;
+        }
 
         auto [data_lo, data_hi] = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             auto lo = tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
@@ -811,6 +824,11 @@ struct coherent_subtransform {
                                                  tw_data.start_k);
             insert(tws);
         }
+        if constexpr (skip_sub_width) {
+            ++tw_data.start_k;
+            return;
+        }
+
         auto regroup_tw_fact = [&]<uZ TwCount>(uZ_ce<TwCount>) {
             return [=]<uZ KGroup>(uZ_ce<KGroup>) {
                 auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
@@ -835,6 +853,7 @@ struct coherent_subtransform {
                 (insert_tw(uZ_ce<half_tw ? Is * 2 : Is>{}), ...);
             }(make_uZ_seq<raw_tw_count>{});
         };
+
 
         [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, uZ_ce<NGroups> = {}) {
