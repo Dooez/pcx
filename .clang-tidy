@@ -6,6 +6,7 @@ Checks: '*, -altera*, -fuchsia*, -llvm-*, -llvmlibc-*, -cert-*,
   -readability-const-return-type,
   -readability-named-parameter,
   -readability-math-missing-parentheses,
+  -readability-function-cognitive-complexity,
   -hicpp-named-parameter,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -misc-include-cleaner'
