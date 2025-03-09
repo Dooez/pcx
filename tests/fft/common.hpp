@@ -9,12 +9,13 @@ namespace pcx::testing {
 inline constexpr auto f32_widths = uZ_seq<4, 8, 16>{};
 inline constexpr auto f64_widths = uZ_seq<2, 4, 8>{};
 inline constexpr auto half_tw    = meta::val_seq<false, true>{};
+inline constexpr auto low_k      = meta::val_seq<false, true>{};
 #else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
+inline constexpr auto low_k      = meta::val_seq<false>{};
 #endif
-inline constexpr auto low_k    = meta::val_seq<true>{};
 inline constexpr auto local_tw = meta::val_seq<false>{};
 
 template<typename T, uZ NodeSize>
@@ -81,6 +82,7 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
 bool test_prototype(uZ fft_size, f64 freq_n) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
+    constexpr auto lowk    = std::bool_constant<LowK>{};
 
     auto datavec = [=]() {
         auto vec = std::vector<std::complex<fX>>(fft_size);
@@ -106,7 +108,7 @@ bool test_prototype(uZ fft_size, f64 freq_n) {
         } else {
             auto tws = std::vector<fX>(fft_size * 2, -3);
             tws.resize(0);
-            fimpl::insert_tw(tws, fft_size, half_tw);
+            fimpl::insert_tw(tws, fft_size, lowk, half_tw);
             return tws;
         }
     }();
@@ -119,8 +121,9 @@ bool test_prototype(uZ fft_size, f64 freq_n) {
             return tw_t{twvec.data()};
         }
     }();
+    std::println("Fft size:{}, twiddle count: {}.", fft_size, twvec.size());
 
-    fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw);
+    fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw, lowk);
     return check_correctness(datavec, datavec2, Width, NodeSize, LowK, LocalTw, half_tw);
 }
 
