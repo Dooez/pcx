@@ -316,7 +316,7 @@ struct btfly_node_dit {
             } else if constexpr (I == 1) {
                 return imag_unit<-1>;
             } else {
-                return simd::cxbroadcast<1, Width>(reinterpret_cast<const T*>(&tupi::get<I>(values)));
+                return simd::cxbroadcast<1, Width>(&tupi::get<I>(values));
             }
         }
         template<uZ Size>
@@ -450,8 +450,7 @@ struct subtransform {
                         auto tws = make_tw_node<T, NodeSizeL>(l_tw_data.start_fft_size * 2,    //
                                                               l_tw_data.start_k + k);
 
-                        auto tw_ptr = reinterpret_cast<T*>(tws.data());
-                        return tupi::make_tuple(simd::cxbroadcast<1, width>(tw_ptr + 2 * Is)...);
+                        return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + 2 * Is)...);
                     }(make_uZ_seq<n_tw>{});
                 };
             } else {
@@ -724,15 +723,14 @@ struct coherent_subtransform {
                                         tw_data_t<T, LocalTw>&     tw_data,
                                         meta::any_ce_of<bool> auto half_tw) {
         auto data = [src_ptr]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-            return tupi::make_tuple(simd::cxload<SrcPackSize, Width>(src_ptr + Width * 2 * Is)...);
+            return tupi::make_tuple(simd::cxload<SrcPackSize, width>(src_ptr + width * 2 * Is)...);
         }(make_uZ_seq<node_size>{});
 
         auto get_tw = [&tw_data] {
             if constexpr (LocalTw) {
                 return [=]<uZ... Is>(uZ_seq<Is...>) {
-                    auto tws    = make_tw_node<T, node_size>(tw_data.start_fft_size * 2, tw_data.start_k);
-                    auto tw_ptr = reinterpret_cast<T*>(tws.data());
-                    return tupi::make_tuple(simd::cxbroadcast<1, width>(tw_ptr + 2 * Is)...);
+                    auto tw = make_tw_node<T, node_size>(tw_data.start_fft_size * 2, tw_data.start_k);
+                    return tupi::make_tuple(simd::cxbroadcast<1, width>(tw.data() + 2 * Is)...);
                 }(make_uZ_seq<node_size / 2>{});
             } else {
                 auto tw0 = [tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
@@ -754,36 +752,38 @@ struct coherent_subtransform {
         auto regroup_tw_fact = [&]<uZ TwCount> PCX_LAINLINE(uZ_ce<TwCount>) {
             if constexpr (LocalTw) {
                 return [=]<uZ KGroup>(uZ_ce<KGroup>) {
-                    auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
-                    auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
+                    auto fft_size = tw_data.start_fft_size * node_size * TwCount;
+                    auto k        = tw_data.start_k * node_size * TwCount / 2 + KGroup * TwCount;
 
                     constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
 
-                    auto tw_arr = [=]<uZ... Is>(uZ_seq<Is...>) {
+                    auto tw = [=]<uZ... Is>(uZ_seq<Is...>) {
                         if constexpr (half_tw) {
                             return std::array{wnk_br<T>(fft_size, k + Is * 2)...};
                         } else {
                             return std::array{wnk_br<T>(fft_size, k + Is)...};
                         }
                     }(make_uZ_seq<adj_tw_count>{});
+
                     if constexpr (adj_tw_count < 2) {
-                        return simd::cxbroadcast<1, 2>(reinterpret_cast<T*>(tw_arr.data()));
+                        return simd::cxbroadcast<1, 2>(tw.data());
                     } else {
-                        return simd::cxload<1, adj_tw_count>(reinterpret_cast<T*>(tw_arr.data()));
+                        auto twv = simd::cxload<1, adj_tw_count>(tw.data());
+                        return simd::repack<adj_tw_count>(tw);
                     }
                 };
             } else {
                 constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
 
                 auto l_tw_ptr = tw_data.tw_ptr;
-                tw_data.tw_ptr += TwCount * 2 * NodeSize / 2 / (half_tw ? 2 : 1);
+                tw_data.tw_ptr += TwCount * 2 * node_size / 2 / (half_tw ? 2 : 1);
 
                 return [=]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
                     constexpr uZ offset = (half_tw ? KGroup / 2 : KGroup) * adj_tw_count * 2;
                     if constexpr (adj_tw_count < 2) {
                         return simd::cxbroadcast<1, 2>(l_tw_ptr + offset);
                     } else {
-                        return simd::cxload<1, adj_tw_count>(l_tw_ptr + offset);
+                        return simd::cxload<adj_tw_count, adj_tw_count>(l_tw_ptr + offset);
                     }
                 };
             }
@@ -871,6 +871,10 @@ struct coherent_subtransform {
                         return std::array{wnk_br<T>(fft_size, k + Is)...};
                     }
                 }(make_uZ_seq<adj_tw_count>{});
+                if constexpr (adj_tw_count > 1) {
+                    auto data = simd::repack<adj_tw_count>(simd::cxload<1, adj_tw_count>(tw_arr.data()));
+                    simd::cxstore<adj_tw_count>(reinterpret_cast<T*>(tw_arr.data()), data);
+                }
                 insert(tw_arr);
             };
         };
@@ -1003,9 +1007,7 @@ struct coherent_subtransform {
     static constexpr auto load_tw =
         tupi::pass    
         | []<uZ KGroup>(auto&& get_tw, uZ_ce<KGroup> k) {
-            auto tw = get_tw(k);
-            auto twr = simd::repack<decltype(tw)::width()>(tw);
-            return twr;
+            return get_tw(k);
           }
         | tupi::group_invoke([](auto v){
                 return vec_traits::upsample(v.value);
@@ -1015,8 +1017,8 @@ struct coherent_subtransform {
 
 
     /**
-     * @brief Regroups input sismd vectors, similar to `simd::repack`, except
-     * that the real and imaginary part are processed separately.
+     * @brief Regroups input simd vectors, similar to `simd::repack`, except
+     * that the real and imaginary part are processed independently.
      */
     template<uZ GroupTo, uZ GroupFrom>
     static constexpr auto regroup = 
@@ -1040,7 +1042,7 @@ struct coherent_subtransform {
      *  @brief Splits the input simd vectors into even/odd chunks of `ChunkSize`,
      *  interleaves the matching chunks of `a` and `b`.
      *
-     *  @return `tupi::tuple<>` the interleaved even/odd chunks.
+     *  @return `tupi::tuple<>{even, odd}` interleaved even/odd chunks.
      *
      *  Example: 
      *  Width     == 8

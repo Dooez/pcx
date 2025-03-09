@@ -69,6 +69,12 @@ struct cxbroadcast_t {
     {
         return bcast_impl(src);
     }
+    template<floating_point T>
+    PCX_AINLINE auto operator()(const std::complex<T>* src) const
+        requires(SrcPackSize == 1 && Width <= max_width<T>)
+    {
+        return (*this)(reinterpret_cast<const T*>(src));
+    }
 };
 
 template<uZ SrcPackSize, uZ Width>
@@ -98,6 +104,12 @@ struct cxload_t {
             .m_imag = load<real_width>(src + load_offset),    //NOLINT(*pointer*)
         };
     }
+    template<floating_point T>
+    PCX_AINLINE auto operator()(const std::complex<T>* src) const
+        requires(SrcPackSize == 1 && Width <= max_width<T>)
+    {
+        return (*this)(reinterpret_cast<const T*>(src));
+    }
 };
 template<uZ DestPackSize>
     requires power_of_two<DestPackSize>
@@ -108,6 +120,13 @@ struct cxstore_t {
         constexpr uZ store_offset = std::max(DestPackSize, V::width());
         store(dest, data.real());
         store(dest + store_offset, data.imag());
+    }
+    template<eval_cx_vec V>
+        requires(DestPackSize == 1 && V::pack_size() == 1)
+    PCX_AINLINE void operator()(std::complex<typename V::real_type>* dest, V data) const {
+        auto* dest_ptr = reinterpret_cast<typename V::real_type*>(dest);
+        store(dest_ptr, data.real());
+        store(dest_ptr + 1, data.imag());
     }
 };
 }    // namespace detail_
