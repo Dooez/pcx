@@ -1,6 +1,7 @@
 #pragma once
 #include "pcx/include/fft_impl.hpp"
 
+#include <cmath>
 #include <print>
 #include <vector>
 
@@ -16,7 +17,7 @@ inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<false>{};
 #endif
-inline constexpr auto local_tw = meta::val_seq<false>{};
+inline constexpr auto local_tw = meta::val_seq<true>{};
 
 template<typename T, uZ NodeSize>
 bool test_fft(uZ fft_size, f64 freq_n);
@@ -70,6 +71,12 @@ namespace pcx::testing {
 template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
 
+inline auto check_nan(const std::vector<std::complex<f32>>& vec) {
+    return std::ranges::any_of(vec, [](auto v) { return std::isnan(v.real()) || std::isnan(v.imag()); });
+};
+inline auto check_nan(const std::vector<std::complex<f64>>& vec) {
+    return std::ranges::any_of(vec, [](auto v) { return std::isnan(v.real()) || std::isnan(v.imag()); });
+};
 template<typename fX>
 bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        const std::vector<std::complex<fX>>& pcx,
@@ -121,7 +128,8 @@ bool test_prototype(uZ fft_size, f64 freq_n) {
             return tw_t{twvec.data()};
         }
     }();
-    std::println("Fft size:{}, twiddle count: {}.", fft_size, twvec.size());
+    // std::println("Fft size:{}, twiddle count: {}.", fft_size, twvec.size());
+    // auto fnan = check_nan(datavec2);
 
     fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw, lowk);
     return check_correctness(datavec, datavec2, Width, NodeSize, LowK, LocalTw, half_tw);

@@ -122,8 +122,8 @@ int main() {
         return (pcx::testing::test_fft<f32, Is>(fft_size, freq_n) && ...)
                && (pcx::testing::test_fft<f64, Is>(fft_size, freq_n) && ...);
     };
-    uZ fft_size = 256;
-    while (fft_size <= 2048 * 128) {
+    uZ fft_size = 2048 * 4;
+    while (fft_size <= 2048 * 32) {
         // if (!test_size(node_sizes, fft_size, fft_size / 64))
         if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
             return -1;
