@@ -608,8 +608,8 @@ struct coherent_subtransform {
     static constexpr auto width            = uZ_ce<Width>{};
     static constexpr auto node_size        = uZ_ce<NodeSize>{};
     static constexpr auto w_pck            = cxpack<width, T>{};
-    static constexpr auto skip_single_load = true;
-    static constexpr auto skip_sub_width   = true;
+    static constexpr auto skip_single_load = false;
+    static constexpr auto skip_sub_width   = false;
 
     static constexpr auto get_align_node(uZ data_size) {
         constexpr auto single_load_size = node_size * width;
@@ -762,7 +762,8 @@ struct coherent_subtransform {
                 constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
 
                 auto l_tw_ptr = tw_data.tw_ptr;
-                tw_data.tw_ptr += adj_tw_count * 2 * NodeSize / 2;
+                tw_data.tw_ptr += TwCount * 2 * NodeSize / 2 / (half_tw ? 2 : 1);
+
                 return [=]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
                     constexpr uZ offset = (half_tw ? KGroup / 2 : KGroup) * adj_tw_count * 2;
                     if constexpr (adj_tw_count < 2) {
