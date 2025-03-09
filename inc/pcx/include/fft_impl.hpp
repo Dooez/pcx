@@ -577,11 +577,18 @@ struct subtransform {
             insert_iteration_tw<align.size_pre()>(r, tw_data, k_count, lowk);
         }
         if (lowk) {
-            k_count = final_k_count / align.size_post();
-            tw_data.start_fft_size *= 2 * k_count / node_size;
-            tw_data.start_k *= 2 * k_count / node_size;
-            if (k_count > 0)
+            auto old_k = k_count;
+            k_count    = 2 * final_k_count / align.size_post() / node_size;
+            auto d_k   = 2 * k_count / old_k;
+
+            if (k_count > 0) {
+                // tw_data.start_fft_size *= 2 * k_count / node_size / align.size_pre();
+                // tw_data.start_k *= 2 * k_count / node_size / align.size_pre();
+                tw_data.start_fft_size *= d_k;
+                tw_data.start_k *= d_k;
+                // k_count *= 2;
                 insert_iteration_tw<node_size>(r, tw_data, k_count, lowk);
+            }
         } else {
             while (k_count * align.size_post() <= final_k_count) {
                 insert_iteration_tw<node_size>(r, tw_data, k_count, lowk);
@@ -601,8 +608,8 @@ struct coherent_subtransform {
     static constexpr auto width            = uZ_ce<Width>{};
     static constexpr auto node_size        = uZ_ce<NodeSize>{};
     static constexpr auto w_pck            = cxpack<width, T>{};
-    static constexpr auto skip_single_load = false;
-    static constexpr auto skip_sub_width   = false;
+    static constexpr auto skip_single_load = true;
+    static constexpr auto skip_sub_width   = true;
 
     static constexpr auto get_align_node(uZ data_size) {
         constexpr auto single_load_size = node_size * width;
@@ -682,7 +689,7 @@ struct coherent_subtransform {
                           meta::any_ce_of<bool> auto half_tw) {
         constexpr auto single_load_size = node_size * width;
         auto           final_k_count    = data_size / single_load_size / 2;
-        using fnode                     = subtransform<NodeSize, T, Width>;
+        using fnode                     = subtransform<node_size, T, width>;
         fnode::insert_tw(r, align, lowk, final_k_count, tw_data);
         if constexpr (skip_single_load) {
             return;
@@ -1234,9 +1241,7 @@ struct transform {
 
         const auto final_bucket_group_count = powi(pass_k_count, pass_count);
 
-        auto           pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
-        constexpr auto pass_align_node     = get_align_node(pass_k_count);
-
+        auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(uZ_seq<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
@@ -1248,6 +1253,7 @@ struct transform {
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<log2i(NodeSize)>{});
 
+        constexpr auto pass_align_node = get_align_node(pass_k_count);
         if (final_bucket_group_count > 1)
             iterate_buckets(uZ_ce<pass_align_node>{}, pass_k_count, final_bucket_group_count);
 
