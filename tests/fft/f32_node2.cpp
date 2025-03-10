@@ -1,10 +1,13 @@
 #include "common.hpp"
-
 namespace pcx::testing {
+using fX                      = f32;
+static constexpr uZ node_size = 2;
 template<>
-bool test_fft<f32, 2>(uZ fft_size, f64 freq_n) {
-    return run_tests<f32, 2>(f32_widths, low_k, local_tw, half_tw, fft_size, freq_n);
+bool test_fft<fX, node_size>(const std::vector<std::complex<fX>>& signal,
+                             const std::vector<std::complex<fX>>& check) {
+    return run_tests<fX, node_size>(f32_widths, low_k, local_tw, half_tw, signal, check);
 };
-template bool test_fft<f32, 2>(uZ, f64);
+template bool test_fft<fX, node_size>(const std::vector<std::complex<fX>>&,
+                                      const std::vector<std::complex<fX>>&);
 
 }    // namespace pcx::testing

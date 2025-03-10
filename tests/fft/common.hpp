@@ -17,10 +17,11 @@ inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
 #endif
-inline constexpr auto local_tw = meta::val_seq<false>{};
+inline constexpr auto local_tw    = meta::val_seq<false>{};
+inline constexpr bool local_check = false;
 
 template<typename T, uZ NodeSize>
-bool test_fft(uZ fft_size, f64 freq_n);
+bool test_fft(const std::vector<std::complex<T>>& signal, const std::vector<std::complex<T>>& check);
 }    // namespace pcx::testing
 
 template<typename T>
@@ -87,28 +88,16 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        bool                                 half_tw);
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
-bool test_prototype(uZ fft_size, f64 freq_n) {
+bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vector<std::complex<fX>>& check) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
 
-    auto datavec = [=]() {
-        auto vec = std::vector<std::complex<fX>>(fft_size);
-        for (auto [i, v]: stdv::enumerate(vec)) {
-            v = std::exp(std::complex<fX>(0, 1)                 //
-                         * static_cast<fX>(2)                   //
-                         * static_cast<fX>(std::numbers::pi)    //
-                         * static_cast<fX>(i)                   //
-                         * static_cast<fX>(freq_n)              //
-                         / static_cast<fX>(fft_size));
-        }
-        return vec;
-    }();
-    auto datavec2 = datavec;
-    naive_fft(datavec, NodeSize, Width);
+    auto fft_size = signal.size();
+    auto signal2  = signal;
 
     using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
 
-    auto* data_ptr = reinterpret_cast<fX*>(datavec2.data());
+    auto* data_ptr = reinterpret_cast<fX*>(signal2.data());
     auto  twvec    = [=] {
         if constexpr (LocalTw) {
             return [] {};
@@ -132,7 +121,12 @@ bool test_prototype(uZ fft_size, f64 freq_n) {
     // auto fnan = check_nan(datavec2);
 
     fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw, lowk);
-    return check_correctness(datavec, datavec2, Width, NodeSize, LowK, LocalTw, half_tw);
+    if constexpr (local_check) {
+        auto signal_check = signal;
+        auto check        = naive_fft(signal_check, NodeSize, Width);
+        return check_correctness(check, signal2, Width, NodeSize, LowK, LocalTw, half_tw);
+    }
+    return check_correctness(check, signal2, Width, NodeSize, LowK, LocalTw, half_tw);
 }
 
 template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw, bool... half_tw>
@@ -140,13 +134,13 @@ bool run_tests(uZ_seq<VecWidth...>,
                meta::val_seq<low_k...>,
                meta::val_seq<local_tw...>,
                meta::val_seq<half_tw...>,
-               uZ  fft_size,
-               f64 freq_n) {
-    auto lk_passed = [=]<bool LowK>(val_ce<LowK>) {
-        auto ltw_passed = [=]<bool LocalTw>(val_ce<LocalTw>) {
-            auto htw_passed = [=]<bool HalfTw>(val_ce<HalfTw>) {
-                return ((fft_size <= NodeSize * VecWidth
-                         || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(fft_size, freq_n))
+               const std::vector<std::complex<fX>>& signal,
+               const std::vector<std::complex<fX>>& check) {
+    auto lk_passed = [&]<bool LowK>(val_ce<LowK>) {
+        auto ltw_passed = [&]<bool LocalTw>(val_ce<LocalTw>) {
+            auto htw_passed = [&]<bool HalfTw>(val_ce<HalfTw>) {
+                return ((signal.size() <= NodeSize * VecWidth
+                         || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(signal, check))
                         && ...);
             };
             return (htw_passed(val_ce<half_tw>{}) && ...);

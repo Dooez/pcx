@@ -112,18 +112,46 @@ template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
 template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 }    // namespace pcx::testing
 #ifdef FULL_FFT_TEST
-inline constexpr auto node_sizes = pcx::uZ_seq<4, 8, 16>{};
+inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
 #else
 inline constexpr auto node_sizes = pcx::uZ_seq<FFT_NODE_SIZE>{};
 #endif
 
 int main() {
+    namespace stdv = std::views;
+    namespace stdr = std::ranges;
+
     auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size, f64 freq_n) {
-        return (pcx::testing::test_fft<f32, Is>(fft_size, freq_n) && ...)
-               && (pcx::testing::test_fft<f64, Is>(fft_size, freq_n) && ...);
+        auto make_signal_check = [=]<typename fX>(pcx::meta::t_id<fX>) {
+            auto vec = std::vector<std::complex<fX>>(fft_size);
+            for (auto [i, v]: stdv::enumerate(vec)) {
+                v = std::exp(std::complex<fX>(0, 1)                 //
+                             * static_cast<fX>(2)                   //
+                             * static_cast<fX>(std::numbers::pi)    //
+                             * static_cast<fX>(i)                   //
+                             * static_cast<fX>(freq_n)              //
+                             / static_cast<fX>(fft_size));
+            }
+
+            auto check = [&] {
+                if constexpr (pcx::testing::local_check) {
+                    return std::vector<std::complex<fX>>{};
+                } else {
+                    return vec;
+                }
+            }();
+            pcx::testing::naive_fft(check, 2, 1);
+            return std::make_tuple(vec, check);
+        };
+        auto [s32, check32] = make_signal_check(pcx::meta::t_id<f32>{});
+        auto [s64, check64] = make_signal_check(pcx::meta::t_id<f64>{});
+
+        return (pcx::testing::test_fft<f32, Is>(s32, check32) && ...)
+               && (pcx::testing::test_fft<f64, Is>(s64, check64) && ...);
     };
-    uZ fft_size = 2048 * 256;
-    while (fft_size <= 2048 * 512) {
+    // uZ fft_size = 2048 * 256;
+    uZ fft_size = 256;
+    while (fft_size <= 2048 * 256 * 4) {
         // if (!test_size(node_sizes, fft_size, fft_size / 64))
         if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
             return -1;
@@ -133,7 +161,6 @@ int main() {
 }
 
 namespace pcx::testing {
-
 template<typename fX>
 bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        const std::vector<std::complex<fX>>& pcx,
