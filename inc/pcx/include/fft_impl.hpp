@@ -1121,7 +1121,7 @@ struct transform {
 
         const auto bucket_size  = coherent_size;
         const auto batch_size   = lane_size;
-        const auto pass_k_count = bucket_size / batch_size;
+        const auto pass_k_count = bucket_size / batch_size / 2;
 
         if (data_size <= bucket_size) {
             auto coherent_align_node = coh_subtf::get_align_node(data_size);
@@ -1149,8 +1149,8 @@ struct transform {
         uZ bucket_group_count = 1;
         uZ stride             = batch_size * bucket_count;
 
-        auto pass_count       = logKi(pass_k_count, data_size / bucket_size);
-        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count, pass_count) / 2;
+        auto pass_count       = logKi(pass_k_count * 2, data_size / bucket_size);
+        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
         auto iterate_buckets =
             [&](meta::any_ce_of<uZ> auto align_node, cxpack_for<T> auto src_pck, auto k_count) {
@@ -1214,7 +1214,7 @@ struct transform {
         }(make_uZ_seq<log2i(NodeSize)>{});
 
         auto           tw_data_bak     = tw_data;
-        constexpr auto pass_align_node = get_align_node(pass_k_count);
+        constexpr auto pass_align_node = get_align_node(pass_k_count * 2);
         for (uZ pass: stdv::iota(0U, pass_count)) {
             tw_data = tw_data_bak;
             iterate_buckets(uZ_ce<pass_align_node>{}, w_pck, pass_k_count);
@@ -1227,7 +1227,7 @@ struct transform {
             }
             return;
         }
-        //bucket_group_count = data_size / bucket_size;
+        bucket_group_count = data_size / bucket_size;
         if constexpr (tw_data.is_local()) {
             tw_data.start_fft_size = bucket_group_count;
             tw_data.start_k        = 0;
@@ -1266,7 +1266,7 @@ struct transform {
     insert_tw(twiddle_range_for<T> auto& r, uZ data_size, bool lowk, meta::any_ce_of<bool> auto half_tw) {
         const auto bucket_size  = coherent_size;
         const auto batch_size   = lane_size;
-        const auto pass_k_count = bucket_size / batch_size;
+        const auto pass_k_count = bucket_size / batch_size / 2;
 
         if (data_size <= bucket_size) {
             auto coherent_align_node = coh_subtf::get_align_node(data_size);
@@ -1285,8 +1285,8 @@ struct transform {
             return;
         }
 
-        auto pass_count       = logKi(pass_k_count, data_size / bucket_size);
-        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count, pass_count) / 2;
+        auto pass_count       = logKi(pass_k_count * 2, data_size / bucket_size);
+        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
         auto iterate_buckets = [&](meta::any_ce_of<uZ> auto align_node,    //
                                    uZ                       k_count,
@@ -1297,8 +1297,6 @@ struct transform {
                 subtf::insert_tw(r, align, lowk && i_bg == 0, k_count, l_tw_data);
             }
         };
-
-        const auto final_bucket_group_count = powi(pass_k_count, pass_count);
 
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -1312,9 +1310,12 @@ struct transform {
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<log2i(NodeSize)>{});
 
-        constexpr auto pass_align_node = get_align_node(pass_k_count);
-        if (final_bucket_group_count > 1)
+        constexpr auto pass_align_node = get_align_node(pass_k_count * 2);
+        if (pass_count > 0) {
+            const auto final_bucket_group_count =
+                pre_pass_k_count * 2 * powi(pass_k_count * 2, pass_count - 1);
             iterate_buckets(uZ_ce<pass_align_node>{}, pass_k_count, final_bucket_group_count);
+        }
 
         if constexpr (skip_coherent_subtf) {
             return;
