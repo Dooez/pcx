@@ -1330,4 +1330,28 @@ struct transform {
         }
     };
 };
+
+template<typename T, uZ Width>
+struct br_sort_inplace {
+    static constexpr auto width = uZ_ce<Width>{};
+
+    void swaps(cxpack_for<T> auto pck, uZ* indexes, T* data, uZ count) {
+        for (auto i: stdv::iota(0U, count)) {
+            auto a = simd::cxload<pck, width>(data + indexes[i * 2]);
+            auto b = simd::cxload<pck, width>(data + indexes[i * 2 + 1]);
+            simd::cxstore<pck>(data + indexes[i * 2], b);
+            simd::cxstore<pck>(data + indexes[i * 2 + 1], a);
+        }
+    }
+
+    void pops(cxpack_for<T> auto pck, uZ stride, T* data) {
+        auto ptrs = [=]<uZ... Is>(uZ_seq<Is...>) {
+            return tupi::make_tuple(data + stride * 2 * Is...);
+        }(make_uZ_seq<width>{});
+        auto data_tup = tupi::group_invoke(simd::cxload<pck, width>, ptrs);
+        // sort
+        tupi::group_invoke(simd::cxstore<pck>, ptrs, data_tup);
+    }
+};
+
 }    // namespace pcx::detail_
