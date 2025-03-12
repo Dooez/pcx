@@ -1261,6 +1261,44 @@ struct transform {
                                coherent_align_node,
                                tw_data);
         }
+
+        constexpr auto do_sort    = std::false_type{};
+        constexpr auto sort_width = uZ_ce<width>{};
+        uZ*            idxs{};
+        uZ             n_sort_lanes = 0;
+
+        bool swap = true;
+        uZ   last = -1;
+        if (do_sort) {
+            auto next_ptr_tup = [&] PCX_LAINLINE {
+                return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                    auto idx = *(idxs++);
+                    return tupi::make_tuple((dest_ptr + idx * width + Is * data_size / sort_width)...);
+                }(make_uZ_seq<sort_width>{});
+            };
+            while (true) {
+                for (uZ i: stdv::iota(0U, n_sort_lanes)) {
+                    auto ptr_tup = next_ptr_tup();
+                    auto data    = tupi::group_invoke(simd::cxload<DestPackSize, sort_width>);
+                    // shuffle
+                    if (!swap) {
+                        tupi::group_invoke(simd::cxstore<DestPackSize>, ptr_tup, data);
+                    } else {
+                        auto ptr_tup2 = next_ptr_tup();
+                        auto data2    = tupi::group_invoke(simd::cxload<DestPackSize, sort_width>);
+                        // shuffle
+                        tupi::group_invoke(simd::cxstore<DestPackSize>, ptr_tup, data2);
+                        tupi::group_invoke(simd::cxstore<DestPackSize>, ptr_tup2, data);
+                    }
+                }
+                if (swap) {
+                    swap = false;
+                    //n_sort_lanes = xxx;
+                    continue;
+                }
+                break;
+            }
+        }
     };
     static void
     insert_tw(twiddle_range_for<T> auto& r, uZ data_size, bool lowk, meta::any_ce_of<bool> auto half_tw) {
@@ -1330,6 +1368,9 @@ struct transform {
         }
     };
 };
+
+template<bool DoSort, uZ SortWidth>
+struct sort_param {};
 
 template<typename T, uZ Width>
 struct br_sort_inplace {
