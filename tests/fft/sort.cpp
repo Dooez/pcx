@@ -1,3 +1,5 @@
+#include "pcx/include/fft_impl.hpp"
+
 #include <array>
 #include <cstdint>
 #include <iterator>
@@ -20,6 +22,49 @@ using i32 = int32_t;
 using i16 = int16_t;
 using i8  = int8_t;
 
+template<typename T>
+struct std::formatter<std::complex<T>, char> {
+    std::formatter<T, char> m_fmt;
+    template<class ParseContext>
+    constexpr auto parse(ParseContext& ctx) -> ParseContext::iterator {
+        return m_fmt.parse(ctx);
+    }
+
+    template<class FmtContext>
+    FmtContext::iterator format(std::complex<T> cxv, FmtContext& ctx) const {
+        *ctx.out() = "(";
+        auto out   = m_fmt.format(cxv.real(), ctx);
+        *(out++)   = ",";
+        *out       = " ";
+        out        = m_fmt.format(cxv.imag(), ctx);
+        *(out++)   = ")";
+        return out;
+    }
+};
+static auto get_type_name(pcx::meta::types<pcx::f32>) {
+    return std::string_view("f32");
+}
+static auto get_type_name(pcx::meta::types<pcx::f64>) {
+    return std::string_view("f64");
+}
+template<typename T>
+struct std::formatter<pcx::meta::types<T>> {
+    template<class ParseContext>
+    constexpr auto parse(ParseContext& ctx) -> ParseContext::iterator {
+        auto it = ctx.begin();
+        if (it == ctx.end())
+            return it;
+        if (it != ctx.end() && *it != '}')
+            throw std::format_error("Invalid format args for pcx::meta::types<T>.");
+
+        return it;
+    }
+
+    template<class FmtContext>
+    FmtContext::iterator format(pcx::meta::types<T> mt, FmtContext& ctx) const {
+        return std::ranges::copy(get_type_name(mt), ctx.out()).out;
+    }
+};
 constexpr auto log2i(u64 num) -> uZ {
     u64 order = 0;
     for (u8 shift = 32; shift > 0; shift /= 2) {
@@ -114,9 +159,26 @@ auto get_far_swaps(uZ size, uZ coherent_size) {
     }
     return swaps;
 }
+template<uZ Width, typename T>
+void simd_swaps(T* data, uZ stride) {
+    constexpr uZ pack = 1;
+    using namespace pcx;
+    auto mk_data_ptr = [=](uZ offset) {
+        return [=]<uZ... Is>(uZ_seq<Is...>) {
+            return tupi::make_tuple(data + offset * 2 + Is * stride * 2 ...);
+        }(make_uZ_seq<Width>{});
+    };
+    for (uZ i: stdv::iota(0U, stride) | stdv::stride(Width)) {
+        auto data_ptr = mk_data_ptr(i);
+        auto data     = tupi::group_invoke(simd::cxload<pack, Width>, data_ptr);
+        auto br_data  = simd::br_permute<T>(data);
+        tupi::group_invoke(simd::cxstore<pack>, data_ptr, br_data);
+    }
+}
+
 
 int main() {
-    uZ   size = 2048 * 32;
+    uZ   size = 16 * 16;
     auto idx  = stdr::to<std::vector<uZ>>(stdv::iota(0U, size));
     auto br   = idx;
     for (auto& v: br) {
@@ -124,104 +186,16 @@ int main() {
     }
     constexpr uZ width    = 16;
     constexpr uZ coh_size = 2048;
-    auto         br2      = br;
-    do_swaps<width>(br2);
-    auto br3         = br2;
-    auto stride      = size / width;
-    auto close_swaps = get_close_swaps<width>(stride / width, coh_size / width);
-    auto far_swaps   = get_far_swaps<width>(stride / width, coh_size / width);
 
-    std::println("n vecs:{}", size / width);
-    std::println("n coh vecs:{}", coh_size / width);
-    std::print("close swaps: ");
-    for (auto v: close_swaps) {
-        std::print("{} ", v);
+    auto cxidx   = stdr::to<std::vector<std::complex<f32>>>(stdv::iota(0U, size));
+    auto cxbr    = stdr::to<std::vector<std::complex<f32>>>(br);
+    auto cxbr_br = cxbr;
+    simd_swaps<width>(reinterpret_cast<f32*>(cxbr_br.data()), 16);
+
+    for (auto [i, br, br2]: stdv::zip(stdv::iota(0U), cxbr, cxbr_br)) {
+        std::println("{:>4}: {:>4} -> {:3}", i, (br), (br2));
     }
     std::println();
-    std::print("far swaps: ");
-    for (auto v: far_swaps) {
-        std::print("{} ", v);
-    }
-    std::println();
-
-
-    // for (uZ i_str: stdv::iota(0U, width)) {
-    //     for (uZ i_coh: stdv::iota(0U, std::max(stride / coh_size, 1UZ))) {
-    //         auto x = 0;
-    //         for (auto [l, r]: stdv::adjacent<2>(close_swaps) | stdv::stride(2)) {
-    //             // std::println("{} <-> {}", l, r);
-    //             for (uZ i: stdv::iota(0U, width)) {
-    //                 using std::swap;
-    //                 swap(br3[i_str * stride + i_coh * coh_size + l * width + i],
-    //                      br3[i_str * stride + i_coh * coh_size + r * width + i]);
-    //             }
-    //         }
-    //     }
-    // }
-    // auto br4 = br3;
-    // for (uZ i_str: stdv::iota(0U, width)) {
-    //     for (auto [l, r]: stdv::adjacent<2>(far_swaps) | stdv::stride(2)) {
-    //         // std::println("{} <-> {}", l, r);
-    //         for (uZ i: stdv::iota(0U, width)) {
-    //             using std::swap;
-    //             swap(br4[i_str * stride + l * width + i],    //
-    //                  br4[i_str * stride + r * width + i]);
-    //         }
-    //     }
-    // }
-
-    auto smidx = stdr::to<std::vector<uZ>>(stdv::iota(0U, stride / width));
-    auto sm_br = smidx;
-    for (auto& v: sm_br) {
-        v = reverse_bit_order(v, stride / width);
-    }
-
-    auto sm_stride = stride / width;
-    auto sm_coh    = coh_size / width;
-
-    auto sm_br2 = sm_br;
-    // for (uZ i_str: stdv::iota(0U, width)) {
-    // for (uZ i_coh: stdv::iota(0U, std::max(sm_stride / sm_coh, 1UZ))) {
-    // for (uZ i_coh: stdv::iota(0U, 1U)) {
-    for (auto [l, r]: stdv::adjacent<2>(close_swaps) | stdv::stride(2)) {
-        // std::println("{} <-> {}", l, r);
-        using std::swap;
-        swap(sm_br2[l], sm_br2[r]);
-    }
-    // }
-    // }
-    auto sm_br3 = sm_br2;
-    for (auto [l, r]: stdv::adjacent<2>(far_swaps) | stdv::stride(2)) {
-        // std::println("{} <-> {}", l, r);
-        using std::swap;
-        swap(sm_br3[l], sm_br3[r]);
-    }
-
-
-    // for (auto [i, br, br2, br3, br4]: stdv::zip(idx, br, br2, br3, br4)) {
-    //     // std::println("{:>4}: {:>4} -> {:>4} -> {}", i, br, br2, br3);
-    //     if (i != br4) {
-    //         std::println("{:>4}: {:>4} -> {:>4} -> {:4} -> {}",
-    //                      i / width,    //
-    //                      br / width,
-    //                      br2 / width,
-    //                      br3 / width,
-    //                      br4 / width);
-    //         break;
-    //     }
-    // }
-    for (auto [i, br, br2, br3]: stdv::zip(smidx, sm_br, sm_br2, sm_br3)) {
-        std::println("{:>4}: {:>4} -> {:>4} -> {}", i, br, br2, br3);
-        // if (i != br3) {
-        //     std::println("{:>4}: {:>4} -> {:>4} -> {:4}", i, br, br2, br3);
-        //     // break;
-        // }
-    }
-    if (stdr::equal(smidx, sm_br3)) {
-        std::println("Equal");
-    } else {
-        std::println("Not equal");
-    }
 
     return 0;
 }
