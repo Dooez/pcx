@@ -170,32 +170,37 @@ void simd_swaps(T* data, uZ stride) {
     };
     for (uZ i: stdv::iota(0U, stride) | stdv::stride(Width)) {
         auto data_ptr = mk_data_ptr(i);
-        auto data     = tupi::group_invoke(simd::cxload<pack, Width>, data_ptr);
+        auto data     = tupi::group_invoke(simd::cxload<pack, Width> | simd::repack<Width>, data_ptr);
         auto br_data  = simd::br_permute<T>(data);
-        tupi::group_invoke(simd::cxstore<pack>, data_ptr, br_data);
+        auto rdata    = tupi::group_invoke(simd::repack<1>, br_data);
+        tupi::group_invoke(simd::cxstore<pack>, data_ptr, rdata);
     }
 }
 
 
 int main() {
-    uZ   size = 16 * 16;
+    constexpr uZ width    = 16;
+    constexpr uZ coh_size = 2048;
+
+    uZ   size = width * 16 * 2;
     auto idx  = stdr::to<std::vector<uZ>>(stdv::iota(0U, size));
     auto br   = idx;
     for (auto& v: br) {
         v = reverse_bit_order(v, size);
     }
-    constexpr uZ width    = 16;
-    constexpr uZ coh_size = 2048;
 
     auto cxidx   = stdr::to<std::vector<std::complex<f32>>>(stdv::iota(0U, size));
     auto cxbr    = stdr::to<std::vector<std::complex<f32>>>(br);
     auto cxbr_br = cxbr;
-    simd_swaps<width>(reinterpret_cast<f32*>(cxbr_br.data()), 16);
+    simd_swaps<width>(reinterpret_cast<f32*>(cxbr_br.data()), size / width);
 
+    bool equal = true;
     for (auto [i, br, br2]: stdv::zip(stdv::iota(0U), cxbr, cxbr_br)) {
-        std::println("{:>4}: {:>4} -> {:3}", i, (br), (br2));
+        std::println("{:>4}: {:>4} -> {:3}", i, (br), (br2.real()));
+        if (br2.real() != i)
+            equal = false;
     }
-    std::println();
+    std::println("Equal: {}", equal);
 
     return 0;
 }
