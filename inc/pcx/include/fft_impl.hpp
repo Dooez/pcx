@@ -14,20 +14,19 @@ constexpr struct btfly_t {
         return std::make_tuple(add(a, b), sub(a, b));
     }
 } btfly{};
-template<typename T>
 struct br_permute_t {
     template<eval_cx_vec... Vs>
         requires meta::equal_values<sizeof...(Vs), Vs::width()...> && meta::equal_values<Vs::pack_size()...>
     PCX_AINLINE static auto operator()(tupi::tuple<Vs...> data) {
-        using data_t         = tupi::tuple<Vs...>;
         constexpr auto width = sizeof...(Vs);
-        constexpr auto pack  = tupi::tuple_element_t<0, data_t>::pack_size();
-
-        using traits        = detail_::vec_traits<T, width>;
-        constexpr auto pass = [=]<uZ Stride, uZ Chunk> PCX_LAINLINE(uZ_ce<Stride>, uZ_ce<Chunk>, auto data) {
+        using data_t         = tupi::tuple<Vs...>;
+        using cx_vec_t       = tupi::tuple_element_t<0, data_t>;
+        using T              = cx_vec_t::real_type;
+        using traits         = detail_::vec_traits<T, width>;
+        constexpr auto pack  = cx_vec_t::pack_size();
+        constexpr auto pass  = [=]<uZ Stride, uZ Chunk> PCX_LAINLINE(uZ_ce<Stride>, uZ_ce<Chunk>, auto data) {
             static_assert(Chunk != pack);
             constexpr auto splinter = [=] {
-                using cx_vec_t = cx_vec<T, false, false, width, pack>;
                 if constexpr (Chunk < width) {
                     return tupi::pass |
                            [](auto v0, auto v1) {
@@ -92,8 +91,7 @@ struct br_permute_t {
         }(make_uZ_seq<count / Stride>{});
     }
 };    // namespace pcx::simd
-template<typename T>
-inline constexpr auto br_permute = br_permute_t<T>{};
+inline constexpr auto br_permute = br_permute_t{};
 }    // namespace pcx::simd
 
 namespace pcx::detail_ {
@@ -1425,13 +1423,13 @@ struct br_sort_inplace {
             for ([[maybe_unused]] auto i: stdv::iota(0U, n_sort_lanes)) {
                 auto ptr_tup   = next_ptr_tup();
                 auto data      = tupi::group_invoke(simd::cxload<pck, width>, ptr_tup);
-                auto data_perm = simd::br_permute<T>(data);
+                auto data_perm = simd::br_permute(data);
                 if (!swap) {
                     tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data);
                 } else {
                     auto ptr_tup2   = next_ptr_tup();
                     auto data2      = tupi::group_invoke(simd::cxload<pck, width>, ptr_tup2);
-                    auto data_perm2 = simd::br_permute<T>(data);
+                    auto data_perm2 = simd::br_permute(data);
                     tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data_perm2);
                     tupi::group_invoke(simd::cxstore<pck>, ptr_tup2, data_perm);
                 }

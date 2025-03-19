@@ -171,7 +171,7 @@ void simd_swaps(T* data, uZ stride) {
     for (uZ i: stdv::iota(0U, stride) | stdv::stride(Width)) {
         auto data_ptr = mk_data_ptr(i);
         auto data     = tupi::group_invoke(simd::cxload<pack, Width> | simd::repack<Width>, data_ptr);
-        auto br_data  = simd::br_permute<T>(data);
+        auto br_data  = simd::br_permute(data);
         auto rdata    = tupi::group_invoke(simd::repack<1>, br_data);
         tupi::group_invoke(simd::cxstore<pack>, data_ptr, rdata);
     }
