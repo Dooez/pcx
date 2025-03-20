@@ -1442,6 +1442,22 @@ struct br_sort_inplace {
             break;
         }
     }
+    auto insert_idxs(auto& r, uZ size) {
+        auto n = size / width / width;
+        for (auto i: stdv::iota(0U, n)) {
+            auto bri = reverse_bit_order(i, log2i(n));
+            if (bri > i) {
+                r.insert(i);
+                r.insert(bri);
+            }
+        }
+        for (auto i: stdv::iota(0U, n)) {
+            auto bri = reverse_bit_order(i, log2i(n));
+            if (bri == i) {
+                r.insert(i);
+            }
+        }
+    }
 };
 
 }    // namespace pcx::detail_
