@@ -176,6 +176,10 @@ void simd_swaps(T* data, uZ stride) {
         tupi::group_invoke(simd::cxstore<pack>, data_ptr, rdata);
     }
 }
+template<uZ Width>
+inline bool test_sort(auto data, const auto& check) {
+    using impl = pcx::detail_::br_sort_inplace<Width, true>;
+}
 
 
 int main() {
