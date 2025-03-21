@@ -42,9 +42,9 @@ template<auto... Vs>
 concept unique_values = detail_::are_unique<Vs...>::value;
 
 template<typename T, typename U>
-concept any_ce_of = detail_::is_ce_of<T, U>::value;
+concept ce_of = detail_::is_ce_of<T, U>::value;
 template<typename T, typename U>
-concept maybe_ce_of = any_ce_of<T, U> || std::same_as<T, U>;
+concept maybe_ce_of = ce_of<T, U> || std::same_as<T, U>;
 
 
 namespace detail_ {

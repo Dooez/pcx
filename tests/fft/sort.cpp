@@ -100,7 +100,7 @@ inline bool test_sort(auto data) {
     if (size < Width * Width)
         return false;
 
-    using impl = pcx::detail_::br_sort_inplace<Width, true>;
+    using impl = pcx::detail_::br_sort_inplace<Width>;
     auto idx   = std::vector<uZ>{};
     impl::insert_idxs(idx, size);
     auto cnt      = impl::swap_count(size);
