@@ -136,7 +136,5 @@ using reverse_value_sequence = typename detail_::reverse_value_seq<S>::type;
 template<any_index_sequence S>
 using reverse_index_sequence =
     value_to_index_sequence<typename detail_::reverse_value_seq<index_to_value_sequence<S>>::type>;
-
-
 }    // namespace pcx::meta
 #include "meta/types.hpp"

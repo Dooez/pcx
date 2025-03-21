@@ -120,7 +120,9 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vect
     // std::println("Fft size:{}, twiddle count: {}.", fft_size, twvec.size());
     // auto fnan = check_nan(datavec2);
 
-    fimpl::template perform<1, 1>(fft_size, data_ptr, tw, half_tw, lowk);
+    constexpr auto pck_dst = cxpack<1, fX>{};
+    constexpr auto pck_src = cxpack<1, fX>{};
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, data_ptr, fft_size, tw);
     if constexpr (local_check) {
         auto signal_check = signal;
         auto check        = naive_fft(signal_check, NodeSize, Width);
