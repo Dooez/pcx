@@ -177,34 +177,47 @@ void simd_swaps(T* data, uZ stride) {
     }
 }
 template<uZ Width>
-inline bool test_sort(auto data, const auto& check) {
-    using impl = pcx::detail_::br_sort_inplace<Width, true>;
+inline bool test_sort(auto data) {
+    auto size = data.size();
+    if (size < Width * Width)
+        return false;
+
+    using impl    = pcx::detail_::br_sort_inplace<Width, true>;
+    auto idx      = std::vector<uZ>{};
+    auto cnt      = impl::insert_idxs(idx, size);
+    f32* data_ptr = reinterpret_cast<f32*>(data.data());
+    impl::perform(pcx::cxpack<1, f32>{}, size, data_ptr, cnt, idx.data());
+    bool falty = false;
+    for (auto [i, v]: stdv::enumerate(data)) {
+        if (i != static_cast<uZ>(v.real())) {
+            std::println("Error sorting size {} width {}. i: {}, v: {}", size, Width, i, v);
+            falty = true;
+        }
+    }
+    if (falty)
+        return false;
+
+    std::println("Success sorting size {} width {}.", size, Width);
+    return true;
 }
 
 
 int main() {
-    constexpr uZ width    = 16;
-    constexpr uZ coh_size = 2048;
+    // constexpr uZ width = 16;
+    constexpr auto w_seq = pcx::uZ_seq<4, 8, 16>{};
 
-    uZ   size = width * 16 * 2;
-    auto idx  = stdr::to<std::vector<uZ>>(stdv::iota(0U, size));
-    auto br   = idx;
-    for (auto& v: br) {
-        v = reverse_bit_order(v, size);
+    uZ size = 2;
+    while (size < 4096 * 2) {
+        auto idx = stdr::to<std::vector<uZ>>(stdv::iota(0U, size));
+        for (auto& v: idx) {
+            v = reverse_bit_order(v, size);
+        }
+        auto cxbr = stdr::to<std::vector<std::complex<f32>>>(idx);
+        if (![&]<uZ... Width>(pcx::uZ_seq<Width...>) {
+                return (((size <= Width * Width) || test_sort<Width>(cxbr)) && ...);
+            }(w_seq))
+            return -1;
+        size *= 2;
     }
-
-    auto cxidx   = stdr::to<std::vector<std::complex<f32>>>(stdv::iota(0U, size));
-    auto cxbr    = stdr::to<std::vector<std::complex<f32>>>(br);
-    auto cxbr_br = cxbr;
-    simd_swaps<width>(reinterpret_cast<f32*>(cxbr_br.data()), size / width);
-
-    bool equal = true;
-    for (auto [i, br, br2]: stdv::zip(stdv::iota(0U), cxbr, cxbr_br)) {
-        std::println("{:>4}: {:>4} -> {:3}", i, (br), (br2.real()));
-        if (br2.real() != i)
-            equal = false;
-    }
-    std::println("Equal: {}", equal);
-
     return 0;
 }

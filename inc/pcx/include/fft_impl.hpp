@@ -69,8 +69,8 @@ struct br_permute_t {
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count    = sizeof...(Ts);
-        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count = sizeof...(Ts);
+        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -82,7 +82,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto count = sizeof...(Tsl) * 2;
+        constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -308,8 +308,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count    = sizeof...(Ts);
-        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count = sizeof...(Ts);
+        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -328,7 +328,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto count = sizeof...(Tsl) * 2;
+        constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -818,8 +818,8 @@ struct coherent_subtransform {
             }
         }();
         if constexpr (skip_sub_width) {
-            auto res     = tupi::make_flat_tuple(btfly_res_0);
-            auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<dst_pck>, res);
+            auto          res     = tupi::make_flat_tuple(btfly_res_0);
+            auto          res_rep = tupi::group_invoke(simd::evaluate | simd::repack<dst_pck>, res);
             [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 (simd::cxstore<dst_pck>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
             }(make_uZ_seq<node_size>{});
@@ -1412,7 +1412,7 @@ struct br_sort_inplace {
             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 auto idx = *idxs;
                 ++idxs;
-                return tupi::make_tuple((dest_ptr + idx * width + Is * size / width)...);
+                return tupi::make_tuple((dest_ptr + idx * width * 2 + Is * size / width * 2)...);
             }(make_uZ_seq<width>{});
         };
         bool swap = true;
@@ -1422,18 +1422,18 @@ struct br_sort_inplace {
                 auto data      = tupi::group_invoke(simd::cxload<pck, width>, ptr_tup);
                 auto data_perm = simd::br_permute(data);
                 if (!swap) {
-                    tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data);
+                    tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data_perm);
                 } else {
                     auto ptr_tup2   = next_ptr_tup();
                     auto data2      = tupi::group_invoke(simd::cxload<pck, width>, ptr_tup2);
-                    auto data_perm2 = simd::br_permute(data);
+                    auto data_perm2 = simd::br_permute(data2);
                     tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data_perm2);
                     tupi::group_invoke(simd::cxstore<pck>, ptr_tup2, data_perm);
                 }
             }
             if (swap) {
                 swap         = false;
-                n_sort_lanes = size / width / width - n_swaps;
+                n_sort_lanes = size / width / width - n_swaps * 2;
                 continue;
             }
             break;
@@ -1441,23 +1441,25 @@ struct br_sort_inplace {
     }
     static constexpr auto swap_count(uZ size) {
         auto pow = log2i(size / width / width);
-        return powi(2, (pow + 1) / 2);
+        return powi(2, (pow + 1) / 2 - 1);
     };
     static auto insert_idxs(auto& r, uZ size) {
         auto n = size / width / width;
         for (auto i: stdv::iota(0U, n)) {
             auto bri = reverse_bit_order(i, log2i(n));
             if (bri > i) {
-                r.insert(i);
-                r.insert(bri);
+                r.push_back(i);
+                r.push_back(bri);
             }
         }
+        auto x = r.size() / 2;
         for (auto i: stdv::iota(0U, n)) {
             auto bri = reverse_bit_order(i, log2i(n));
             if (bri == i) {
-                r.insert(i);
+                r.push_back(i);
             }
         }
+        return x;
     }
 };
 
