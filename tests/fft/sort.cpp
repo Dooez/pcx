@@ -95,96 +95,15 @@ namespace stdv = std::views;
 namespace stdr = std::ranges;
 
 template<uZ Width>
-auto shuffle_swap(std::array<std::array<uZ, Width>, Width> data) {
-    auto res = std::array<std::array<uZ, Width>, Width>{};
-    for (uZ i: stdv::iota(0U, Width)) {
-        for (uZ k: stdv::iota(0U, Width)) {
-            auto brk    = reverse_bit_order(k, Width);
-            auto bri    = reverse_bit_order(i, Width);
-            res[bri][k] = data[brk][i];
-        }
-    }
-    return res;
-}
-template<uZ Width>
-void do_swaps(auto& r) {
-    auto size   = r.size();
-    auto stride = size / Width;
-    for (uZ i_slice: stdv::iota(0U, stride / Width)) {
-        auto slice = std::array<std::array<uZ, Width>, Width>{};
-        for (uZ i: stdv::iota(0U, Width)) {
-            for (uZ k: stdv::iota(0U, Width)) {
-                slice[i][k] = r[i_slice * Width + i * stride + k];
-            }
-        }
-        auto sw = shuffle_swap(slice);
-        for (uZ i: stdv::iota(0U, Width)) {
-            for (uZ k: stdv::iota(0U, Width)) {
-                r[i_slice * Width + i * stride + k] = sw[i][k];
-            }
-        }
-    }
-}
-
-template<uZ Width>
-auto get_close_swaps(uZ size, uZ coherent_size) {
-    auto swaps = std::vector<uZ>{};
-    for (uZ i: stdv::iota(0U, size)) {
-        auto ibr       = reverse_bit_order(i, size);
-        auto czone_i   = i / coherent_size;
-        auto czone_ibr = ibr / coherent_size;
-        // if (i >= coherent_size && ibr > i && ibr >= coherent_size) {
-        if (ibr > i && czone_ibr == czone_i) {
-            swaps.push_back(i);
-            swaps.push_back(ibr);
-        }
-    }
-    return swaps;
-}
-template<uZ Width>
-auto get_far_swaps(uZ size, uZ coherent_size) {
-    auto swaps = std::vector<uZ>{};
-    for (uZ i: stdv::iota(0U, size)) {
-        auto ibr       = reverse_bit_order(i, size);
-        auto czone_i   = i / coherent_size;
-        auto czone_ibr = ibr / coherent_size;
-        // if (i >= coherent_size && ibr > i && ibr >= coherent_size) {
-        if (czone_ibr > czone_i) {
-            if (ibr > size) {
-                std::println("error");
-            }
-            swaps.push_back(i);
-            swaps.push_back(ibr);
-        }
-    }
-    return swaps;
-}
-template<uZ Width, typename T>
-void simd_swaps(T* data, uZ stride) {
-    constexpr uZ pack = 1;
-    using namespace pcx;
-    auto mk_data_ptr = [=](uZ offset) {
-        return [=]<uZ... Is>(uZ_seq<Is...>) {
-            return tupi::make_tuple(data + offset * 2 + Is * stride * 2 ...);
-        }(make_uZ_seq<Width>{});
-    };
-    for (uZ i: stdv::iota(0U, stride) | stdv::stride(Width)) {
-        auto data_ptr = mk_data_ptr(i);
-        auto data     = tupi::group_invoke(simd::cxload<pack, Width> | simd::repack<Width>, data_ptr);
-        auto br_data  = simd::br_permute(data);
-        auto rdata    = tupi::group_invoke(simd::repack<1>, br_data);
-        tupi::group_invoke(simd::cxstore<pack>, data_ptr, rdata);
-    }
-}
-template<uZ Width>
 inline bool test_sort(auto data) {
     auto size = data.size();
     if (size < Width * Width)
         return false;
 
-    using impl    = pcx::detail_::br_sort_inplace<Width, true>;
-    auto idx      = std::vector<uZ>{};
-    auto cnt      = impl::insert_idxs(idx, size);
+    using impl = pcx::detail_::br_sort_inplace<Width, true>;
+    auto idx   = std::vector<uZ>{};
+    impl::insert_idxs(idx, size);
+    auto cnt      = impl::swap_count(size);
     f32* data_ptr = reinterpret_cast<f32*>(data.data());
     impl::perform(pcx::cxpack<1, f32>{}, size, data_ptr, cnt, idx.data());
     bool falty = false;
@@ -203,18 +122,17 @@ inline bool test_sort(auto data) {
 
 
 int main() {
-    // constexpr uZ width = 16;
-    constexpr auto w_seq = pcx::uZ_seq<4, 8, 16>{};
+    constexpr auto w_seq = pcx::uZ_seq<2, 4, 8, 16>{};
 
     uZ size = 2;
-    while (size < 4096 * 2) {
+    while (size < 4096 * 1024) {
         auto idx = stdr::to<std::vector<uZ>>(stdv::iota(0U, size));
         for (auto& v: idx) {
             v = reverse_bit_order(v, size);
         }
         auto cxbr = stdr::to<std::vector<std::complex<f32>>>(idx);
         if (![&]<uZ... Width>(pcx::uZ_seq<Width...>) {
-                return (((size <= Width * Width) || test_sort<Width>(cxbr)) && ...);
+                return (((size < Width * Width) || test_sort<Width>(cxbr)) && ...);
             }(w_seq))
             return -1;
         size *= 2;

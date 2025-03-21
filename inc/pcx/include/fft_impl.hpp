@@ -1439,11 +1439,12 @@ struct br_sort_inplace {
             break;
         }
     }
-    static constexpr auto swap_count(uZ size) {
-        auto pow = log2i(size / width / width);
-        return powi(2, (pow + 1) / 2 - 1);
+    static constexpr auto swap_count(uZ size) -> uZ {
+        auto n   = size / width / width;
+        auto pow = log2i(n);
+        return (n - powi(2, (pow + 1) / 2)) / 2;
     };
-    static auto insert_idxs(auto& r, uZ size) {
+    static void insert_idxs(auto& r, uZ size) {
         auto n = size / width / width;
         for (auto i: stdv::iota(0U, n)) {
             auto bri = reverse_bit_order(i, log2i(n));
@@ -1452,14 +1453,12 @@ struct br_sort_inplace {
                 r.push_back(bri);
             }
         }
-        auto x = r.size() / 2;
         for (auto i: stdv::iota(0U, n)) {
             auto bri = reverse_bit_order(i, log2i(n));
             if (bri == i) {
                 r.push_back(i);
             }
         }
-        return x;
     }
 };
 
