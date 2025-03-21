@@ -85,16 +85,6 @@ struct vec_traits<f32, 2> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
-    PCX_AINLINE static auto bit_reverse(tup_width tup) {
-        auto first  = tupi::get<0>(tup);
-        auto second = tupi::get<1>(tup);
-        return tup_width{
-            {first[0], second[0]},
-            {first[1], second[1]},
-        };
-    }
 };
 template<>
 struct vec_traits<f32, 2>::repack_t<1, 2> {
@@ -209,32 +199,6 @@ struct vec_traits<f32, 4> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
-    PCX_AINLINE static auto bit_reverse(tup_width tup) noexcept {
-        constexpr auto unpck1lo = [](impl_vec a, impl_vec b) noexcept { return _mm_unpacklo_ps(a, b); };
-        constexpr auto unpck1hi = [](impl_vec a, impl_vec b) noexcept { return _mm_unpackhi_ps(a, b); };
-        constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
-            return _mm_castpd_ps(_mm_unpacklo_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
-        };
-        constexpr auto unpck2hi = [](impl_vec a, impl_vec b) {
-            return _mm_castpd_ps(_mm_unpackhi_pd(_mm_castps_pd(a), _mm_castps_pd(b)));
-        };
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(tup, std::make_index_sequence<2>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res1, std::index_sequence<0, 2>{});
-
-        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 1>(tup)...);
-        }(res2, std::index_sequence<0, 2>{});
-        return resort;
-    }
 };
 
 template<>
@@ -402,44 +366,6 @@ struct vec_traits<f32, 8> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
-    PCX_AINLINE static auto bit_reverse(tup_width tup) noexcept {
-        constexpr auto unpck1lo = [](impl_vec a, impl_vec b) noexcept { return _mm256_unpacklo_ps(a, b); };
-        constexpr auto unpck1hi = [](impl_vec a, impl_vec b) noexcept { return _mm256_unpackhi_ps(a, b); };
-        constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
-            return _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
-        };
-        constexpr auto unpck2hi = [](impl_vec a, impl_vec b) {
-            return _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
-        };
-        constexpr auto unpck4lo = [](impl_vec a, impl_vec b) {
-            return _mm256_permute2f128_ps(a, b, 0b00100000);
-        };
-        constexpr auto unpck4hi = [](impl_vec a, impl_vec b) {
-            return _mm256_permute2f128_ps(a, b, 0b00110001);
-        };
-
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...);
-        }(tup, std::make_index_sequence<4>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(res1, std::index_sequence<0, 1, 4, 5>{});
-
-        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck4lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck4hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res2, std::index_sequence<0, 2, 4, 6>{});
-
-        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 4>(tup)...);
-        }(res4, std::index_sequence<0, 2, 1, 3>{});
-        return resort;
-    }
 };
 template<>
 struct vec_traits<f32, 8>::repack_t<4, 8> {
@@ -655,58 +581,6 @@ struct vec_traits<f32, 16> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup_width = tupi::broadcast_tuple_t<impl_vec, width>;
-    PCX_AINLINE static auto bit_reverse(tup_width tup) {
-        constexpr auto unpck1lo = [](impl_vec a, impl_vec b) { return _mm512_unpacklo_ps(a, b); };
-        constexpr auto unpck1hi = [](impl_vec a, impl_vec b) { return _mm512_unpackhi_ps(a, b); };
-        constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
-            return _mm512_castpd_ps(_mm512_unpacklo_pd(_mm512_castps_pd(a), _mm512_castps_pd(b)));
-        };
-        constexpr auto unpck2hi = [](impl_vec a, impl_vec b) {
-            return _mm512_castpd_ps(_mm512_unpackhi_pd(_mm512_castps_pd(a), _mm512_castps_pd(b)));
-        };
-        constexpr auto unpck4lo = [](impl_vec a, impl_vec b) {
-            const auto idx = _mm512_setr_epi32(0, 1, 2, 3, 16, 17, 18, 19, 8, 9, 10, 11, 24, 25, 26, 27);
-            return _mm512_permutex2var_ps(a, idx, b);
-        };
-        constexpr auto unpck4hi = [](impl_vec a, impl_vec b) {
-            const auto idx = _mm512_setr_epi32(4, 5, 6, 7, 20, 21, 22, 23, 12, 13, 14, 15, 28, 29, 30, 31);
-            return _mm512_permutex2var_ps(a, idx, b);
-        };
-        constexpr auto unpck8lo = [](impl_vec a, impl_vec b) {
-            const auto idx = _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23);
-            return _mm512_permutex2var_ps(a, idx, b);
-        };
-        constexpr auto unpck8hi = [](impl_vec a, impl_vec b) {
-            const auto idx = _mm512_setr_epi32(8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31);
-            return _mm512_permutex2var_ps(a, idx, b);
-        };
-
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 8>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 8>(tup))...);
-        }(tup, std::make_index_sequence<8>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...);
-        }(res1, std::index_sequence<0, 1, 2, 3, 8, 9, 10, 11>{});
-
-        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return tupi::make_tuple(unpck4lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck4hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(res2, std::index_sequence<0, 1, 4, 5, 8, 9, 12, 13>{});
-
-        auto res8 = [unpck8lo, unpck8hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return tupi::make_tuple(unpck8lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck8hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res4, std::index_sequence<0, 2, 4, 6, 8, 10, 12, 14>{});
-        auto resort = []<uZ... Is>(auto tup, std::index_sequence<Is...>) {
-            return tupi::make_tuple(tupi::get<Is>(tup)..., tupi::get<Is + 8>(tup)...);
-        }(res8, std::index_sequence<0, 2, 1, 3, 4, 6, 5, 7>{});
-        return resort;
-    }
 };
 
 // clang-format off

@@ -53,10 +53,10 @@ struct br_permute_t {
             auto nhi      = tupi::group_invoke(tupi::get_copy<1>, res);
             return combine_halves<Stride>(nlo, nhi);
         };
-        return [pass]<uZ Stride = width, uZ Chunk = 1> PCX_LAINLINE(this auto     f,
-                                                                    auto          l_data,
-                                                                    uZ_ce<Stride> stride = {},
-                                                                    uZ_ce<Chunk>  chunk  = {}) {
+        return [pass]<uZ Stride, uZ Chunk = 1> PCX_LAINLINE(this auto     f,
+                                                            auto          l_data,
+                                                            uZ_ce<Stride> stride,
+                                                            uZ_ce<Chunk>  chunk = {}) {
             if constexpr (chunk == pack) {
                 return f(l_data, stride, uZ_ce<chunk * 2>{});
             } else if constexpr (stride == 2) {
@@ -65,12 +65,12 @@ struct br_permute_t {
                 auto tmp = pass(stride, chunk, l_data);
                 return f(tmp, uZ_ce<stride / 2>{}, uZ_ce<chunk * 2>{});
             }
-        }(data);
+        }(data, width);
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -82,7 +82,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -308,8 +308,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -328,7 +328,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -818,8 +818,8 @@ struct coherent_subtransform {
             }
         }();
         if constexpr (skip_sub_width) {
-            auto          res     = tupi::make_flat_tuple(btfly_res_0);
-            auto          res_rep = tupi::group_invoke(simd::evaluate | simd::repack<dst_pck>, res);
+            auto res     = tupi::make_flat_tuple(btfly_res_0);
+            auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<dst_pck>, res);
             [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 (simd::cxstore<dst_pck>(data_ptr + Width * 2 * Is, get<Is>(res_rep)), ...);
             }(make_uZ_seq<node_size>{});
@@ -1139,7 +1139,7 @@ struct coherent_subtransform {
     // clang-format on
 };
 
-template<uZ NodeSize, typename T, uZ Width>
+template<uZ NodeSize, typename T, uZ Width, uZ CohSize = 0, uZ LaneSize = 0>
 struct transform {
     using coh_subtf = coherent_subtransform<NodeSize, T, Width>;
     using subtf     = subtransform<NodeSize, T, Width>;
@@ -1147,12 +1147,12 @@ struct transform {
     /**
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
      */
-    static constexpr auto coherent_size  = uZ_ce<2048>{};
-    static constexpr auto width          = uZ_ce<Width>{};
-    static constexpr auto w_pck          = cxpack<width, T>{};
-    static constexpr auto lane_size      = uZ_ce<std::max(64 / sizeof(T) / 2, Width)>{};
-    static constexpr auto coherent_k_cnt = uZ_ce<coherent_size / lane_size>{};
-    static constexpr auto node_size      = uZ_ce<NodeSize>{};
+    static constexpr auto coherent_size = uZ_ce<CohSize != 0 ? CohSize : 8194 / sizeof(T)>{};
+    static constexpr auto lane_size = uZ_ce<std::max(LaneSize != 0 ? LaneSize : 64 / sizeof(T) / 2, Width)>{};
+
+    static constexpr auto width     = uZ_ce<Width>{};
+    static constexpr auto w_pck     = cxpack<width, T>{};
+    static constexpr auto node_size = uZ_ce<NodeSize>{};
 
     static constexpr auto skip_coherent_subtf = false;
 
@@ -1174,8 +1174,7 @@ struct transform {
 
     /**
      * Subdivides the data into buckets. Default bucket size is `coherent_size`.
-     * A bucket represents contiguous batches of data, distributed with a constant stride. Default batch size is `lane_size`.
-     * A single subdivision can perform a maximum of `coherent_k_cnt` levels of fft.
+     * A bucket is a set of `batches`, distributed with a constant stride. `Batch` is contiguous data with default size of `lane_size`.
      */
     template<uZ DestPackSize, uZ SrcPackSize>
     PCX_AINLINE static void perform(uZ                         data_size,
@@ -1399,10 +1398,9 @@ struct transform {
     };
 };
 
-template<uZ Width, bool DoSort>
+template<uZ Width>
 struct br_sort_inplace {
-    static constexpr auto width   = uZ_ce<Width>{};
-    static constexpr auto do_sort = std::bool_constant<DoSort>{};
+    static constexpr auto width = uZ_ce<Width>{};
 
     template<typename T>
     static void perform(cxpack_for<T> auto pck, uZ size, T* dest_ptr, uZ n_swaps, const uZ* idxs) {
@@ -1460,6 +1458,7 @@ struct br_sort_inplace {
             }
         }
     }
+
 };
 
 }    // namespace pcx::detail_

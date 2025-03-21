@@ -78,12 +78,6 @@ struct vec_traits<f64, 2> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup_width = tupi::tuple<impl_vec, impl_vec>;
-    PCX_AINLINE static auto bit_reverse(tup_width tup) noexcept {
-        return tupi::make_tuple(_mm_unpacklo_pd(tupi::get<0>(tup), tupi::get<1>(tup)),
-                                _mm_unpackhi_pd(tupi::get<0>(tup), tupi::get<1>(tup)));
-    }
 };
 template<>
 struct vec_traits<f64, 2>::repack_t<1, 2> {
@@ -185,29 +179,6 @@ struct vec_traits<f64, 4> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup4 = tupi::broadcast_tuple_t<impl_vec, 4>;
-    PCX_AINLINE static auto bit_reverse(tup4 tup) noexcept {
-        constexpr auto unpck1lo = [](impl_vec a, impl_vec b) noexcept { return _mm256_unpacklo_pd(a, b); };
-        constexpr auto unpck1hi = [](impl_vec a, impl_vec b) noexcept { return _mm256_unpackhi_pd(a, b); };
-        constexpr auto unpck2lo = [](impl_vec a, impl_vec b) {
-            return _mm256_permute2f128_pd(a, b, 0b00100000);
-        };
-        constexpr auto unpck2hi = [](impl_vec a, impl_vec b) {
-            return _mm256_permute2f128_pd(a, b, 0b00110001);
-        };
-
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(tup, std::make_index_sequence<2>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res1, std::index_sequence<0, 2>{});
-        return res2;
-    }
 };
 template<>
 struct vec_traits<f64, 4>::repack_t<2, 4> {
@@ -349,44 +320,6 @@ struct vec_traits<f64, 8> {
     template<uZ To, uZ From>
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
-
-    using tup8 = tupi::broadcast_tuple_t<impl_vec, 8>;
-    PCX_AINLINE static auto bit_reverse(tup8 tup) noexcept {
-        constexpr auto unpck1lo = [](impl_vec a, impl_vec b) noexcept { return _mm512_unpacklo_pd(a, b); };
-        constexpr auto unpck1hi = [](impl_vec a, impl_vec b) noexcept { return _mm512_unpackhi_pd(a, b); };
-        constexpr auto unpck2lo = [](impl_vec a, impl_vec b) noexcept {
-            const auto idx = _mm512_setr_epi64(0, 1, 8, 9, 4, 5, 12, 13);
-            return _mm512_permutex2var_pd(a, idx, b);
-        };
-        constexpr auto unpck2hi = [](impl_vec a, impl_vec b) noexcept {
-            const auto idx = _mm512_setr_epi64(2, 3, 10, 11, 6, 7, 12, 13);
-            return _mm512_permutex2var_pd(a, idx, b);
-        };
-        constexpr auto unpck4lo = [](impl_vec a, impl_vec b) noexcept {
-            const auto idx = _mm512_setr_epi64(0, 1, 2, 3, 8, 9, 10, 11);
-            return _mm512_permutex2var_pd(a, idx, b);
-        };
-        constexpr auto unpck4hi = [](impl_vec a, impl_vec b) noexcept {
-            const auto idx = _mm512_setr_epi64(4, 5, 6, 7, 12, 13, 14, 15);
-            return _mm512_permutex2var_pd(a, idx, b);
-        };
-
-        auto res1 = [unpck1lo, unpck1hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck1lo(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...,
-                                    unpck1hi(tupi::get<Is>(tup), tupi::get<Is + 4>(tup))...);
-        }(tup, std::make_index_sequence<4>{});
-
-        auto res2 = [unpck2lo, unpck2hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck2lo(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...,
-                                    unpck2hi(tupi::get<Is>(tup), tupi::get<Is + 2>(tup))...);
-        }(res1, std::index_sequence<0, 1, 4, 5>{});
-
-        auto res4 = [unpck4lo, unpck4hi]<uZ... Is>(auto tup, std::index_sequence<Is...>) noexcept {
-            return tupi::make_tuple(unpck4lo(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...,
-                                    unpck4hi(tupi::get<Is>(tup), tupi::get<Is + 1>(tup))...);
-        }(res2, std::index_sequence<0, 2, 4, 6>{});
-        return res4;
-    }
 };
 template<>
 struct vec_traits<f64, 8>::repack_t<1, 8> {

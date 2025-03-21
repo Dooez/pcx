@@ -192,7 +192,7 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
                              abs(naive - pcx));
                 ++err_cnt;
             }
-            if (err_cnt > 1000)
+            if (err_cnt > 100)
                 break;
             if (std::abs(naive - pcx) > 1) {
                 // std::println("{:>3}| naive:{: >6.2f}, pcx:{: >6.2f}, diff:{}",    //

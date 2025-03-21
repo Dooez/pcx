@@ -162,9 +162,6 @@ struct vec_traits {
     template<uZ ChunkSize>
         requires(ChunkSize <= Width)
     constexpr static auto split_interleave = split_interleave_t<ChunkSize>{};
-
-    struct tup_width;    // tupi::broadcast_tuple_t<impl_vec, Width>
-    static auto bit_reverse(tup_width tup) -> tup_width;
 };
 }    // namespace detail_
 template<typename T>
@@ -182,16 +179,11 @@ struct vec {
 
     impl_vec_t value;
 
-    auto impl_vec() -> impl_vec_t& {
-        return value;
-    }
-
     PCX_AINLINE vec() = default;
     PCX_AINLINE vec(impl_vec_t v)    //NOLINT(*explicit*)
     : value(v) {};
 };
 
-/*template <typename T> using reg_t = typename reg<T>::type;*/
 
 /**
  * @brief Simd vector of packed complex numbers.
