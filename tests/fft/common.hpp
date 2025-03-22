@@ -94,11 +94,14 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vect
 
     auto fft_size = signal.size();
     auto signal2  = signal;
+    auto signal3  = signal;
 
     using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
 
-    auto* data_ptr = reinterpret_cast<fX*>(signal2.data());
-    auto  twvec    = [=] {
+    auto* data_ptr     = reinterpret_cast<fX*>(signal2.data());
+    auto* ext_data_ptr = reinterpret_cast<fX*>(signal3.data());
+    auto  src_data     = detail_::src_data_t<fX, false>{reinterpret_cast<const fX*>(signal.data())};
+    auto  twvec        = [=] {
         if constexpr (LocalTw) {
             return [] {};
         } else {
@@ -122,13 +125,26 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vect
 
     constexpr auto pck_dst = cxpack<1, fX>{};
     constexpr auto pck_src = cxpack<1, fX>{};
+
+    decltype(auto) l_check = [&]() -> decltype(auto) {
+        if constexpr (local_check) {
+            auto sig_check = signal;
+            naive_fft(sig_check, NodeSize, Width);
+            return sig_check;
+        } else {
+            return *&check;
+        }
+    }();
+
+    bool ex_pass = false;
+    std::print("[Internal]");
     fimpl::perform(pck_dst, pck_src, half_tw, lowk, data_ptr, detail_::inplace_src, fft_size, tw);
-    if constexpr (local_check) {
-        auto signal_check = signal;
-        auto check        = naive_fft(signal_check, NodeSize, Width);
-        return check_correctness(check, signal2, Width, NodeSize, LowK, LocalTw, half_tw);
-    }
-    return check_correctness(check, signal2, Width, NodeSize, LowK, LocalTw, half_tw);
+    auto in_pass = check_correctness(l_check, signal2, Width, NodeSize, LowK, LocalTw, half_tw);
+    if (!in_pass)
+        return false;
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, ext_data_ptr, src_data, fft_size, tw);
+    std::print("[External]");
+    return check_correctness(l_check, signal3, Width, NodeSize, LowK, LocalTw, half_tw);
 }
 
 template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw, bool... half_tw>

@@ -411,6 +411,10 @@ struct src_data_t<T, false> {
     constexpr operator ptr_t() {    // NOLINT (*explicit*)
         return src_ptr;
     }
+    constexpr auto offset(uZ n) const -> src_data_t {
+        return src_data_t{src_ptr + n};
+    };
+
     ptr_t src_ptr;
 };
 template<typename T>
@@ -418,6 +422,9 @@ struct src_data_t<T, true> {
     static constexpr auto inplace() -> std::true_type {
         return {};
     };
+    static constexpr auto offset(uZ /*n*/) -> src_data_t {
+        return {};
+    }
 };
 
 inline constexpr auto inplace_src = src_data_t<void, true>{};
@@ -1274,6 +1281,7 @@ struct transform {
                 for (uZ i_b: stdv::iota(0U, bucket_count)) {
                     l_tw_data       = tw_data;
                     auto bucket_ptr = dest_ptr + i_b * batch_size * 2;
+                    auto l_src      = src_data.offset(i_b * batch_size * 2);
                     subtf::perform(src_pck,
                                    align,
                                    lowk,
@@ -1282,19 +1290,22 @@ struct transform {
                                    stride,
                                    k_count,
                                    bucket_ptr,
-                                   src_data,
+                                   l_src,
                                    l_tw_data);
                 }
                 tw_data = l_tw_data;
                 for (uZ i_bg: stdv::iota(1U, bucket_group_count)) {
-                    auto bucket_group_start = dest_ptr + i_bg * bucket_count * bucket_size * 2;
+                    auto bg_offset    = i_bg * bucket_count * bucket_size * 2;
+                    auto bg_start     = dest_ptr + bg_offset;
+                    auto bg_src_start = src_data.offset(bg_offset);
                     for (uZ i_b: stdv::iota(0U, bucket_count)) {
                         if constexpr (l_tw_data.is_local()) {
                             l_tw_data.start_k = i_bg;
                         } else {
                             l_tw_data = tw_data;
                         }
-                        auto bucket_ptr = bucket_group_start + i_b * batch_size * 2;
+                        auto bucket_ptr = bg_start + i_b * batch_size * 2;
+                        auto l_src      = bg_src_start.offset(i_b * batch_size * 2);
                         subtf::perform(src_pck,
                                        align,
                                        std::false_type{},
@@ -1303,7 +1314,7 @@ struct transform {
                                        stride,
                                        k_count,
                                        bucket_ptr,
-                                       src_data,
+                                       l_src,
                                        l_tw_data);
                     }
                     tw_data = l_tw_data;
@@ -1316,7 +1327,6 @@ struct transform {
                     tw_data.start_k = 0;
                 }
             };
-
 
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(uZ_seq<Is...>) {
