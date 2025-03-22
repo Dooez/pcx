@@ -749,6 +749,7 @@ struct coherent_subtransform {
                                     meta::ce_of<bool> auto     half_tw,
                                     uZ                         data_size,
                                     T*                         dest_ptr,
+                                    src_data_for<T> auto       src_data,
                                     meta::maybe_ce_of<uZ> auto align_node,
                                     tw_data_for<T> auto&       tw) {
         [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
@@ -758,7 +759,7 @@ struct coherent_subtransform {
                     return false;
 
                 constexpr auto align = align_param<l_node_size, true>{};
-                perform_impl(dst_pck, src_pck, align, lowk, half_tw, data_size, dest_ptr, tw);
+                perform_impl(dst_pck, src_pck, align, lowk, half_tw, data_size, dest_ptr, src_data, tw);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -772,6 +773,7 @@ struct coherent_subtransform {
                                          meta::ce_of<bool> auto     half_tw,
                                          meta::maybe_ce_of<uZ> auto data_size,
                                          T*                         data_ptr,
+                                         src_data_for<T> auto       src_data,
                                          tw_data_for<T> auto&       tw_data) {
         constexpr auto single_load_size = node_size * width;
         const auto     local            = tw_data.is_local();
@@ -786,7 +788,7 @@ struct coherent_subtransform {
                        width,
                        final_k_count,
                        data_ptr,
-                       inplace_src,
+                       src_data,
                        tw_data);
 
         if constexpr (skip_single_load) {
@@ -1228,6 +1230,7 @@ struct transform {
                                     meta::ce_of<bool> auto half_tw,
                                     meta::ce_of<bool> auto lowk,
                                     T* const               dest_ptr,
+                                    src_data_for<T> auto   src_data,
                                     uZ                     data_size,
                                     tw_data_for<T> auto    tw_data) {
         const auto bucket_size  = coherent_size;
@@ -1247,6 +1250,7 @@ struct transform {
                                        half_tw,
                                        data_size,
                                        dest_ptr,
+                                       src_data,
                                        uZ_ce<l_node_size>{},
                                        tw_data);
                     return true;
@@ -1264,7 +1268,7 @@ struct transform {
         uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
         auto iterate_buckets =
-            [&](meta::ce_of<uZ> auto align_node, cxpack_for<T> auto src_pck, auto k_count) {
+            [&](meta::ce_of<uZ> auto align_node, cxpack_for<T> auto src_pck, auto k_count, auto src_data) {
                 constexpr auto align     = align_param<align_node, true>{};
                 auto           l_tw_data = tw_data;
                 for (uZ i_b: stdv::iota(0U, bucket_count)) {
@@ -1278,7 +1282,7 @@ struct transform {
                                    stride,
                                    k_count,
                                    bucket_ptr,
-                                   inplace_src,
+                                   src_data,
                                    l_tw_data);
                 }
                 tw_data = l_tw_data;
@@ -1299,7 +1303,7 @@ struct transform {
                                        stride,
                                        k_count,
                                        bucket_ptr,
-                                       inplace_src,
+                                       src_data,
                                        l_tw_data);
                     }
                     tw_data = l_tw_data;
@@ -1320,7 +1324,7 @@ struct transform {
                 constexpr auto l_node_size = powi(2, I);
                 if (l_node_size != pre_pass_align_node)
                     return false;
-                iterate_buckets(uZ_ce<l_node_size>{}, src_pck, pre_pass_k_count);
+                iterate_buckets(uZ_ce<l_node_size>{}, src_pck, pre_pass_k_count, src_data);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -1330,7 +1334,7 @@ struct transform {
         constexpr auto pass_align_node = get_align_node(pass_k_count * 2);
         for (uZ pass: stdv::iota(0U, pass_count)) {
             tw_data = tw_data_bak;
-            iterate_buckets(uZ_ce<pass_align_node>{}, w_pck, pass_k_count);
+            iterate_buckets(uZ_ce<pass_align_node>{}, w_pck, pass_k_count, inplace_src);
         }
         if constexpr (skip_coherent_subtf) {
             for (auto i: stdv::iota(0U, data_size / width)) {
@@ -1356,6 +1360,7 @@ struct transform {
                                half_tw,
                                bucket_size,
                                dest_ptr,
+                               inplace_src,
                                coherent_align_node,
                                tw_data);
         }
@@ -1372,6 +1377,7 @@ struct transform {
                                half_tw,
                                bucket_size,
                                bucket_ptr,
+                               inplace_src,
                                coherent_align_node,
                                tw_data);
         }

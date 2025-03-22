@@ -122,7 +122,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vect
 
     constexpr auto pck_dst = cxpack<1, fX>{};
     constexpr auto pck_src = cxpack<1, fX>{};
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, data_ptr, fft_size, tw);
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, data_ptr, detail_::inplace_src, fft_size, tw);
     if constexpr (local_check) {
         auto signal_check = signal;
         auto check        = naive_fft(signal_check, NodeSize, Width);
