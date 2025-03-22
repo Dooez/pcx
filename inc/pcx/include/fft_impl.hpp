@@ -496,8 +496,8 @@ struct subtransform {
                                           cxpack_for<T> auto         src_pck,
                                           meta::ce_of<bool> auto     lowk,
                                           meta::maybe_ce_of<uZ> auto bucket_size,
-                                          meta::maybe_ce_of<uZ> auto stride,
                                           meta::maybe_ce_of<uZ> auto batch_size,
+                                          meta::maybe_ce_of<uZ> auto stride,
                                           T*                         dest_ptr,
                                           src_data_for<T> auto       src_data,
                                           uZ&                        k_count,
@@ -622,8 +622,8 @@ struct subtransform {
                                     any_align auto             align,
                                     meta::ce_of<bool> auto     lowk,
                                     meta::maybe_ce_of<uZ> auto bucket_size,
-                                    meta::maybe_ce_of<uZ> auto stride,
                                     meta::maybe_ce_of<uZ> auto batch_size,
+                                    meta::maybe_ce_of<uZ> auto stride,
                                     uZ                         final_k_count,
                                     T*                         data_ptr,
                                     src_data_for<T> auto       src_data,
@@ -642,8 +642,8 @@ struct subtransform {
                                      src_pck,
                                      lowk,
                                      bucket_size,
-                                     stride,
                                      batch_size,
+                                     stride,
                                      data_ptr,
                                      src,
                                      k_count,
@@ -659,8 +659,8 @@ struct subtransform {
                 }
             }
         } else {
-            // if (k_count * align.size_post() <= final_k_count)
-            fft_iter(node_size, w_pck, src_pck, src_data);
+            if (k_count * align.size_post() <= final_k_count)
+                fft_iter(node_size, w_pck, src_pck, src_data);
         }
 
         while (k_count * align.size_post() <= final_k_count)
@@ -1274,8 +1274,8 @@ struct transform {
                                    align,
                                    lowk,
                                    bucket_size,
-                                   stride,
                                    batch_size,
+                                   stride,
                                    k_count,
                                    bucket_ptr,
                                    inplace_src,
@@ -1295,8 +1295,8 @@ struct transform {
                                        align,
                                        std::false_type{},
                                        bucket_size,
-                                       stride,
                                        batch_size,
+                                       stride,
                                        k_count,
                                        bucket_ptr,
                                        inplace_src,

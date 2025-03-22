@@ -211,11 +211,17 @@ struct cx_vec {
     PCX_AINLINE auto imag(this auto&& v) -> decltype(auto) {
         return v.m_imag;
     }
-    PCX_AINLINE auto real_v(this auto&& v) -> decltype(auto) {
-        return v.m_real.value;
+    PCX_AINLINE auto real_v() -> auto& {
+        return m_real.value;
     }
-    PCX_AINLINE auto imag_v(this auto&& v) -> decltype(auto) {
-        return v.m_imag.value;
+    PCX_AINLINE auto imag_v() -> auto& {
+        return m_imag.value;
+    }
+    PCX_AINLINE auto real_v() const -> const auto& {
+        return m_real.value;
+    }
+    PCX_AINLINE auto imag_v() const -> const auto& {
+        return m_imag.value;
     }
 
     static consteval auto width() -> uZ {
