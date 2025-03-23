@@ -113,6 +113,17 @@ template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 }    // namespace pcx::testing
 #ifdef FULL_FFT_TEST
 inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
+#ifdef NO_SPLIT_COMPILE
+namespace pcx::testing {
+template<typename fX, uZ NodeSize>
+bool test_fft(const std::vector<std::complex<fX>>& signal,
+              const std::vector<std::complex<fX>>& check,
+              std::vector<std::complex<fX>>&       s1,
+              std::vector<std::complex<fX>>&       s2) {
+    return run_tests<fX, NodeSize>(f32_widths, low_k, local_tw, half_tw, signal, check, s1, s2);
+};
+}    // namespace pcx::testing
+#endif
 #else
 inline constexpr auto node_sizes = pcx::uZ_seq<FFT_NODE_SIZE>{};
 #endif
@@ -145,9 +156,14 @@ int main() {
         };
         auto [s32, check32] = make_signal_check(pcx::meta::t_id<f32>{});
         auto [s64, check64] = make_signal_check(pcx::meta::t_id<f64>{});
+        auto s32_1          = std::vector<std::complex<f32>>(fft_size);
+        auto s32_2          = std::vector<std::complex<f32>>(fft_size);
+        auto s64_1          = std::vector<std::complex<f64>>(fft_size);
+        auto s64_2          = std::vector<std::complex<f64>>(fft_size);
 
-        return (pcx::testing::test_fft<f32, Is>(s32, check32) && ...)
-               && (pcx::testing::test_fft<f64, Is>(s64, check64) && ...);
+
+        return (pcx::testing::test_fft<f32, Is>(s32, check32, s32_1, s32_2) && ...)
+               && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
     };
     // uZ fft_size = 2048 * 256;
     uZ fft_size = 4096;

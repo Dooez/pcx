@@ -21,7 +21,10 @@ inline constexpr auto local_tw    = meta::val_seq<false>{};
 inline constexpr bool local_check = false;
 
 template<typename T, uZ NodeSize>
-bool test_fft(const std::vector<std::complex<T>>& signal, const std::vector<std::complex<T>>& check);
+bool test_fft(const std::vector<std::complex<T>>& signal,
+              const std::vector<std::complex<T>>& check,
+              std::vector<std::complex<T>>&       s1,
+              std::vector<std::complex<T>>&       s2);
 }    // namespace pcx::testing
 
 template<typename T>
@@ -88,18 +91,21 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        bool                                 half_tw);
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
-bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vector<std::complex<fX>>& check) {
+bool test_prototype(const std::vector<std::complex<fX>>& signal,
+                    const std::vector<std::complex<fX>>& check,
+                    std::vector<std::complex<fX>>&       s1,
+                    std::vector<std::complex<fX>>&       s2) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
 
     auto fft_size = signal.size();
-    auto signal2  = signal;
-    auto signal3  = signal;
+    s1            = signal;
+    s2.resize(fft_size);
 
     using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
 
-    auto* data_ptr     = reinterpret_cast<fX*>(signal2.data());
-    auto* ext_data_ptr = reinterpret_cast<fX*>(signal3.data());
+    auto* data_ptr     = reinterpret_cast<fX*>(s1.data());
+    auto* ext_data_ptr = reinterpret_cast<fX*>(s2.data());
     auto  src_data     = detail_::src_data_t<fX, false>{reinterpret_cast<const fX*>(signal.data())};
     auto  twvec        = [=] {
         if constexpr (LocalTw) {
@@ -139,12 +145,12 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal, const std::vect
     bool ex_pass = false;
     std::print("[Internal]");
     fimpl::perform(pck_dst, pck_src, half_tw, lowk, data_ptr, detail_::inplace_src, fft_size, tw);
-    auto in_pass = check_correctness(l_check, signal2, Width, NodeSize, LowK, LocalTw, half_tw);
+    auto in_pass = check_correctness(l_check, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     if (!in_pass)
         return false;
     fimpl::perform(pck_dst, pck_src, half_tw, lowk, ext_data_ptr, src_data, fft_size, tw);
     std::print("[External]");
-    return check_correctness(l_check, signal3, Width, NodeSize, LowK, LocalTw, half_tw);
+    return check_correctness(l_check, s2, Width, NodeSize, LowK, LocalTw, half_tw);
 }
 
 template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw, bool... half_tw>
@@ -153,13 +159,16 @@ bool run_tests(uZ_seq<VecWidth...>,
                meta::val_seq<local_tw...>,
                meta::val_seq<half_tw...>,
                const std::vector<std::complex<fX>>& signal,
-               const std::vector<std::complex<fX>>& check) {
+               const std::vector<std::complex<fX>>& check,
+               std::vector<std::complex<fX>>&       s1,
+               std::vector<std::complex<fX>>&       s2) {
     auto lk_passed = [&]<bool LowK>(val_ce<LowK>) {
         auto ltw_passed = [&]<bool LocalTw>(val_ce<LocalTw>) {
             auto htw_passed = [&]<bool HalfTw>(val_ce<HalfTw>) {
-                return ((signal.size() <= NodeSize * VecWidth
-                         || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(signal, check))
-                        && ...);
+                return (
+                    (signal.size() <= NodeSize * VecWidth
+                     || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(signal, check, s1, s2))
+                    && ...);
             };
             return (htw_passed(val_ce<half_tw>{}) && ...);
         };
