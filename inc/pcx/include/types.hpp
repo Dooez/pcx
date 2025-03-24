@@ -64,7 +64,8 @@ template<uZ N>
 concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 
 template<typename T>
-concept floating_point = std::same_as<T, float> || std::same_as<T, double>;
+concept floating_point =
+    std::same_as<std::remove_const_t<T>, float> || std::same_as<std::remove_const_t<T>, double>;
 
 template<uZ PackSize, floating_point fX>
     requires power_of_two<PackSize>

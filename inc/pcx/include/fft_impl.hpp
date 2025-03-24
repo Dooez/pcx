@@ -398,36 +398,7 @@ struct btfly_node_dit {
     } const_tw_getter{};
 };
 
-template<typename T, bool Inplace>
-    requires std::floating_point<T> || std::same_as<T, void>
-struct src_data_t;
-template<floating_point T>
-struct src_data_t<T, false> {
-    using ptr_t = const T*;
-    static constexpr auto inplace() -> std::false_type {
-        return {};
-    };
-
-    constexpr operator ptr_t() {    // NOLINT (*explicit*)
-        return src_ptr;
-    }
-    constexpr auto offset(uZ n) const -> src_data_t {
-        return src_data_t{src_ptr + n};
-    };
-
-    ptr_t src_ptr;
-};
-template<typename T>
-struct src_data_t<T, true> {
-    static constexpr auto inplace() -> std::true_type {
-        return {};
-    };
-    static constexpr auto offset(uZ /*n*/) -> src_data_t {
-        return {};
-    }
-};
-
-template<typename T, bool Contiguous, bool Empty = false, typename C = void>
+template<floating_point T, bool Contiguous, typename C = void, bool Empty = false>
 struct data_info {
     using data_ptr_t    = std::conditional_t<Contiguous, T*, C*>;
     using data_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
@@ -459,7 +430,7 @@ struct data_info {
         }
     }
 
-    constexpr auto get_batch_base(uZ k) -> T* {
+    constexpr auto get_batch_base(uZ k) const -> T* {
         if constexpr (Contiguous) {
             return data_ptr + k * 2;
         } else {
@@ -468,9 +439,9 @@ struct data_info {
         }
     };
 };
-template<typename T, bool Contiguous, typename C>
-struct data_info<T, Contiguous, true, C> {
-    static constexpr auto contiguous() -> std::bool_constant<Contiguous> {
+template<floating_point T, bool Cont, typename C>
+struct data_info<T, Cont, C, true> {
+    static constexpr auto contiguous() -> std::bool_constant<Cont> {
         return {};
     }
     static constexpr auto empty() -> std::true_type {
@@ -485,25 +456,17 @@ struct data_info<T, Contiguous, true, C> {
 };
 template<typename T, typename U>
 struct is_data_info_for : public std::false_type {};
-template<typename U, bool Contiguous, bool Empty, typename C>
-struct is_data_info_for<data_info<U, Contiguous, Empty, C>, U> : public std::true_type {};
+template<typename U, bool Contiguous, typename C, bool Empty>
+struct is_data_info_for<data_info<U, Contiguous, C, Empty>, U> : public std::true_type {};
 template<typename U, bool Contiguous, typename C>
-struct is_data_info_for<data_info<void, Contiguous, true, C>, U> : public std::true_type {};
+struct is_data_info_for<data_info<const U, Contiguous, C, false>, U> : public std::true_type {};
+template<typename T, typename U, bool Contiguous, typename C>
+    requires(!std::same_as<T, U>)
+struct is_data_info_for<data_info<T, Contiguous, C, true>, U> : public std::true_type {};
 template<typename T, typename U>
 concept data_info_for = floating_point<U> && is_data_info_for<T, U>::value;
 
-inline constexpr auto inplace_data = data_info<void, true, true>{};
-
-inline constexpr auto inplace_src = src_data_t<void, true>{};
-
-template<typename T, typename U>
-struct is_src_data_of : std::false_type {};
-template<floating_point T, bool Inplace>
-struct is_src_data_of<src_data_t<T, Inplace>, T> : std::true_type {};
-template<typename T>
-struct is_src_data_of<src_data_t<void, true>, T> : std::true_type {};
-template<typename T, typename U>
-concept src_data_for = is_src_data_of<T, U>::value;
+inline constexpr auto inplace_src = data_info<f64, true, void, true>{};
 
 template<floating_point T, bool LocalTw>
 struct tw_data_t;
@@ -621,11 +584,13 @@ struct subtransform {
             }(make_uZ_seq<NodeSizeL>{});
         };
         auto make_src_tup = [=] PCX_LAINLINE(uZ i, uZ k, uZ offset) {
-            auto k_stride = src_stride * batch_count;
-            auto base_ptr = src_data.get_batch_base(i * src_stride + k * k_stride) + offset * 2;
-            return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                return tupi::make_tuple((base_ptr + k_stride * 2 / NodeSizeL * Is)...);
-            }(make_uZ_seq<NodeSizeL>{});
+            if constexpr (!inplace) {
+                auto k_stride = src_stride * batch_count;
+                auto base_ptr = src_data.get_batch_base(i * src_stride + k * k_stride) + offset * 2;
+                return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                    return tupi::make_tuple((base_ptr + k_stride * 2 / NodeSizeL * Is)...);
+                }(make_uZ_seq<NodeSizeL>{});
+            }
         };
 
         auto make_tw_tup = [&] {
@@ -742,7 +707,7 @@ struct subtransform {
                                     uZ                         final_k_count,
                                     tw_data_for<T> auto&       tw_data) {
         uZ         k_count    = 1;
-        const auto inplace    = src_data.inplace();
+        const auto inplace    = src_data.empty();
         const auto local      = tw_data.is_local();
         using l_tw_data_t     = std::conditional_t<local, tw_data_t<T, local>, tw_data_t<T, local>&>;
         l_tw_data_t l_tw_data = tw_data;
@@ -797,7 +762,7 @@ struct subtransform {
                                     meta::maybe_ce_of<uZ> auto stride,
                                     uZ                         final_k_count,
                                     T*                         data_ptr,
-                                    src_data_for<T> auto       src_data,
+                                    data_info_for<T> auto      src_data,
                                     tw_data_for<T> auto&       tw_data) {
         uZ         k_count    = final_k_count;
         const auto inplace    = src_data.inplace();
@@ -966,11 +931,12 @@ struct coherent_subtransform {
             tw_data.start_fft_size *= final_k_count * 2;
             tw_data.start_k *= final_k_count * 2;
         }
+        auto data_ptr = dst_data.get_batch_base(0);
         if constexpr (lowk && !skip_lowk_single_load)
-            single_load(dst_pck, w_pck, lowk, half_tw, dst_data, dst_data, tw_data);
+            single_load(dst_pck, w_pck, lowk, half_tw, data_ptr, data_ptr, tw_data);
         constexpr auto start = lowk ? 1UZ : 0UZ;
         for (auto k: stdv::iota(start, final_k_count * 2)) {
-            auto dest = dst_data + k * single_load_size * 2;
+            auto dest = data_ptr + k * single_load_size * 2;
             single_load(dst_pck, w_pck, std::false_type{}, half_tw, dest, dest, tw_data);
         }
     };
@@ -1437,8 +1403,8 @@ struct transform {
                 auto           l_tw_data = tw_data;
                 for (uZ i_b: stdv::iota(0U, bucket_count)) {
                     l_tw_data        = tw_data;
-                    auto bucket_data = dest_data.offset_k(i_b * batch_size * 2);
-                    auto l_src_data  = src_data.offset_k(i_b * batch_size * 2);
+                    auto bucket_data = dest_data.offset_k(i_b * batch_size);
+                    auto l_src_data  = src_data.offset_k(i_b * batch_size);
                     subtf::perform(src_pck,
                                    align,
                                    lowk,
@@ -1453,7 +1419,7 @@ struct transform {
                 }
                 tw_data = l_tw_data;
                 for (uZ i_bg: stdv::iota(1U, bucket_group_count)) {
-                    auto bg_offset    = i_bg * bucket_count * bucket_size * 2;
+                    auto bg_offset    = i_bg * bucket_count * bucket_size;
                     auto bg_start     = dest_data.offset_k(bg_offset);
                     auto bg_src_start = src_data.offset_k(bg_offset);
                     for (uZ i_b: stdv::iota(0U, bucket_count)) {
@@ -1462,8 +1428,8 @@ struct transform {
                         } else {
                             l_tw_data = tw_data;
                         }
-                        auto bucket_data = bg_start.offset_k(i_b * batch_size * 2);
-                        auto l_src_data  = bg_src_start.offset_k(i_b * batch_size * 2);
+                        auto bucket_data = bg_start.offset_k(i_b * batch_size);
+                        auto l_src_data  = bg_src_start.offset_k(i_b * batch_size);
                         subtf::perform(src_pck,
                                        align,
                                        std::false_type{},
@@ -1539,13 +1505,13 @@ struct transform {
                 tw_data         = tw_data_bak;
                 tw_data.start_k = i_bg;
             }
-            auto bucket_ptr = dest_data + i_bg * bucket_size * 2;
+            auto bucket_data = dest_data.offset_k(i_bg * bucket_size);
             coh_subtf::perform(coh_pck,
                                w_pck,
                                std::false_type{},
                                half_tw,
                                bucket_size,
-                               bucket_ptr,
+                               bucket_data,
                                inplace_src,
                                coherent_align_node,
                                tw_data);

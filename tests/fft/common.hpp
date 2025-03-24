@@ -141,17 +141,17 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
         }
     }();
 
-    using src_info_t   = detail_::data_info<fX, true>;
-    auto      s1_info  = src_info_t{data_ptr};
-    auto      s2_info  = src_info_t{ext_data_ptr};
-    auto      src_data = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
-    auto bool ex_pass  = false;
+    using src_info_t = detail_::data_info<fX, true>;
+    auto s1_info     = src_info_t{data_ptr};
+    auto s2_info     = src_info_t{ext_data_ptr};
+    auto src_data    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
+    bool ex_pass     = false;
     std::print("[Internal]");
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_data, fft_size, tw);
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
     auto in_pass = check_correctness(l_check, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     if (!in_pass)
         return false;
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, ext_data_ptr, src_data, fft_size, tw);
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s2_info, src_data, fft_size, tw);
     std::print("[External]");
     return check_correctness(l_check, s2, Width, NodeSize, LowK, LocalTw, half_tw);
 }
