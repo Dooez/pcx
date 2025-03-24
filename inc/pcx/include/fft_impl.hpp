@@ -427,6 +427,29 @@ struct src_data_t<T, true> {
     }
 };
 
+template<typename T, bool Contiguous, typename C>
+struct data_view {
+    using data_ptr_t      = std::conditional_t<Contiguous, T*, C*>;
+    using static_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
+
+    static_offset_t static_offset{};
+    data_ptr_t      data_ptr;
+
+    // auto base_ptr = ptr                   //
+    //                 + i * stride * 2      //
+    //                 + k * k_stride * 2    //
+    //                 + offset * 2;
+
+    auto get_batch_base(uZ k) -> T* {
+        if constexpr (Contiguous) {
+            return data_ptr + k * 2;
+        } else {
+            auto ptr = reinterpret_cast<T*>((*data_ptr)[k].data());
+            return ptr + static_offset * 2;
+        }
+    };
+};
+
 inline constexpr auto inplace_src = src_data_t<void, true>{};
 
 template<typename T, typename U>
