@@ -1,5 +1,7 @@
 #include "common.hpp"
 
+#include <cstdlib>
+
 using pcx::f32;
 using pcx::f64;
 using pcx::uZ;
@@ -161,14 +163,28 @@ int main() {
         auto s64_1          = std::vector<std::complex<f64>>(fft_size);
         auto s64_2          = std::vector<std::complex<f64>>(fft_size);
 
+        // auto mag  = stdr::to<std::vector<f32>>(check32 | stdv::transform([](auto v) { return abs(v); }));
+        // auto x    = stdr::max_element(mag);
+        // auto brid = x - mag.begin();
+        // auto id   = pcx::detail_::reverse_bit_order(brid, pcx::detail_::log2i(fft_size));
+        // if (id == std::round(freq_n)) {
+        //     std::println("[Success] fft size {}, freq_n {}", fft_size, freq_n);
+        //     return true;
+        // }
+        // std::println("[Failure] fft size {}, freq_n {}, detected n {}", fft_size, freq_n, id);
+        // return false;
+
 
         return (pcx::testing::test_fft<f32, Is>(s32, check32, s32_1, s32_2) && ...)
                && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
     };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 4096;
+    uZ fft_size = 512;
+    // for (auto i: stdv::iota(0U, fft_size)) {
+    //     if (!test_size(node_sizes, fft_size, i + .01))
+    //         return -1;
+    // }
     while (fft_size <= 2048 * 256 * 4) {
-        // if (!test_size(node_sizes, fft_size, fft_size / 64))
         if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
             return -1;
         fft_size *= 2;
