@@ -754,7 +754,8 @@ struct subtransform {
                 l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_post() : 0);
         }
     }
-    PCX_AINLINE static void reverse(cxpack_for<T> auto         src_pck,
+    PCX_AINLINE static void reverse(cxpack_for<T> auto         dst_pck,
+                                    cxpack_for<T> auto         src_pck,
                                     any_align auto             align,
                                     meta::ce_of<bool> auto     lowk,
                                     meta::maybe_ce_of<uZ> auto bucket_size,
@@ -796,22 +797,35 @@ struct subtransform {
         } else {
             if constexpr (lowk && !local)
                 l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
-            if (k_count >= align.size_pre()) {
-                fft_iter(node_size, w_pck, src_pck, src_data);
+            if constexpr (src_pck != w_pck) {
+                if (k_count >= align.size_pre())
+                    fft_iter(node_size, w_pck, src_pck, src_data);
             }
         }
 
-        while (k_count >= align.size_pre())
+        auto fk = [&] {
+            if constexpr (align.size_pre() > 1) {
+                return align.size_pre();
+            } else if constexpr (dst_pck != w_pck) {
+                return node_size;
+            } else {
+                return uZ_ce<1>{};
+            }
+        }();
+
+        while (k_count >= fk)
             fft_iter(node_size, w_pck, w_pck, inplace_src);
 
         if constexpr (align.size_pre() != 1) {
             if (k_count < final_k_count) {
-                fft_iter(align.size_pre(), w_pck, w_pck, inplace_src);
+                fft_iter(align.size_pre(), dst_pck, w_pck, inplace_src);
             } else {
-                fft_iter(align.size_pre(), w_pck, src_pck, src_data);
+                fft_iter(align.size_pre(), dst_pck, src_pck, src_data);
             }
             if constexpr (lowk && !local)
                 l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
+        } else if constexpr (fk > 1) {
+            fft_iter(node_size, dst_pck, src_pck, src_data);
         }
     }
 
