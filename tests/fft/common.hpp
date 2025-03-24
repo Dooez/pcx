@@ -106,7 +106,6 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
 
     auto* data_ptr     = reinterpret_cast<fX*>(s1.data());
     auto* ext_data_ptr = reinterpret_cast<fX*>(s2.data());
-    auto  src_data     = detail_::src_data_t<fX, false>{reinterpret_cast<const fX*>(signal.data())};
     auto  twvec        = [=] {
         if constexpr (LocalTw) {
             return [] {};
@@ -142,9 +141,13 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
         }
     }();
 
-    bool ex_pass = false;
+    using src_info_t   = detail_::data_info<fX, true>;
+    auto      s1_info  = src_info_t{data_ptr};
+    auto      s2_info  = src_info_t{ext_data_ptr};
+    auto      src_data = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
+    auto bool ex_pass  = false;
     std::print("[Internal]");
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, data_ptr, detail_::inplace_src, fft_size, tw);
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_data, fft_size, tw);
     auto in_pass = check_correctness(l_check, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     if (!in_pass)
         return false;
