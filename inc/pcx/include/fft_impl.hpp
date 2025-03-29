@@ -950,7 +950,7 @@ struct coherent_subtransform {
                        src_pck,
                        align,
                        lowk,
-                       std::false_type{},
+                       std::false_type{},    // single iter
                        data_size,
                        width,    // batch size
                        width,    // dst stride
