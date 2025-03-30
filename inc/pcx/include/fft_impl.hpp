@@ -609,9 +609,7 @@ struct subtransform {
                 l_tw_data.start_k /= NodeSizeL;
             }
         }
-
         const auto batch_count = bucket_size / k_count / batch_size;
-
 
         // data division:
         // E - even, O - odd
@@ -833,14 +831,11 @@ struct subtransform {
             if constexpr (align.size_post() != 1) {
                 if constexpr (lowk && !local)
                     l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_post() : 0);
-                // k_count *= align.size_post();
                 fft_iter(align.size_post(), w_pck, src_pck, src_data);
             } else {
                 if (k_count > align.size_pre()) {
                     if constexpr (lowk && !local)
                         l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
-
-                    // k_count *= node_size;
                 }
                 if constexpr (src_pck != w_pck || !inplace)
                     fft_iter(node_size, w_pck, src_pck, src_data);
@@ -861,8 +856,6 @@ struct subtransform {
             if constexpr (align.size_pre() != 1) {
                 if constexpr (lowk && !local)
                     l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
-                // if (k_count == final_k_count)
-                //     k_count *= align.size_pre();
                 fft_iter(align.size_pre(), dst_pck, w_pck, inplace_src);
             } else if constexpr (dst_pck != w_pck) {
                 fft_iter(node_size, dst_pck, w_pck, src_data);
@@ -977,9 +970,8 @@ struct coherent_subtransform {
         using fnode        = subtransform<node_size, T, width>;
         auto final_k_count = data_size / single_load_size / 2;
 
-
-        if constexpr (!reverse) {
-            fnode::perform(w_pck,
+        auto multi_load = [&] PCX_LAINLINE(auto dst_pck, auto src_pck, auto src) {
+            fnode::perform(dst_pck,
                            src_pck,
                            align,
                            lowk,
@@ -991,9 +983,13 @@ struct coherent_subtransform {
                            width,    // dst stride
                            width,    // src stride
                            dst_data,
-                           src_data,
+                           src,
                            final_k_count,
                            tw_data);
+        };
+
+        if constexpr (!reverse) {
+            multi_load(w_pck, src_pck, src_data);
 
             if constexpr (skip_single_load) {
                 for (auto i: stdv::iota(0U, data_size / width)) {
@@ -1027,21 +1023,7 @@ struct coherent_subtransform {
                     tw_data.start_k /= single_load_size / 2;
                 }
             }
-            fnode::perform(dst_pck,
-                           w_pck,
-                           align,
-                           lowk,
-                           std::false_type{},    // single iter
-                           reverse,
-                           conj_tw,
-                           data_size,
-                           width,    // batch size
-                           width,    // dst stride
-                           width,    // src stride
-                           dst_data,
-                           src_data,
-                           final_k_count,
-                           tw_data);
+            multi_load(dst_pck, w_pck, inplace_src);
         }
     };
 
