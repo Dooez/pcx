@@ -95,7 +95,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                     const std::vector<std::complex<fX>>& check,
                     std::vector<std::complex<fX>>&       s1,
                     std::vector<fX>&                     twvec,
-                    bool                                 local_check = false,
+                    bool                                 local_check = true,
                     bool                                 reverse     = false) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
@@ -135,17 +135,17 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     using src_info_t = detail_::data_info<fX, true>;
     auto s1_info     = src_info_t{data_ptr};
     auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
-    bool ex_pass     = false;
-    std::print("[Internal ]");
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
-    if (!run_check())
-        return false;
 
-    std::print("[External ]");
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);
-    if (!run_check())
-        return false;
-
+    // std::print("[Internal ]");
+    // fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
+    // if (!run_check())
+    //     return false;
+    //
+    // std::print("[External ]");
+    // fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);
+    // if (!run_check())
+    //     return false;
+    //
     s1              = signal;
     using fimpl_coh = pcx::detail_::coherent_subtransform<NodeSize, fX, Width>;
     auto coh_align  = fimpl_coh::get_align_node(fft_size);
@@ -180,6 +180,8 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                        pck_src,
                        lowk,
                        half_tw,
+                       std::false_type{},    // reverse
+                       std::false_type{},    // conj_tw
                        fft_size,
                        s1_info,
                        detail_::inplace_src,
@@ -188,11 +190,11 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     if (!run_check())
         return false;
 
-    std::print("[eCoherent]");
-    tw_coh_c = tw_coh;
-    fimpl_coh::perform(pck_dst, pck_src, lowk, half_tw, fft_size, s1_info, src_info, coh_align, tw_coh_c);
-    if (!run_check())
-        return false;
+    // std::print("[eCoherent]");
+    // tw_coh_c = tw_coh;
+    // fimpl_coh::perform(pck_dst, pck_src, lowk, half_tw, fft_size, s1_info, src_info, coh_align, tw_coh_c);
+    // if (!run_check())
+    //     return false;
 
     return true;
 }

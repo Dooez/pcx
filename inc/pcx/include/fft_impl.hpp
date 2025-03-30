@@ -201,6 +201,7 @@ struct btfly_node_dit {
         uZ   pack_dest;
         uZ   pack_src;
         bool reverse;
+        bool conj_tw;
     };
 
     using dest_t = tupi::broadcast_tuple_t<T*, NodeSize>;
@@ -209,24 +210,29 @@ struct btfly_node_dit {
     using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
     struct low_k_tw_t {};
 
-    PCX_LAINLINE static auto forward(data_t data, low_k_tw_t = {}) {
-        return fwd_impl(data, const_tw_getter);
+    template<bool ConjTw = false>
+    PCX_LAINLINE static auto forward(data_t data, low_k_tw_t = {}, val_ce<ConjTw> conj_tw = {}) {
+        return fwd_impl(data, const_tw_getter, conj_tw);
     }
-    PCX_LAINLINE static auto forward(data_t data, const tw_t& tw) {
-        return fwd_impl(data, make_tw_getter(tw));
+    template<bool ConjTw = false>
+    PCX_LAINLINE static auto forward(data_t data, const tw_t& tw, val_ce<ConjTw> conj_tw = {}) {
+        return fwd_impl(data, make_tw_getter(tw), conj_tw);
     }
-    PCX_LAINLINE static auto reverse(data_t data, low_k_tw_t = {}) {
-        return rev_impl(data, const_tw_getter);
+    template<bool ConjTw = false>
+    PCX_LAINLINE static auto reverse(data_t data, low_k_tw_t = {}, val_ce<ConjTw> conj_tw = {}) {
+        return rev_impl(data, const_tw_getter, conj_tw);
     }
-    PCX_LAINLINE static auto reverse(data_t data, const tw_t& tw) {
-        return rev_impl(data, make_tw_getter(tw));
+    template<bool ConjTw = false>
+    PCX_LAINLINE static auto reverse(data_t data, const tw_t& tw, val_ce<ConjTw> conj_tw = {}) {
+        return rev_impl(data, make_tw_getter(tw), conj_tw);
     }
 
     template<settings S, typename Tw = low_k_tw_t>
         requires std::same_as<Tw, tw_t> || std::same_as<Tw, low_k_tw_t>
     PCX_AINLINE static void perform(val_ce<S>, const dest_t& dest, const src_t& src, const Tw& tw = {}) {
-        auto data    = tupi::group_invoke(simd::cxload<S.pack_src, Width> | simd::repack<Width>, src);
-        auto res     = S.reverse ? reverse(data, tw) : forward(data, tw);
+        auto data = tupi::group_invoke(simd::cxload<S.pack_src, Width> | simd::repack<Width>, src);
+        auto res =
+            S.reverse ? reverse(data, tw, val_ce<S.conj_tw>{}) : forward(data, tw, val_ce<S.conj_tw>{});
         auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<S.pack_dest>, res);
         tupi::group_invoke(simd::cxstore<S.pack_dest>, dest, res_rep);
     }
@@ -236,63 +242,79 @@ struct btfly_node_dit {
         perform(s, dest, dest, tw);
     }
 
-    PCX_AINLINE static auto fwd_impl(data_t data, auto get_tw) {
-        return []<uZ Size = 2> PCX_LAINLINE    //
+    PCX_AINLINE static auto fwd_impl(data_t data, auto get_tw, auto conj_tw) {
+        return [=]<uZ Size = 2> PCX_LAINLINE    //
             (this auto f, auto data, auto get_tw, uZ_ce<Size> size = {}) {
                 if constexpr (size == NodeSize) {
-                    return btfly_impl(size, data, get_tw(size));
+                    return btfly_impl(size, data, get_tw(size), conj_tw);
                 } else {
-                    auto tmp = btfly_impl(size, data, get_tw(size));
+                    auto tmp = btfly_impl(size, data, get_tw(size), conj_tw);
                     return f(tmp, get_tw, uZ_ce<size * 2>{});
                 }
             }(data, get_tw);
     }
-    template<uZ DestPackSize, uZ SrcPackSize>
-    PCX_AINLINE static void fwd_impl(const dest_t& dest, auto src, auto get_tw) {
-        auto data    = tupi::group_invoke(simd::cxload<SrcPackSize, Width> | simd::repack<Width>, src);
-        auto res     = fwd_impl(data, get_tw);
-        auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
-        tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
-    }
-    PCX_AINLINE static auto rev_impl(data_t data, auto get_tw) {
-        return []<uZ Size = NodeSize> PCX_LAINLINE    //
+    // template<uZ DestPackSize, uZ SrcPackSize>
+    // PCX_AINLINE static void fwd_impl(const dest_t& dest, auto src, auto get_tw) {
+    //     auto data    = tupi::group_invoke(simd::cxload<SrcPackSize, Width> | simd::repack<Width>, src);
+    //     auto res     = fwd_impl(data, get_tw);
+    //     auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
+    //     tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
+    // }
+    PCX_AINLINE static auto rev_impl(data_t data, auto get_tw, auto conj_tw) {
+        return [=]<uZ Size = NodeSize> PCX_LAINLINE    //
             (this auto f, auto data, auto get_tw, uZ_ce<Size> size = {}) {
                 if constexpr (size == 2) {
-                    return rbtfly_impl(size, data, get_tw(size));
+                    return rbtfly_impl(size, data, get_tw(size), conj_tw);
                 } else {
-                    auto tmp = rbtfly_impl(size, data, get_tw(size));
+                    auto tmp = rbtfly_impl(size, data, get_tw(size), conj_tw);
                     return f(tmp, get_tw, uZ_ce<size / 2>{});
                 }
             }(data, get_tw);
     }
-    template<uZ DestPackSize, uZ SrcPackSize>
-    PCX_AINLINE static void rev_impl(const dest_t& dest, auto src, auto get_tw) {
-        auto data    = tupi::group_invoke(simd::cxload<SrcPackSize> | simd::repack<Width>, src);
-        auto res     = rev_impl(data, get_tw);
-        auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
-        tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
-    }
+    // template<uZ DestPackSize, uZ SrcPackSize>
+    // PCX_AINLINE static void rev_impl(const dest_t& dest, auto src, auto get_tw) {
+    //     auto data    = tupi::group_invoke(simd::cxload<SrcPackSize> | simd::repack<Width>, src);
+    //     auto res     = rev_impl(data, get_tw);
+    //     auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<DestPackSize>, res);
+    //     tupi::group_invoke(simd::cxstore<DestPackSize>, dest, res_rep);
+    // }
 
     template<uZ Size, simd::any_cx_vec... Ts>
-    PCX_AINLINE static auto btfly_impl(uZ_ce<Size>, tupi::tuple<Ts...> data, auto tws) {
+    PCX_AINLINE static auto btfly_impl(uZ_ce<Size>, tupi::tuple<Ts...> data, auto tws, auto conj_tw) {
         constexpr auto stride = NodeSize / Size * 2;
 
+        auto maybe_conj = [=](auto tw) {
+            if constexpr (conj_tw) {
+                return conj(tw);
+            } else {
+                return tw;
+            }
+        };
+
         auto [lo, hi]  = extract_halves<stride>(data);
-        auto hi_tw     = tupi::group_invoke(simd::mul, hi, tws);
+        auto ctw       = tupi::group_invoke(maybe_conj, tws);
+        auto hi_tw     = tupi::group_invoke(simd::mul, hi, ctw);
         auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi_tw);
         auto new_lo    = tupi::group_invoke(tupi::get_copy<0>, btfly_res);
         auto new_hi    = tupi::group_invoke(tupi::get_copy<1>, btfly_res);
         return combine_halves<stride>(new_lo, new_hi);
     };
     template<uZ Size, simd::any_cx_vec... Ts>
-    PCX_AINLINE static auto rbtfly_impl(uZ_ce<Size>, tupi::tuple<Ts...> data, auto tws) {
+    PCX_AINLINE static auto rbtfly_impl(uZ_ce<Size>, tupi::tuple<Ts...> data, auto tws, auto conj_tw) {
         constexpr auto stride = NodeSize / Size * 2;
 
+        auto maybe_conj = [=](auto tw) {
+            if constexpr (conj_tw) {
+                return conj(tw);
+            } else {
+                return tw;
+            }
+        };
         auto [lo, hi]  = extract_halves<stride>(data);
         auto btfly_res = tupi::group_invoke(simd::btfly, lo, hi);
         auto new_lo    = tupi::group_invoke(tupi::get_copy<0>, btfly_res);
         auto new_hi    = tupi::group_invoke(tupi::get_copy<1>, btfly_res);
-        auto ctw       = tupi::group_invoke([](auto tw) { return conj(tw); }, tws);
+        auto ctw       = tupi::group_invoke(maybe_conj, tws);
         auto new_hi_tw = tupi::group_invoke(simd::mul, new_hi, tws);
         return combine_halves<stride>(new_lo, new_hi_tw);
     };
@@ -520,6 +542,22 @@ concept twiddle_range_for = stdr::contiguous_range<R>                     //
                             && std::same_as<stdr::range_value_t<R>, T>    //
                             && requires(R r, T v) { r.push_back(v); };
 
+template<typename T, cxpack_for<T> PckDst, cxpack_for<T> PckSrc, bool Reverse, bool ConjTw>
+struct perform_config {
+    static constexpr auto pck_dst() -> PckDst {
+        return {};
+    }
+    static constexpr auto pck_src() -> PckSrc {
+        return {};
+    }
+    static constexpr auto reverse() -> std::bool_constant<Reverse> {
+        return {};
+    }
+    static constexpr auto conj_tw() -> std::bool_constant<ConjTw> {
+        return {};
+    }
+};
+
 template<uZ NodeSize, typename T, uZ Width>
 struct subtransform {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
@@ -533,6 +571,8 @@ struct subtransform {
     fft_iteration(cxpack_for<T> auto         dst_pck,
                   cxpack_for<T> auto         src_pck,
                   meta::ce_of<bool> auto     lowk,
+                  meta::ce_of<bool> auto     reverse,
+                  meta::ce_of<bool> auto     conj_tw,
                   meta::maybe_ce_of<uZ> auto bucket_size,
                   meta::maybe_ce_of<uZ> auto batch_size,
                   meta::maybe_ce_of<uZ> auto dst_stride,
@@ -542,12 +582,11 @@ struct subtransform {
                   uZ&                        k_count,
                   tw_data_for<T> auto&       tw_data) {
         using btfly_node        = btfly_node_dit<NodeSizeL, T, width>;
-        constexpr auto reverse  = false;
-        constexpr auto conj_tw  = false;
         constexpr auto settings = val_ce<typename btfly_node::settings{
             .pack_dest = dst_pck,
             .pack_src  = src_pck,
             .reverse   = reverse,
+            .conj_tw   = conj_tw,
         }>{};
 
         const auto inplace    = src_data.empty();
@@ -683,9 +722,8 @@ struct subtransform {
             }
         };
 
-        if (lowk && !skip_lowk_tw) {
+        if (lowk && !skip_lowk_tw)
             insert(0);
-        }
         auto k_start = lowk ? 1U : 0U;
         for (auto k_group: stdv::iota(k_start, k_count)) {
             insert(k_group);
@@ -700,6 +738,8 @@ struct subtransform {
                                     any_align auto             align,
                                     meta::ce_of<bool> auto     lowk,
                                     meta::ce_of<bool> auto     single_iter,
+                                    meta::ce_of<bool> auto     reverse,
+                                    meta::ce_of<bool> auto     conj_tw,
                                     meta::maybe_ce_of<uZ> auto bucket_size,
                                     meta::maybe_ce_of<uZ> auto batch_size,
                                     meta::maybe_ce_of<uZ> auto dst_stride,
@@ -723,6 +763,8 @@ struct subtransform {
             fft_iteration<NodeSizeL>(dst_pck,
                                      src_pck,
                                      lowk,
+                                     reverse,
+                                     conj_tw,
                                      bucket_size,
                                      batch_size,
                                      dst_stride,
@@ -741,8 +783,12 @@ struct subtransform {
                                                     ? align.size_post()
                                                     : node_size);
             fft_iter(uZ_ce<single_node>{}, dst_pck, src_pck, src_data);
-            if constexpr (lowk && !local)
-                l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? single_node : 0);
+            if constexpr (lowk && !local) {
+                if constexpr (reverse)
+                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? single_node : 0);
+                else
+                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? single_node : 0);
+            }
             return;
         }
 
@@ -892,7 +938,7 @@ struct coherent_subtransform {
     static constexpr bool skip_lowk_tw          = true;
     static constexpr bool skip_lowk_single_load = false;
     // for debugging
-    static constexpr auto skip_single_load = false;
+    static constexpr auto skip_single_load = true;
     static constexpr auto skip_sub_width   = false;
 
     static constexpr auto get_align_node(uZ data_size) {
@@ -910,6 +956,8 @@ struct coherent_subtransform {
                                     cxpack_for<T> auto         src_pck,
                                     meta::ce_of<bool> auto     lowk,
                                     meta::ce_of<bool> auto     half_tw,
+                                    meta::ce_of<bool> auto     reverse,
+                                    meta::ce_of<bool> auto     conj_tw,
                                     uZ                         data_size,
                                     data_info_for<T> auto      dst_data,
                                     data_info_for<T> auto      src_data,
@@ -922,7 +970,17 @@ struct coherent_subtransform {
                     return false;
 
                 constexpr auto align = align_param<l_node_size, true>{};
-                perform_impl(dst_pck, src_pck, align, lowk, half_tw, data_size, dst_data, src_data, tw);
+                perform_impl(dst_pck,
+                             src_pck,
+                             align,
+                             lowk,
+                             half_tw,
+                             reverse,
+                             conj_tw,
+                             data_size,
+                             dst_data,
+                             src_data,
+                             tw);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -934,6 +992,8 @@ struct coherent_subtransform {
                                          any_align auto             align,
                                          meta::ce_of<bool> auto     lowk,
                                          meta::ce_of<bool> auto     half_tw,
+                                         meta::ce_of<bool> auto     reverse,
+                                         meta::ce_of<bool> auto     conj_tw,
                                          meta::maybe_ce_of<uZ> auto data_size,
                                          data_info_for<T> auto      dst_data,
                                          data_info_for<T> auto      src_data,
@@ -951,6 +1011,8 @@ struct coherent_subtransform {
                        align,
                        lowk,
                        std::false_type{},    // single iter
+                       reverse,
+                       conj_tw,
                        data_size,
                        width,    // batch size
                        width,    // dst stride
@@ -962,7 +1024,7 @@ struct coherent_subtransform {
 
         if constexpr (skip_single_load) {
             for (auto i: stdv::iota(0U, data_size / width)) {
-                auto ptr = dst_data + i * width * 2;
+                auto ptr = dst_data.get_batch_base(i * width);
                 auto rd  = (simd::cxload<width, width> | simd::repack<1>)(ptr);
                 simd::cxstore<1>(ptr, rd);
             }
