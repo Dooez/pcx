@@ -301,6 +301,7 @@ struct btfly_node_dit {
     };
     template<uZ Size, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto rbtfly_impl(uZ_ce<Size>, tupi::tuple<Ts...> data, auto tws, auto conj_tw) {
+        constexpr auto ns     = NodeSize;
         constexpr auto stride = NodeSize / Size * 2;
 
         auto maybe_conj = [=](auto tw) {
@@ -315,7 +316,7 @@ struct btfly_node_dit {
         auto new_lo    = tupi::group_invoke(tupi::get_copy<0>, btfly_res);
         auto new_hi    = tupi::group_invoke(tupi::get_copy<1>, btfly_res);
         auto ctw       = tupi::group_invoke(maybe_conj, tws);
-        auto new_hi_tw = tupi::group_invoke(simd::mul, new_hi, tws);
+        auto new_hi_tw = tupi::group_invoke(simd::mul, new_hi, ctw);
         return combine_halves<stride>(new_lo, new_hi_tw);
     };
 
@@ -601,6 +602,14 @@ struct subtransform {
         using l_tw_data_t     = std::conditional_t<lowk && !local, tw_data_t<T, local>, tw_data_t<T, local>&>;
         l_tw_data_t l_tw_data = tw_data;
 
+        if constexpr (reverse) {
+            k_count /= NodeSizeL;
+            if constexpr (local) {
+                l_tw_data.start_fft_size /= NodeSizeL;
+                l_tw_data.start_k /= NodeSizeL;
+            }
+        }
+
         const auto batch_count = bucket_size / k_count / batch_size;
 
 
@@ -697,13 +706,7 @@ struct subtransform {
                 }
             }
         }
-        if constexpr (reverse) {
-            k_count /= NodeSizeL;
-            if constexpr (local) {
-                l_tw_data.start_fft_size /= NodeSizeL;
-                l_tw_data.start_k /= NodeSizeL;
-            }
-        } else {
+        if constexpr (!reverse) {
             k_count *= NodeSizeL;
             if constexpr (local) {
                 l_tw_data.start_fft_size *= NodeSizeL;
@@ -750,7 +753,7 @@ struct subtransform {
                                     tw_data_for<T> auto&       tw_data) {
         assert(single_iter || dst_pck == w_pck || src_pck == w_pck || final_k_count >= node_size);
 
-        uZ         k_count    = 1;
+        uZ         k_count;
         const auto inplace    = src_data.empty();
         const auto local      = tw_data.is_local();
         using l_tw_data_t     = std::conditional_t<local, tw_data_t<T, local>, tw_data_t<T, local>&>;
@@ -774,7 +777,6 @@ struct subtransform {
                                      k_count,
                                      l_tw_data);
         };
-
         if constexpr (single_iter) {
             static_assert(align.size_pre() == 1 || align.size_post() == 1);
             constexpr auto single_node = align.size_pre() != 1    //
@@ -785,118 +787,86 @@ struct subtransform {
             fft_iter(uZ_ce<single_node>{}, dst_pck, src_pck, src_data);
             if constexpr (lowk && !local) {
                 if constexpr (reverse)
-                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? single_node : 0);
+                    l_tw_data.tw_ptr -= single_node - (skip_lowk_tw ? single_node : 0);
                 else
-                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? single_node : 0);
+                    l_tw_data.tw_ptr += single_node - (skip_lowk_tw ? single_node : 0);
             }
             return;
         }
 
-        if constexpr (align.size_pre() != 1) {
-            fft_iter(align.size_pre(), w_pck, src_pck, src_data);
-            if constexpr (lowk && !local)
-                l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
-        } else if constexpr (src_pck != w_pck) {
-            fft_iter(node_size, w_pck, src_pck, src_data);
-        }
-
-        auto fk = [&] {
-            if constexpr (align.size_post() > 1) {
-                return final_k_count / align.size_post();
-            } else if constexpr (dst_pck != w_pck) {
-                return final_k_count / node_size;
-            } else {
-                return final_k_count;
+        if constexpr (!reverse) {
+            k_count = 1;
+            if constexpr (align.size_pre() != 1) {
+                fft_iter(align.size_pre(), w_pck, src_pck, src_data);
+                if constexpr (lowk && !local)
+                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_pre() : 0);
+            } else if constexpr (src_pck != w_pck || !inplace) {
+                fft_iter(node_size, w_pck, src_pck, src_data);
             }
-        }();
 
-        while (k_count <= fk)
-            fft_iter(node_size, w_pck, w_pck, inplace_src);
+            auto fk = [&] {
+                if constexpr (align.size_post() > 1) {
+                    return final_k_count / align.size_post();
+                } else if constexpr (dst_pck != w_pck) {
+                    return final_k_count / node_size;
+                } else {
+                    return final_k_count;
+                }
+            }();
 
-        if constexpr (lowk && !local) {
-            if (k_count > align.size_pre())
-                l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
-        }
-        if constexpr (align.size_post() != 1) {
-            fft_iter(align.size_post(), w_pck, src_pck, src_data);
-            if constexpr (lowk && !local)
-                l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_post() : 0);
-        } else if constexpr (dst_pck != w_pck) {
-            fft_iter(node_size, w_pck, w_pck, inplace_src);
-        }
-    }
-    PCX_AINLINE static void reverse(cxpack_for<T> auto         dst_pck,
-                                    cxpack_for<T> auto         src_pck,
-                                    any_align auto             align,
-                                    meta::ce_of<bool> auto     lowk,
-                                    meta::maybe_ce_of<uZ> auto bucket_size,
-                                    meta::maybe_ce_of<uZ> auto batch_size,
-                                    meta::maybe_ce_of<uZ> auto stride,
-                                    uZ                         final_k_count,
-                                    T*                         data_ptr,
-                                    data_info_for<T> auto      src_data,
-                                    tw_data_for<T> auto&       tw_data) {
-        uZ         k_count    = final_k_count;
-        const auto inplace    = src_data.inplace();
-        const auto local      = tw_data.is_local();
-        using l_tw_data_t     = std::conditional_t<local, tw_data_t<T, local>, tw_data_t<T, local>&>;
-        l_tw_data_t l_tw_data = tw_data;
+            while (k_count <= fk)
+                fft_iter(node_size, w_pck, w_pck, inplace_src);
 
-        auto fft_iter = [&]<uZ NodeSizeL> PCX_LAINLINE(uZ_ce<NodeSizeL>,    //
-                                                       auto dst_pck,
-                                                       auto src_pck,
-                                                       auto src) {
-            fft_iteration<NodeSizeL>(dst_pck,
-                                     src_pck,
-                                     lowk,
-                                     bucket_size,
-                                     batch_size,
-                                     stride,
-                                     data_ptr,
-                                     src,
-                                     k_count,
-                                     l_tw_data);
-        };
-        if constexpr (align.size_post() != 1) {
-            if constexpr (lowk && !local)
-                l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_post() : 0);
-            fft_iter(align.size_post(), w_pck, src_pck, src_data);
             if constexpr (lowk && !local) {
-                if (k_count >= align.size_pre())
-                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
+                if (k_count > align.size_pre())
+                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
+            }
+            if constexpr (align.size_post() != 1) {
+                fft_iter(align.size_post(), w_pck, src_pck, src_data);
+                if constexpr (lowk && !local)
+                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_post() : 0);
+            } else if constexpr (dst_pck != w_pck) {
+                fft_iter(node_size, w_pck, w_pck, inplace_src);
             }
         } else {
-            if constexpr (lowk && !local)
-                l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
-            if constexpr (src_pck != w_pck) {
-                if (k_count >= align.size_pre())
+            k_count = final_k_count * 2;
+            if constexpr (align.size_post() != 1) {
+                if constexpr (lowk && !local)
+                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_post() : 0);
+                // k_count *= align.size_post();
+                fft_iter(align.size_post(), w_pck, src_pck, src_data);
+            } else {
+                if (k_count > align.size_pre()) {
+                    if constexpr (lowk && !local)
+                        l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
+
+                    // k_count *= node_size;
+                }
+                if constexpr (src_pck != w_pck || !inplace)
                     fft_iter(node_size, w_pck, src_pck, src_data);
             }
-        }
+            constexpr auto fk = [&] {
+                if constexpr (align.size_pre() > 1) {
+                    return align.size_pre();
+                } else if constexpr (dst_pck != w_pck) {
+                    return node_size;
+                } else {
+                    return uZ_ce<1>{};
+                }
+            }();
 
-        auto fk = [&] {
-            if constexpr (align.size_pre() > 1) {
-                return align.size_pre();
-            } else if constexpr (dst_pck != w_pck) {
-                return node_size;
-            } else {
-                return uZ_ce<1>{};
-            }
-        }();
+            while (k_count > fk)
+                fft_iter(node_size, w_pck, w_pck, inplace_src);
 
-        while (k_count >= fk)
-            fft_iter(node_size, w_pck, w_pck, inplace_src);
-
-        if constexpr (align.size_pre() != 1) {
-            if (k_count < final_k_count) {
+            if constexpr (align.size_pre() != 1) {
+                if constexpr (lowk && !local)
+                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
+                // if (k_count == final_k_count)
+                //     k_count *= align.size_pre();
                 fft_iter(align.size_pre(), dst_pck, w_pck, inplace_src);
-            } else {
-                fft_iter(align.size_pre(), dst_pck, src_pck, src_data);
+            } else if constexpr (dst_pck != w_pck) {
+                fft_iter(node_size, dst_pck, w_pck, src_data);
             }
-            if constexpr (lowk && !local)
-                l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
-        } else if constexpr (fk > 1) {
-            fft_iter(node_size, dst_pck, src_pck, src_data);
         }
     }
 
@@ -1006,41 +976,72 @@ struct coherent_subtransform {
 
         using fnode        = subtransform<node_size, T, width>;
         auto final_k_count = data_size / single_load_size / 2;
-        fnode::perform(w_pck,
-                       src_pck,
-                       align,
-                       lowk,
-                       std::false_type{},    // single iter
-                       reverse,
-                       conj_tw,
-                       data_size,
-                       width,    // batch size
-                       width,    // dst stride
-                       width,    // src stride
-                       dst_data,
-                       src_data,
-                       final_k_count,
-                       tw_data);
 
-        if constexpr (skip_single_load) {
-            for (auto i: stdv::iota(0U, data_size / width)) {
-                auto ptr = dst_data.get_batch_base(i * width);
-                auto rd  = (simd::cxload<width, width> | simd::repack<1>)(ptr);
-                simd::cxstore<1>(ptr, rd);
+
+        if constexpr (!reverse) {
+            fnode::perform(w_pck,
+                           src_pck,
+                           align,
+                           lowk,
+                           std::false_type{},    // single iter
+                           reverse,
+                           conj_tw,
+                           data_size,
+                           width,    // batch size
+                           width,    // dst stride
+                           width,    // src stride
+                           dst_data,
+                           src_data,
+                           final_k_count,
+                           tw_data);
+
+            if constexpr (skip_single_load) {
+                for (auto i: stdv::iota(0U, data_size / width)) {
+                    auto ptr = dst_data.get_batch_base(i * width);
+                    auto rd  = (simd::cxload<width, width> | simd::repack<1>)(ptr);
+                    simd::cxstore<1>(ptr, rd);
+                }
+                return;
             }
-            return;
-        }
-        if constexpr (local) {
-            tw_data.start_fft_size *= final_k_count * 2;
-            tw_data.start_k *= final_k_count * 2;
-        }
-        auto data_ptr = dst_data.get_batch_base(0);
-        if constexpr (lowk && !skip_lowk_single_load)
-            single_load(dst_pck, w_pck, lowk, half_tw, data_ptr, data_ptr, tw_data);
-        constexpr auto start = lowk ? 1UZ : 0UZ;
-        for (auto k: stdv::iota(start, final_k_count * 2)) {
-            auto dest = data_ptr + k * single_load_size * 2;
-            single_load(dst_pck, w_pck, std::false_type{}, half_tw, dest, dest, tw_data);
+            if constexpr (local) {
+                tw_data.start_fft_size *= final_k_count * 2;
+                tw_data.start_k *= final_k_count * 2;
+            }
+            auto data_ptr = dst_data.get_batch_base(0);
+            if constexpr (lowk && !skip_lowk_single_load)
+                single_load(dst_pck, w_pck, lowk, half_tw, data_ptr, data_ptr, tw_data);
+            constexpr auto start = lowk ? 1UZ : 0UZ;
+            for (auto k: stdv::iota(start, final_k_count * 2)) {
+                auto dest = data_ptr + k * single_load_size * 2;
+                single_load(dst_pck, w_pck, std::false_type{}, half_tw, dest, dest, tw_data);
+            }
+        } else {
+            if constexpr (skip_single_load) {
+                for (auto i: stdv::iota(0U, data_size / width)) {
+                    auto ptr = dst_data.get_batch_base(i * width);
+                    auto rd  = (simd::cxload<1, width> | simd::repack<width>)(ptr);
+                    simd::cxstore<width>(ptr, rd);
+                }
+                if constexpr (local) {
+                    tw_data.start_fft_size /= single_load_size / 2;
+                    tw_data.start_k /= single_load_size / 2;
+                }
+            }
+            fnode::perform(dst_pck,
+                           w_pck,
+                           align,
+                           lowk,
+                           std::false_type{},    // single iter
+                           reverse,
+                           conj_tw,
+                           data_size,
+                           width,    // batch size
+                           width,    // dst stride
+                           width,    // src stride
+                           dst_data,
+                           src_data,
+                           final_k_count,
+                           tw_data);
         }
     };
 

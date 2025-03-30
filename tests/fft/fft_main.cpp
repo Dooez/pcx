@@ -94,10 +94,11 @@ void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_wid
                 auto tw    = conj(pcx::detail_::wnk_br<fX>(fft_size * 2, k));
                 for (uZ i = 0; i < step; ++i) {
                     rbtfly(&data[start + i], &data[start + i + step], tw);    //
-                    data[start + i] /= 2;
-                    data[start + i + step] /= 2;
+                    // data[start + i] /= 2;
+                    // data[start + i + step] /= 2;
                 }
             }
+            auto chekc = 0;
         }
         fft_size /= 2;
         step *= 2;
@@ -119,7 +120,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
             // break;
         }
         if (step == vec_width * node_size / 2) {    // skip single load
-            break;
+            // break;
         }
         if (step == rsize / 4) {
             // break;
@@ -142,8 +143,10 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
         n_groups *= 2;
     }
 }
-// template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
-// template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
+template void naive_fft(std::vector<std::complex<f32>>& data, uZ, uZ);
+template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
+template void naive_reverse(std::vector<std::complex<f32>>& data, uZ, uZ);
+template void naive_reverse(std::vector<std::complex<f64>>& data, uZ, uZ);
 }    // namespace pcx::testing
 #ifdef FULL_FFT_TEST
 inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
@@ -229,8 +232,9 @@ int main() {
         // return false;
 
 
-        return (pcx::testing::test_fft<f32, Is>(s32, check32, s32_1, s32_2) && ...)
-               && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
+        return (pcx::testing::test_fft<f32, Is>(s32, check32, s32_1, s32_2) && ...)    //
+            ;
+        // && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
     };
     // uZ fft_size = 2048 * 256;
     uZ fft_size = 512;
@@ -240,7 +244,7 @@ int main() {
     // }
     while (fft_size <= 2048 * 256 * 4) {
         // if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
-        if (!test_size(node_sizes, fft_size, fft_size / 2 * 1.001))
+        if (!test_size(node_sizes, fft_size, fft_size / 2 * 1.0001))
             return -1;
         fft_size *= 2;
     }

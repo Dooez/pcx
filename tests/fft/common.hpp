@@ -17,7 +17,7 @@ inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
 #endif
-inline constexpr auto local_tw = meta::val_seq<false>{};
+inline constexpr auto local_tw = meta::val_seq<true>{};
 
 template<typename T, uZ NodeSize>
 bool test_fft(const std::vector<std::complex<T>>& signal,
@@ -74,6 +74,8 @@ struct std::formatter<pcx::meta::types<T>> {
 namespace pcx::testing {
 template<typename fX>
 void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
+template<typename fX>
+void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width);
 
 inline auto check_nan(const std::vector<std::complex<f32>>& vec) {
     return std::ranges::any_of(vec, [](auto v) { return std::isnan(v.real()) || std::isnan(v.imag()); });
@@ -96,7 +98,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                     std::vector<std::complex<fX>>&       s1,
                     std::vector<fX>&                     twvec,
                     bool                                 local_check = true,
-                    bool                                 reverse     = false) {
+                    bool                                 reverse     = true) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
 
@@ -124,7 +126,8 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
 
     if (local_check) {
         l_check = signal;
-        naive_fft(l_check, NodeSize, Width);
+        // naive_fft(l_check, NodeSize, Width);
+        naive_reverse(l_check, NodeSize, Width);
     }
     auto run_check = [&] {
         if (local_check)
@@ -152,7 +155,11 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     auto tw_coh     = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
-            return tw_t{1, 0};
+            if (reverse) {
+                return tw_t{fft_size, 0};
+            } else {
+                return tw_t{1, 0};
+            }
         } else {
             twvec.resize(0);
             [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -180,8 +187,8 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                        pck_src,
                        lowk,
                        half_tw,
-                       std::false_type{},    // reverse
-                       std::false_type{},    // conj_tw
+                       std::true_type{},    // reverse
+                       std::true_type{},    // conj_tw
                        fft_size,
                        s1_info,
                        detail_::inplace_src,
