@@ -588,8 +588,7 @@ private:
         Fptr fptr;
         IR   result;
     };
-    // template<typename T>
-    // struct is_interim_wrapper : public std::false_type {};
+
     template<typename Fptr, typename IR>
     static auto wrap_interim(Fptr fptr, IR&& result) {
         return interim_wrapper<Fptr, IR>{.fptr = fptr, .result = std::forward<IR>(result)};

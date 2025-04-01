@@ -189,8 +189,29 @@ struct evaluate_t {
         return vec;
     }
 };
+template<bool Conj>
+struct maybe_conj_t {
+    PCX_AINLINE static auto operator()(any_cx_vec auto vec) {
+        if constexpr (Conj) {
+            return conj(vec);
+        } else {
+            return vec;
+        }
+    }
+    template<iZ Power>
+    PCX_AINLINE static auto operator()(imag_unit_t<Power> v) {
+        if constexpr (Conj) {
+            return conj(v);
+        } else {
+            return v;
+        }
+    }
+};
 }    // namespace detail_
 inline constexpr auto evaluate = tupi::pass | detail_::evaluate_t{};
+template<bool Conj>
+inline constexpr auto maybe_conj = tupi::pass | detail_::maybe_conj_t<Conj>{};
+
 
 }    // namespace pcx::simd
 #endif
