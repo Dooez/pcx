@@ -98,7 +98,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                     std::vector<std::complex<fX>>&       s1,
                     std::vector<fX>&                     twvec,
                     bool                                 local_check = true,
-                    bool                                 reverse     = false) {
+                    bool                                 reverse     = true) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
 
