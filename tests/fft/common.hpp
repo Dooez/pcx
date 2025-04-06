@@ -112,7 +112,11 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     auto tw = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
-            return tw_t{1, 0};
+            if (reverse) {
+                return tw_t{fft_size, 0};
+            } else {
+                return tw_t{1, 0};
+            }
         } else {
             twvec.resize(0);
             fimpl::insert_tw(twvec, fft_size, lowk, half_tw);
@@ -141,10 +145,14 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     auto s1_info     = src_info_t{data_ptr};
     auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
 
-    // std::print("[Internal ]");
-    // fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
-    // if (!run_check())
-    //     return false;
+    std::print("[Internal ]");
+    if (!reverse) {
+        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
+    } else {
+        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
+    }
+    if (!run_check())
+        return false;
     //
     // std::print("[External ]");
     // fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);

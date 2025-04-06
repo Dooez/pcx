@@ -1565,6 +1565,8 @@ struct transform {
                                          src_pck,
                                          lowk,
                                          half_tw,
+                                         reverse,
+                                         conj_tw,
                                          data_size,
                                          dst_data,
                                          src_data,
@@ -1592,6 +1594,8 @@ struct transform {
                                  align,
                                  lowk,
                                  not_single_iter,
+                                 reverse,
+                                 conj_tw,
                                  bucket_size,
                                  batch_size,
                                  stride,
@@ -1710,6 +1714,31 @@ struct transform {
         const auto reverse      = std::bool_constant<true>{};
         const auto conj_tw      = std::bool_constant<true>{};
 
+        if (data_size <= bucket_size) {
+            auto coherent_align_node = coh_subtf_t::get_align_node(data_size);
+            [&]<uZ... Is>(uZ_seq<Is...>) {
+                auto check_align = [&]<uZ I>(uZ_ce<I>) {
+                    constexpr auto l_node_size = powi(2, I);
+                    if (l_node_size != coherent_align_node)
+                        return false;
+                    coh_subtf_t::perform(dst_pck,
+                                         src_pck,
+                                         lowk,
+                                         half_tw,
+                                         reverse,
+                                         conj_tw,
+                                         bucket_size,
+                                         dst_data,
+                                         src_data,
+                                         uZ_ce<l_node_size>{},
+                                         tw_data);
+                    return true;
+                };
+                (void)(check_align(uZ_ce<Is>{}) || ...);
+            }(make_uZ_seq<log2i(NodeSize)>{});
+            return;
+        }
+
         uZ bucket_group_count = data_size / bucket_size;
         uZ bucket_count       = 1;    // per bucket group
         uZ stride             = batch_size * bucket_count;
@@ -1742,7 +1771,6 @@ struct transform {
         if constexpr (lowk)
             coh(lowk, 0);
 
-
         auto pass_count       = logKi(pass_k_count * 2, data_size / bucket_size);
         uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
@@ -1765,7 +1793,7 @@ struct transform {
                              k_count,
                              tw_data);
         };
-        auto iterate_buckets = [&](auto align, auto dst_pck, auto k_count) {
+        auto iterate_buckets = [&](auto dst_pck, auto align, auto k_count) {
             bucket_count *= k_count * 2;
             stride *= k_count * 2;
             bucket_group_count /= k_count * 2;
@@ -1797,6 +1825,25 @@ struct transform {
             }
             tw_data = l_tw_data;
         };
+
+        constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
+        for (uZ pass: stdv::iota(0U, pass_count)) {
+            tw_data = tw_data_bak;
+            iterate_buckets(w_pck, pass_align_node, pass_k_count);
+        }
+
+        auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
+        [&]<uZ... Is>(uZ_seq<Is...>) {
+            auto check_align = [&]<uZ I>(uZ_ce<I>) {
+                constexpr auto l_node_size = powi(2, I);
+                if (l_node_size != pre_pass_align_node)
+                    return false;
+                constexpr auto align = align_param<l_node_size, true>{};
+                iterate_buckets(dst_pck, align, pre_pass_k_count);
+                return true;
+            };
+            (void)(check_align(uZ_ce<Is>{}) || ...);
+        }(make_uZ_seq<log2i(NodeSize)>{});
     }
 
 
