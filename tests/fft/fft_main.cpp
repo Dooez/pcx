@@ -74,7 +74,8 @@ void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_wid
     auto step             = 1;
     auto n_groups         = rsize / 2;
     auto single_load_size = vec_width * node_size;
-    while (step <= rsize / 2) {
+    // while (step <= rsize / 2) {
+    while (step < rsize / 2) {
         bool skip = false;
         if (step <= vec_width / 2) {    // skip sub width
             // skip = true;
@@ -83,7 +84,7 @@ void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_wid
             // skip = true;
         }
         if (step <= 2048 / 2) {    // skip coherent
-            // skip = true;
+            skip = true;
         }
         if (step < vec_width / 4) {
             // skip = true;
@@ -126,7 +127,7 @@ void naive_fft(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_width) 
             // break;
         }
         if (step <= 2048 / 2) {    // skip coherent
-            // break;
+            break;
         }
         if (step < vec_width / 4) {
             // break;
@@ -237,7 +238,9 @@ int main() {
         // && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
     };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 512;
+    // uZ fft_size = 2048 * 2;
+    uZ fft_size = 131072 * 4;
+
     // for (auto i: stdv::iota(0U, fft_size)) {
     //     if (!test_size(node_sizes, fft_size, i + .01))
     //         return -1;

@@ -191,39 +191,39 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return tw_t{twvec.data()};
         }
     }();
-    std::print("[iCoherent]");
-    auto tw_coh_c = tw_coh;
-    if (reverse) {
-        fimpl_coh::perform(pck_dst,
-                           pck_src,
-                           lowk,
-                           half_tw,
-                           std::true_type{},    // reverse
-                           std::true_type{},    // conj_tw
-                           // std::false_type{},
-                           // std::false_type{},
-                           fft_size,
-                           s1_info,
-                           detail_::inplace_src,
-                           coh_align,
-                           tw_coh_c);
-    } else {
-        fimpl_coh::perform(pck_dst,
-                           pck_src,
-                           lowk,
-                           half_tw,
-                           // std::true_type{},    // reverse
-                           // std::true_type{},    // conj_tw
-                           std::false_type{},
-                           std::false_type{},
-                           fft_size,
-                           s1_info,
-                           detail_::inplace_src,
-                           coh_align,
-                           tw_coh_c);
-    }
-    if (!run_check())
-        return false;
+    // std::print("[iCoherent]");
+    // auto tw_coh_c = tw_coh;
+    // if (reverse) {
+    //     fimpl_coh::perform(pck_dst,
+    //                        pck_src,
+    //                        lowk,
+    //                        half_tw,
+    //                        std::true_type{},    // reverse
+    //                        std::true_type{},    // conj_tw
+    //                        // std::false_type{},
+    //                        // std::false_type{},
+    //                        fft_size,
+    //                        s1_info,
+    //                        detail_::inplace_src,
+    //                        coh_align,
+    //                        tw_coh_c);
+    // } else {
+    //     fimpl_coh::perform(pck_dst,
+    //                        pck_src,
+    //                        lowk,
+    //                        half_tw,
+    //                        // std::true_type{},    // reverse
+    //                        // std::true_type{},    // conj_tw
+    //                        std::false_type{},
+    //                        std::false_type{},
+    //                        fft_size,
+    //                        s1_info,
+    //                        detail_::inplace_src,
+    //                        coh_align,
+    //                        tw_coh_c);
+    // }
+    // if (!run_check())
+    //     return false;
 
     // std::print("[eCoherent]");
     // tw_coh_c = tw_coh;

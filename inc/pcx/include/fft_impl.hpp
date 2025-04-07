@@ -1518,7 +1518,7 @@ struct transform {
     static constexpr auto w_pck     = cxpack<width, T>{};
     static constexpr auto node_size = uZ_ce<NodeSize>{};
 
-    static constexpr auto skip_coherent_subtf = false;
+    static constexpr auto skip_coherent_subtf = true;
 
     static constexpr auto logKi(meta::maybe_ce_of<uZ> auto k, u64 value) {
         uZ p = 0;
@@ -1661,7 +1661,7 @@ struct transform {
         }
         if constexpr (skip_coherent_subtf) {
             for (auto i: stdv::iota(0U, data_size / width)) {
-                auto ptr = dst_data + i * width * 2;
+                auto ptr = dst_data.get_batch_base(i * width);
                 auto rd  = (simd::cxload<width, width> | simd::repack<1>)(ptr);
                 simd::cxstore<1>(ptr, rd);
             }
@@ -1727,7 +1727,7 @@ struct transform {
                                          half_tw,
                                          reverse,
                                          conj_tw,
-                                         bucket_size,
+                                         data_size,
                                          dst_data,
                                          src_data,
                                          uZ_ce<l_node_size>{},
@@ -1759,18 +1759,31 @@ struct transform {
         };
 
         auto tw_data_bak = tw_data;
-        auto bg_range    = stdv::iota(lowk ? 1U : 0U, bucket_group_count) | stdv::reverse;
-        for (uZ i_bg: bg_range) {
-            if constexpr (tw_data.is_local()) {
-                tw_data         = tw_data_bak;
-                tw_data.start_k = i_bg;
+        if constexpr (skip_coherent_subtf) {
+            for (auto i: stdv::iota(0U, data_size / width)) {
+                // auto src_ptr = src_data.get_batch_base(i * width);
+                auto dst_ptr = dst_data.get_batch_base(i * width);
+                auto rd      = (simd::cxload<1, width> | simd::repack<width>)(dst_ptr);
+                simd::cxstore<width>(dst_ptr, rd);
             }
-            auto bucket_offset = i_bg * bucket_size;
-            coh(not_lowk, bucket_offset);
+            if constexpr (tw_data.is_local()) {
+                tw_data.start_fft_size /= bucket_size;
+                tw_data.start_k = 0;
+            }
+        } else {
+            auto bg_range = stdv::iota(lowk ? 1U : 0U, bucket_group_count) | stdv::reverse;
+            for (uZ i_bg: bg_range) {
+                if constexpr (tw_data.is_local()) {
+                    tw_data         = tw_data_bak;
+                    tw_data.start_k = i_bg;
+                }
+                auto bucket_offset = i_bg * bucket_size;
+                coh(not_lowk, bucket_offset);
+            }
+            tw_data = tw_data_bak;
+            if constexpr (lowk)
+                coh(lowk, 0);
         }
-        if constexpr (lowk)
-            coh(lowk, 0);
-
         auto pass_count       = logKi(pass_k_count * 2, data_size / bucket_size);
         uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
@@ -1797,10 +1810,6 @@ struct transform {
             bucket_count *= k_count * 2;
             stride *= k_count * 2;
             bucket_group_count /= k_count * 2;
-            if constexpr (tw_data.is_local()) {
-                tw_data.start_fft_size /= k_count * 2;
-                tw_data.start_k = 0;
-            }
 
             auto l_tw_data = tw_data;
             for (uZ i_bg: stdv::iota(1U, bucket_group_count) | stdv::reverse) {
@@ -1819,17 +1828,27 @@ struct transform {
             }
 
             for (uZ i_b: stdv::iota(0U, bucket_count)) {
-                l_tw_data        = tw_data;
+                if constexpr (l_tw_data.is_local()) {
+                    l_tw_data.start_k = 0;
+                } else {
+                    l_tw_data = tw_data;
+                }
                 auto bucket_data = dst_data.offset_k(i_b * batch_size);
                 subtf(dst_pck, align, lowk, bucket_data, k_count, l_tw_data);
             }
             tw_data = l_tw_data;
+            if constexpr (tw_data.is_local()) {
+                tw_data.start_fft_size /= k_count * 2;
+                tw_data.start_k = 0;
+            }
         };
+        tw_data_bak = tw_data;
 
         constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
         for (uZ pass: stdv::iota(0U, pass_count)) {
             tw_data = tw_data_bak;
-            iterate_buckets(w_pck, pass_align_node, pass_k_count);
+            iterate_buckets(dst_pck, pass_align_node, pass_k_count);
+            // iterate_buckets(w_pck, pass_align_node, pass_k_count);
         }
 
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
