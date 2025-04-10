@@ -1817,7 +1817,7 @@ struct transform {
                 auto bg_start  = dst_data.offset_k(bg_offset);
                 for (uZ i_b: stdv::iota(0U, bucket_count)) {
                     if constexpr (l_tw_data.is_local()) {
-                        l_tw_data.start_k = i_bg;
+                        l_tw_data.start_k = i_bg; // This???
                     } else {
                         l_tw_data = tw_data;
                     }
@@ -1850,6 +1850,7 @@ struct transform {
             iterate_buckets(dst_pck, pass_align_node, pass_k_count);
             // iterate_buckets(w_pck, pass_align_node, pass_k_count);
         }
+        return;
 
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(uZ_seq<Is...>) {
