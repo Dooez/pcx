@@ -76,7 +76,7 @@ void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_wid
     auto single_load_size = vec_width * node_size;
     while (step <= rsize / 2) {
         if (step > 2048 / 2) {
-            break;
+            // break;
         }
         // while (step < rsize / 2) {
         bool skip = false;
@@ -237,11 +237,11 @@ int main() {
 
 
         return (pcx::testing::test_fft<f32, Is>(s32, check32, s32_1, s32_2) && ...)    //
-            ;
-        // && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
+               // ;
+               && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
     };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 2048 * 2;
+    uZ fft_size = 256;
     // uZ fft_size = 131072 * 4;
 
     // for (auto i: stdv::iota(0U, fft_size)) {
@@ -250,7 +250,7 @@ int main() {
     // }
     while (fft_size <= 2048 * 256 * 4) {
         // if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
-        if (!test_size(node_sizes, fft_size, fft_size / 2 * 1.0001))
+        if (!test_size(node_sizes, fft_size, fft_size / 2 * 13.0001))
             return -1;
         fft_size *= 2;
     }
