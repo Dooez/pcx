@@ -173,13 +173,13 @@ int main() {
     namespace stdv = std::views;
     namespace stdr = std::ranges;
 
-    auto test_size = []<uZ... Is>(pcx::uZ_seq<Is...>, uZ fft_size, f64 freq_n) {
-        constexpr uZ node_size = 8;
-        constexpr uZ width     = 16;
+    auto test_size =
+        []<uZ... Is, typename fX>(pcx::uZ_seq<Is...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) {
+            constexpr uZ node_size = 8;
+            constexpr uZ width     = 16;
 
-        auto make_signal_check = [=]<typename fX>(pcx::meta::t_id<fX>) {
-            auto vec = std::vector<std::complex<fX>>(fft_size);
-            for (auto [i, v]: stdv::enumerate(vec)) {
+            auto signal = std::vector<std::complex<fX>>(fft_size);
+            for (auto [i, v]: stdv::enumerate(signal)) {
                 v = std::exp(std::complex<fX>(0, 1)                 //
                              * static_cast<fX>(2)                   //
                              * static_cast<fX>(std::numbers::pi)    //
@@ -188,58 +188,14 @@ int main() {
                              / static_cast<fX>(fft_size));
             }
 
-            auto check = vec;
-            pcx::testing::naive_fft(check, node_size, width);
-            return std::make_tuple(vec, check);
+            auto chk_fwd = signal;
+            auto chk_rev = signal;
+            pcx::testing::naive_fft(chk_fwd, node_size, width);
+            pcx::testing::naive_fft(chk_rev, node_size, width);
+            auto s1 = std::vector<std::complex<fX>>(fft_size);
+            auto tw = std::vector<fX>(fft_size);
+            return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
-        auto [s32, check32] = make_signal_check(pcx::meta::t_id<f32>{});
-        auto [s64, check64] = make_signal_check(pcx::meta::t_id<f64>{});
-        auto s32_1          = std::vector<std::complex<f32>>(fft_size);
-        auto s32_2          = std::vector<f32>(fft_size);
-        auto s64_1          = std::vector<std::complex<f64>>(fft_size);
-        auto s64_2          = std::vector<f64>(fft_size);
-
-        // auto r32 = check32;
-        // pcx::testing::naive_reverse(r32, node_size, width);
-        // f32 delta = std::numeric_limits<f32>::epsilon() * static_cast<f32>(pcx::detail_::log2i(fft_size)) / 2;
-        // f32 max_diff = 0;
-        // for (auto [i, s, c, r]: stdv::zip(stdv::iota(0U), s32, check32, r32)) {
-        //     // std::println("{}, {}, {}", s, c, r);
-        //     // continue;
-        //     auto diff = abs(s - r);
-        //     max_diff  = std::max(diff, max_diff);
-        //     if (diff > delta) {
-        //         std::println("[Failure] reverse. fft size: {}, freq_n {}, i: {}, s: {}, r: {}",
-        //                      fft_size,
-        //                      freq_n,
-        //                      i,
-        //                      s,
-        //                      r);
-        //         return false;
-        //     }
-        // }
-        // std::println("[Success] reverse. fft size: {}, freq_n: {}, max diff: {} epsilon",
-        //              fft_size,
-        //              freq_n,
-        //              max_diff / std::numeric_limits<f32>::epsilon());
-        // return true;
-
-        // auto mag  = stdr::to<std::vector<f32>>(check32 | stdv::transform([](auto v) { return abs(v); }));
-        // auto x    = stdr::max_element(mag);
-        // auto brid = x - mag.begin();
-        // auto id   = pcx::detail_::reverse_bit_order(brid, pcx::detail_::log2i(fft_size));
-        // if (id == std::round(freq_n)) {
-        //     std::println("[Success] fft size {}, freq_n {}", fft_size, freq_n);
-        //     return true;
-        // }
-        // std::println("[Failure] fft size {}, freq_n {}, detected n {}", fft_size, freq_n, id);
-        // return false;
-
-
-        return (pcx::testing::test_fft<f32, Is>(s32, check32, s32_1, s32_2) && ...)    //
-               // ;
-               && (pcx::testing::test_fft<f64, Is>(s64, check64, s64_1, s64_2) && ...);
-    };
     // uZ fft_size = 2048 * 256;
     uZ fft_size = 256;
     // uZ fft_size = 131072 * 4;
@@ -248,9 +204,13 @@ int main() {
     //     if (!test_size(node_sizes, fft_size, i + .01))
     //         return -1;
     // }
+    //
+    constexpr auto f32_tid = pcx::meta::t_id<f32>{};
+    constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 256 * 4) {
-        // if (!test_size(node_sizes, fft_size, 31.01 * fft_size / 64))
-        if (!test_size(node_sizes, fft_size, fft_size / 2 * 13.0001))
+        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+            return -1;
+        if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
         fft_size *= 2;
     }

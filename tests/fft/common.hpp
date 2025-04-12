@@ -11,17 +11,21 @@ inline constexpr auto f32_widths = uZ_seq<4, 8, 16>{};
 inline constexpr auto f64_widths = uZ_seq<2, 4, 8>{};
 inline constexpr auto half_tw    = meta::val_seq<false, true>{};
 inline constexpr auto low_k      = meta::val_seq<false, true>{};
+inline constexpr auto node_sizes = uZ_seq<2, 4, 8, 16>{};
+
 #else
 inline constexpr auto f32_widths = uZ_seq<16>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
+inline constexpr auto node_sizes = uZ_seq<8>{};
 #endif
 inline constexpr auto local_tw = meta::val_seq<true>{};
 
-template<typename T, uZ NodeSize>
+template<typename T, uZ Width>
 bool test_fft(const std::vector<std::complex<T>>& signal,
-              const std::vector<std::complex<T>>& check,
+              const std::vector<std::complex<T>>& chk_fwd,
+              const std::vector<std::complex<T>>& chk_rev,
               std::vector<std::complex<T>>&       s1,
               std::vector<T>&                     twvec);
 
@@ -94,11 +98,13 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
 bool test_prototype(const std::vector<std::complex<fX>>& signal,
-                    const std::vector<std::complex<fX>>& check,
+                    const std::vector<std::complex<fX>>& chk_fwd,
+                    const std::vector<std::complex<fX>>& chk_rev,
                     std::vector<std::complex<fX>>&       s1,
                     std::vector<fX>&                     twvec,
                     bool                                 local_check = true,
-                    bool                                 reverse     = true) {
+                    bool                                 fwd         = true,
+                    bool                                 rev         = true) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
 
@@ -112,47 +118,64 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     auto tw = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
-            if (reverse) {
-                return tw_t{fft_size, 0};
-            } else {
-                return tw_t{1, 0};
-            }
+            return tw_t{1, 0};
         } else {
             twvec.resize(0);
             fimpl::insert_tw(twvec, fft_size, lowk, half_tw);
             return tw_t{twvec.data()};
         }
     }();
+    auto tw_rev = [&] {
+        using tw_t = detail_::tw_data_t<fX, LocalTw>;
+        if constexpr (LocalTw) {
+            return tw_t{fft_size, 0};
+        } else {
+            return tw_t{twvec.data()};
+        }
+    }();
 
-    constexpr auto pck_dst = cxpack<1, fX>{};
-    constexpr auto pck_src = cxpack<1, fX>{};
-    auto           l_check = std::vector<std::complex<fX>>{};
+    constexpr auto pck_dst   = cxpack<1, fX>{};
+    constexpr auto pck_src   = cxpack<1, fX>{};
+    auto           l_chk_fwd = std::vector<std::complex<fX>>{};
+    auto           l_chk_rev = std::vector<std::complex<fX>>{};
 
     if (local_check) {
-        l_check = signal;
-        if (reverse)
-            naive_reverse(l_check, NodeSize, Width);
-        else
-            naive_fft(l_check, NodeSize, Width);
+        l_chk_fwd = signal;
+        l_chk_rev = signal;
+        naive_fft(l_chk_fwd, NodeSize, Width);
+        naive_reverse(l_chk_rev, NodeSize, Width);
     }
-    auto run_check = [&] {
-        if (local_check)
-            return check_correctness(l_check, s1, Width, NodeSize, LowK, LocalTw, half_tw);
-        return check_correctness(check, s1, Width, NodeSize, LowK, LocalTw, half_tw);
+    auto run_check = [&](bool fwd) {
+        if (local_check) {
+            if (fwd)
+                return check_correctness(l_chk_fwd, s1, Width, NodeSize, LowK, LocalTw, half_tw);
+            else
+                return check_correctness(l_chk_rev, s1, Width, NodeSize, LowK, LocalTw, half_tw);
+        }
+        if (fwd)
+            return check_correctness(chk_fwd, s1, Width, NodeSize, LowK, LocalTw, half_tw);
+        else
+            return check_correctness(chk_rev, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     };
 
     using src_info_t = detail_::data_info<fX, true>;
     auto s1_info     = src_info_t{data_ptr};
     auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
 
-    std::print("[Internal ]");
-    if (!reverse) {
+    if (fwd) {
+        std::print("[inplace fwd    ]");
+        s1 = signal;
         fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
-    } else {
-        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
+        if (!run_check(true))
+            return false;
     }
-    if (!run_check())
-        return false;
+    if (rev) {
+        std::print("[inplace rev    ]");
+        s1 = signal;
+        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw_rev);
+        if (!run_check(false))
+            return false;
+    }
     //
     // std::print("[External ]");
     // fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);
@@ -162,14 +185,10 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     s1              = signal;
     using fimpl_coh = pcx::detail_::coherent_subtransform<NodeSize, fX, Width>;
     auto coh_align  = fimpl_coh::get_align_node(fft_size);
-    auto tw_coh     = [&] {
+    auto tw_coh_fwd = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
-            if (reverse) {
-                return tw_t{fft_size, 0};
-            } else {
-                return tw_t{1, 0};
-            }
+            return tw_t{1, 0};
         } else {
             twvec.resize(0);
             [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -191,39 +210,50 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return tw_t{twvec.data()};
         }
     }();
-    // std::print("[iCoherent]");
-    // auto tw_coh_c = tw_coh;
-    // if (reverse) {
-    //     fimpl_coh::perform(pck_dst,
-    //                        pck_src,
-    //                        lowk,
-    //                        half_tw,
-    //                        std::true_type{},    // reverse
-    //                        std::true_type{},    // conj_tw
-    //                        // std::false_type{},
-    //                        // std::false_type{},
-    //                        fft_size,
-    //                        s1_info,
-    //                        detail_::inplace_src,
-    //                        coh_align,
-    //                        tw_coh_c);
-    // } else {
-    //     fimpl_coh::perform(pck_dst,
-    //                        pck_src,
-    //                        lowk,
-    //                        half_tw,
-    //                        // std::true_type{},    // reverse
-    //                        // std::true_type{},    // conj_tw
-    //                        std::false_type{},
-    //                        std::false_type{},
-    //                        fft_size,
-    //                        s1_info,
-    //                        detail_::inplace_src,
-    //                        coh_align,
-    //                        tw_coh_c);
-    // }
-    // if (!run_check())
-    //     return false;
+    auto tw_coh_rev = [&] {
+        using tw_t = detail_::tw_data_t<fX, LocalTw>;
+        if constexpr (LocalTw) {
+            return tw_t{fft_size, 0};
+        } else {
+            return tw_t{twvec.data()};
+        }
+    }();
+    if (fwd) {
+        std::print("[inplace fwd coh]");
+        s1            = signal;
+        auto tw_coh_c = tw_coh_fwd;
+        fimpl_coh::perform(pck_dst,
+                           pck_src,
+                           lowk,
+                           half_tw,
+                           std::false_type{},    //reverse
+                           std::false_type{},    //conj_tw
+                           fft_size,
+                           s1_info,
+                           detail_::inplace_src,
+                           coh_align,
+                           tw_coh_c);
+        if (!run_check(true))
+            return false;
+    }
+    if (rev) {
+        std::print("[inplace rev coh]");
+        s1            = signal;
+        auto tw_coh_c = tw_coh_rev;
+        fimpl_coh::perform(pck_dst,
+                           pck_src,
+                           lowk,
+                           half_tw,
+                           std::true_type{},    // reverse
+                           std::true_type{},    // conj_tw
+                           fft_size,
+                           s1_info,
+                           detail_::inplace_src,
+                           coh_align,
+                           tw_coh_c);
+        if (!run_check(false))
+            return false;
+    }
 
     // std::print("[eCoherent]");
     // tw_coh_c = tw_coh;
@@ -234,13 +264,14 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     return true;
 }
 
-template<typename fX, uZ NodeSize, uZ... VecWidth, bool... low_k, bool... local_tw, bool... half_tw>
-bool run_tests(uZ_seq<VecWidth...>,
+template<typename fX, uZ VecWidth, uZ... NodeSize, bool... low_k, bool... local_tw, bool... half_tw>
+bool run_tests(uZ_seq<NodeSize...>,
                meta::val_seq<low_k...>,
                meta::val_seq<local_tw...>,
                meta::val_seq<half_tw...>,
                const std::vector<std::complex<fX>>& signal,
-               const std::vector<std::complex<fX>>& check,
+               const std::vector<std::complex<fX>>& chk_fwd,
+               const std::vector<std::complex<fX>>& chk_rev,
                std::vector<std::complex<fX>>&       s1,
                std::vector<fX>&                     twvec) {
     auto lk_passed = [&]<bool LowK>(val_ce<LowK>) {
@@ -248,7 +279,8 @@ bool run_tests(uZ_seq<VecWidth...>,
             auto htw_passed = [&]<bool HalfTw>(val_ce<HalfTw>) {
                 return ((signal.size() <= NodeSize * VecWidth
                          || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(signal,
-                                                                                          check,
+                                                                                          chk_fwd,
+                                                                                          chk_rev,
                                                                                           s1,
                                                                                           twvec))
                         && ...);
