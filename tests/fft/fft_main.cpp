@@ -185,7 +185,7 @@ int main() {
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 256;
+    uZ fft_size = 256 * 2;
     // uZ fft_size = 131072 * 4;
 
     // for (auto i: stdv::iota(0U, fft_size)) {
@@ -198,8 +198,8 @@ int main() {
     while (fft_size <= 2048 * 256 * 4) {
         if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
-        // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
-        //     return -1;
+        if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
+            return -1;
         fft_size *= 2;
     }
     return 0;

@@ -977,9 +977,12 @@ struct coherent_subtransform {
                     tw_data.start_k /= single_load_size;
                 }
                 auto dst_ptr = dst_data.get_batch_base(0);
-                auto src_ptr = dst_ptr;
-                if constexpr (!src_data.empty())
-                    src_ptr = src_data.get_batch_base(0);
+                auto src_ptr = [=] PCX_LAINLINE {
+                    if constexpr (src_data.empty())
+                        return dst_ptr;
+                    else
+                        return src_data.get_batch_base(0);
+                }();
 
                 auto k_start = lowk && !skip_lowk_single_load ? 1UZ : 0UZ;
                 auto k_range = stdv::iota(k_start, final_k_count * 2) | stdv::reverse;
@@ -1121,8 +1124,8 @@ struct coherent_subtransform {
             if constexpr (half_tw && node_size > 2) {
                 // [ 0  4  8 12] [ 2  6 10 14] before
                 // [ 0  2  4  6] [ 8 10 12 14]
-                lo = regroup_half_tw(lo);
-                hi = regroup_half_tw(hi);
+                lo = regroup_half_tw(lo, reverse);
+                hi = regroup_half_tw(hi, reverse);
             }
             auto btfly_res_1 = tupi::group_invoke(regroup<1, width>, lo, hi);
             auto res         = tupi::make_flat_tuple(btfly_res_1);
@@ -1146,8 +1149,8 @@ struct coherent_subtransform {
             if constexpr (half_tw && node_size > 2) {
                 // [ 0  4  8 12] [ 2  6 10 14] before
                 // [ 0  2  4  6] [ 8 10 12 14]
-                lo = regroup_half_tw(lo, std::true_type{});
-                hi = regroup_half_tw(hi, std::true_type{});
+                lo = regroup_half_tw(lo, reverse);
+                hi = regroup_half_tw(hi, reverse);
             }
             auto [lo_1, hi_1] = [=]<uZ NGroups = width> PCX_LAINLINE    //
                 (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {

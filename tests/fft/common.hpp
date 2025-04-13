@@ -104,7 +104,9 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                     std::vector<fX>&                     twvec,
                     bool                                 local_check = false,
                     bool                                 fwd         = true,
-                    bool                                 rev         = true) {
+                    bool                                 rev         = true,
+                    bool                                 inplace     = true,
+                    bool                                 ext         = true) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
 
@@ -158,18 +160,20 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return check_correctness(chk_rev, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     };
 
-    using src_info_t = detail_::data_info<fX, true>;
-    auto s1_info     = src_info_t{data_ptr};
-    auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
+    using dst_info_t = detail_::data_info<fX, true>;
+    auto s1_info     = dst_info_t{data_ptr};
+    // auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(data_ptr)};
+    auto src_info = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
 
-    if (fwd) {
+
+    if (inplace && fwd) {
         std::print("[inplace fwd    ]");
         s1 = signal;
         fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
         if (!run_check(true))
             return false;
     }
-    if (rev) {
+    if (inplace && rev) {
         std::print("[inplace rev    ]");
         s1 = signal;
         fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw_rev);
@@ -177,11 +181,23 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return false;
     }
 
-    // std::print("[External ]");
-    // fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);
-    // if (!run_check())
-    //     return false;
-    //
+    if (ext && fwd) {
+        std::print("[externl fwd    ]");
+        // s1 = signal;
+        stdr::fill(s1, -69.);
+        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);
+        if (!run_check(true))
+            return false;
+    }
+    if (ext && rev) {
+        std::print("[externl rev    ]");
+        // s1 = signal;
+        stdr::fill(s1, -69.);
+        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw_rev);
+        if (!run_check(false))
+            return false;
+    }
+
     s1              = signal;
     using fimpl_coh = pcx::detail_::coherent_subtransform<NodeSize, fX, Width>;
     auto coh_align  = fimpl_coh::get_align_node(fft_size);
