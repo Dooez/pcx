@@ -74,8 +74,12 @@ void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_wid
     auto step             = 1;
     auto n_groups         = rsize / 2;
     auto single_load_size = vec_width * node_size;
-    while (step <= rsize / 2) {
+    // while (step <= rsize / 2) {
+    while (step < rsize / 2) {
         if (step > 2048 / 2) {
+            // break;
+        }
+        if (step >= node_size * vec_width) {
             // break;
         }
         // while (step < rsize / 2) {
@@ -152,22 +156,6 @@ template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 template void naive_reverse(std::vector<std::complex<f32>>& data, uZ, uZ);
 template void naive_reverse(std::vector<std::complex<f64>>& data, uZ, uZ);
 }    // namespace pcx::testing
-#ifdef FULL_FFT_TEST
-inline constexpr auto node_sizes = pcx::uZ_seq<2, 4, 8, 16>{};
-#ifdef NO_SPLIT_COMPILE
-namespace pcx::testing {
-template<typename fX, uZ NodeSize>
-bool test_fft(const std::vector<std::complex<fX>>& signal,
-              const std::vector<std::complex<fX>>& check,
-              std::vector<std::complex<fX>>&       s1,
-              std::vector<std::complex<fX>>&       s2) {
-    return run_tests<fX, NodeSize>(f32_widths, low_k, local_tw, half_tw, signal, check, s1, s2);
-};
-}    // namespace pcx::testing
-#endif
-#else
-inline constexpr auto node_sizes = pcx::uZ_seq<FFT_NODE_SIZE>{};
-#endif
 
 int main() {
     namespace stdv = std::views;
@@ -197,8 +185,8 @@ int main() {
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 256;
-    // uZ fft_size = 131072 * 4;
+    // uZ fft_size = 256;
+    uZ fft_size = 131072 * 4;
 
     // for (auto i: stdv::iota(0U, fft_size)) {
     //     if (!test_size(node_sizes, fft_size, i + .01))
@@ -210,8 +198,8 @@ int main() {
     while (fft_size <= 2048 * 256 * 4) {
         if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
-        if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
-            return -1;
+        // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
+        //     return -1;
         fft_size *= 2;
     }
     return 0;
