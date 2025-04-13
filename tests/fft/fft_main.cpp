@@ -74,8 +74,8 @@ void naive_reverse(std::vector<std::complex<fX>>& data, uZ node_size, uZ vec_wid
     auto step             = 1;
     auto n_groups         = rsize / 2;
     auto single_load_size = vec_width * node_size;
-    // while (step <= rsize / 2) {
-    while (step < rsize / 2) {
+    while (step <= rsize / 2) {
+        // while (step < rsize / 2) {
         if (step > 2048 / 2) {
             // break;
         }
@@ -179,14 +179,14 @@ int main() {
             auto chk_fwd = signal;
             auto chk_rev = signal;
             pcx::testing::naive_fft(chk_fwd, node_size, width);
-            pcx::testing::naive_fft(chk_rev, node_size, width);
+            pcx::testing::naive_reverse(chk_rev, node_size, width);
             auto s1 = std::vector<std::complex<fX>>(fft_size);
             auto tw = std::vector<fX>(fft_size);
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    // uZ fft_size = 256;
-    uZ fft_size = 131072 * 4;
+    uZ fft_size = 256;
+    // uZ fft_size = 131072 * 4;
 
     // for (auto i: stdv::iota(0U, fft_size)) {
     //     if (!test_size(node_sizes, fft_size, i + .01))

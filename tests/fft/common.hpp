@@ -102,8 +102,8 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                     const std::vector<std::complex<fX>>& chk_rev,
                     std::vector<std::complex<fX>>&       s1,
                     std::vector<fX>&                     twvec,
-                    bool                                 local_check = true,
-                    bool                                 fwd         = false,
+                    bool                                 local_check = false,
+                    bool                                 fwd         = true,
                     bool                                 rev         = true) {
     constexpr auto half_tw = std::bool_constant<HalfTw>{};
     constexpr auto lowk    = std::bool_constant<LowK>{};
@@ -218,42 +218,42 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return tw_t{&(*twvec.end())};
         }
     }();
-    // if (fwd) {
-    //     std::print("[inplace fwd coh]");
-    //     s1            = signal;
-    //     auto tw_coh_c = tw_coh_fwd;
-    //     fimpl_coh::perform(pck_dst,
-    //                        pck_src,
-    //                        lowk,
-    //                        half_tw,
-    //                        std::false_type{},    //reverse
-    //                        std::false_type{},    //conj_tw
-    //                        fft_size,
-    //                        s1_info,
-    //                        detail_::inplace_src,
-    //                        coh_align,
-    //                        tw_coh_c);
-    //     if (!run_check(true))
-    //         return false;
-    // }
-    // if (rev) {
-    //     std::print("[inplace rev coh]");
-    //     s1            = signal;
-    //     auto tw_coh_c = tw_coh_rev;
-    //     fimpl_coh::perform(pck_dst,
-    //                        pck_src,
-    //                        lowk,
-    //                        half_tw,
-    //                        std::true_type{},    // reverse
-    //                        std::true_type{},    // conj_tw
-    //                        fft_size,
-    //                        s1_info,
-    //                        detail_::inplace_src,
-    //                        coh_align,
-    //                        tw_coh_c);
-    //     if (!run_check(false))
-    //         return false;
-    // }
+    if (fwd) {
+        std::print("[inplace fwd coh]");
+        s1            = signal;
+        auto tw_coh_c = tw_coh_fwd;
+        fimpl_coh::perform(pck_dst,
+                           pck_src,
+                           lowk,
+                           half_tw,
+                           std::false_type{},    //reverse
+                           std::false_type{},    //conj_tw
+                           fft_size,
+                           s1_info,
+                           detail_::inplace_src,
+                           coh_align,
+                           tw_coh_c);
+        if (!run_check(true))
+            return false;
+    }
+    if (rev) {
+        std::print("[inplace rev coh]");
+        s1            = signal;
+        auto tw_coh_c = tw_coh_rev;
+        fimpl_coh::perform(pck_dst,
+                           pck_src,
+                           lowk,
+                           half_tw,
+                           std::true_type{},    // reverse
+                           std::true_type{},    // conj_tw
+                           fft_size,
+                           s1_info,
+                           detail_::inplace_src,
+                           coh_align,
+                           tw_coh_c);
+        if (!run_check(false))
+            return false;
+    }
 
     // std::print("[eCoherent]");
     // tw_coh_c = tw_coh;

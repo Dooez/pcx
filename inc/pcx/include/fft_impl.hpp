@@ -1574,7 +1574,7 @@ struct transform {
         uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
         auto subtf =
-            [&](auto src_pck, auto align, auto lowk, auto dst, auto src, auto k_count, auto tw_data) {
+            [&](auto src_pck, auto align, auto lowk, auto dst, auto src, auto k_count, auto& tw_data) {
                 subtf_t::perform(w_pck,
                                  src_pck,
                                  align,
@@ -1777,7 +1777,7 @@ struct transform {
         uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
 
-        auto subtf = [&](auto dst_pck, auto align, auto lowk, auto dst_data, auto k_count, auto tw_data) {
+        auto subtf = [&](auto dst_pck, auto align, auto lowk, auto dst_data, auto k_count, auto& tw_data) {
             subtf_t::perform(dst_pck,
                              w_pck,
                              align,
@@ -1835,10 +1835,8 @@ struct transform {
         constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
         for (uZ pass: stdv::iota(0U, pass_count)) {
             tw_data = tw_data_bak;
-            iterate_buckets(dst_pck, pass_align_node, pass_k_count);
-            // iterate_buckets(w_pck, pass_align_node, pass_k_count);
+            iterate_buckets(w_pck, pass_align_node, pass_k_count);
         }
-        return;
 
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
         [&]<uZ... Is>(uZ_seq<Is...>) {
