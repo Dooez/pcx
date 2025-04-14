@@ -1494,6 +1494,76 @@ struct coherent_subtransform {
 };
 
 template<uZ NodeSize, typename T, uZ Width, uZ CohSize = 0, uZ LaneSize = 0>
+struct par_transform {
+    static constexpr auto coherent_size = uZ_ce<CohSize != 0 ? CohSize : 8194 / sizeof(T)>{};
+    static constexpr auto lane_size = uZ_ce<std::max(LaneSize != 0 ? LaneSize : 64 / sizeof(T) / 2, Width)>{};
+
+    static constexpr auto width     = uZ_ce<Width>{};
+    static constexpr auto w_pck     = cxpack<width, T>{};
+    static constexpr auto node_size = uZ_ce<NodeSize>{};
+
+    static constexpr auto get_align_node(uZ size) {
+        auto slog       = log2i(size);
+        auto a          = slog / log2i(NodeSize);
+        auto b          = a * log2i(NodeSize);
+        auto align_node = powi(2, slog - b);
+        return align_node;
+    };
+
+    static void perform(cxpack_for<T> auto     dst_pck,
+                        cxpack_for<T> auto     src_pck,
+                        meta::ce_of<bool> auto lowk,
+                        data_info_for<T> auto  dst_data,
+                        data_info_for<T> auto  src_data,
+                        uZ                     fft_size,
+                        uZ                     par_size,
+                        tw_data_for<T> auto    tw_data) {
+        const auto bucket_size = coherent_size;
+        const auto reverse     = std::false_type{};
+        const auto conj_tw     = std::false_type{};
+
+        if (fft_size <= bucket_size / lane_size) {
+            const auto batch_size = bucket_size / fft_size;
+            const auto k_count    = fft_size / 2;
+            const auto stride     = 1;
+
+            using subtf_t = subtransform<NodeSize, T, Width>;
+            auto subtf =
+                [&](auto src_pck, auto align, auto lowk, auto dst, auto src, auto k_count, auto& tw_data) {
+                    subtf_t::perform(w_pck,
+                                     src_pck,
+                                     align,
+                                     lowk,
+                                     reverse,
+                                     conj_tw,
+                                     bucket_size,
+                                     batch_size,
+                                     stride,
+                                     stride,
+                                     dst,
+                                     src,
+                                     k_count,
+                                     tw_data);
+                };
+            auto s = src_data.offset_contents(batch_size);
+            auto d = dst_data.offset_contents(batch_size);
+
+            // sort
+            return;
+        }
+        const auto     batch_size      = lane_size;
+        const auto     pass_k_count    = bucket_size / batch_size / 2;
+        constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
+        auto           pass_count      = logKi(pass_k_count * 2, fft_size);
+
+        uZ   pre_pass_k_count    = 1;
+        auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
+
+        //
+    }
+};
+
+template<uZ NodeSize, typename T, uZ Width, uZ CohSize = 0, uZ LaneSize = 0>
 struct transform {
     using coh_subtf_t = coherent_subtransform<NodeSize, T, Width>;
     using subtf_t     = subtransform<NodeSize, T, Width>;
