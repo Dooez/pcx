@@ -399,7 +399,7 @@ struct btfly_node_dit {
     } const_tw_getter{};
 };
 
-template<floating_point T, bool Contiguous, typename C = void, bool Empty = false>
+template<floating_point T, bool Contiguous, typename C = void>
 struct data_info {
     using data_ptr_t    = std::conditional_t<Contiguous, T*, C*>;
     using data_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
@@ -409,10 +409,13 @@ struct data_info {
     [[no_unique_address]] k_offset_t    k_offset{};
     [[no_unique_address]] data_offset_t data_offset{};
 
+    static constexpr auto coherent() -> std::false_type {
+        return {};
+    }
     static constexpr auto contiguous() -> std::bool_constant<Contiguous> {
         return {};
     }
-    static constexpr auto empty() -> std::bool_constant<Empty> {
+    static constexpr auto empty() -> std::false_type {
         return {};
     }
 
@@ -440,34 +443,59 @@ struct data_info {
         }
     };
 };
-template<floating_point T, bool Cont, typename C>
-struct data_info<T, Cont, C, true> {
-    static constexpr auto contiguous() -> std::bool_constant<Cont> {
+template<floating_point T>
+struct coherent_data_info {
+    T* data_ptr;
+
+    static constexpr auto coherent() -> std::true_type {
         return {};
     }
+    static constexpr auto contiguous() -> std::true_type {
+        return {};
+    }
+    static constexpr auto empty() -> std::false_type {
+        return {};
+    }
+
+    constexpr auto offset_k(uZ n) const -> coherent_data_info {
+        return {data_ptr + n * 2};
+    }
+    constexpr auto offset_contents(uZ n) const -> coherent_data_info {
+        return {data_ptr + n * 2};
+    }
+
+    constexpr auto get_batch_base(uZ k) const -> T* {
+        return data_ptr + k * 2;
+    };
+};
+struct empty_data_info {
+    // static constexpr auto contiguous() -> std::bool_constant<Cont> {
+    //     return {};
+    // }
     static constexpr auto empty() -> std::true_type {
         return {};
     }
-    static constexpr auto offset_k(uZ /*n*/) -> data_info {
+    static constexpr auto offset_k(uZ /*n*/) -> empty_data_info {
         return {};
     };
-    static constexpr auto offset_contents(uZ /*n*/) -> data_info {
+    static constexpr auto offset_contents(uZ /*n*/) -> empty_data_info {
         return {};
     };
 };
 template<typename T, typename U>
 struct is_data_info_for : public std::false_type {};
-template<typename U, bool Contiguous, typename C, bool Empty>
-struct is_data_info_for<data_info<U, Contiguous, C, Empty>, U> : public std::true_type {};
+template<typename U>
+struct is_data_info_for<coherent_data_info<U>, U> : public std::true_type {};
 template<typename U, bool Contiguous, typename C>
-struct is_data_info_for<data_info<const U, Contiguous, C, false>, U> : public std::true_type {};
-template<typename T, typename U, bool Contiguous, typename C>
-    requires(!std::same_as<T, U>)
-struct is_data_info_for<data_info<T, Contiguous, C, true>, U> : public std::true_type {};
+struct is_data_info_for<data_info<U, Contiguous, C>, U> : public std::true_type {};
+template<typename U, bool Contiguous, typename C>
+struct is_data_info_for<data_info<const U, Contiguous, C>, U> : public std::true_type {};
+template<typename U>
+struct is_data_info_for<empty_data_info, U> : public std::true_type {};
 template<typename T, typename U>
 concept data_info_for = floating_point<U> && is_data_info_for<T, U>::value;
 
-inline constexpr auto inplace_src    = data_info<f64, true, void, true>{};
+inline constexpr auto inplace_src    = empty_data_info{};
 inline constexpr auto inplace_stride = uZ_ce<0>{};
 inline constexpr auto not_lowk       = std::false_type{};
 
@@ -533,19 +561,19 @@ struct subtransform {
 
     template<uZ NodeSizeL>
     PCX_AINLINE static void
-    fft_iteration(cxpack_for<T> auto         dst_pck,
-                  cxpack_for<T> auto         src_pck,
-                  meta::ce_of<bool> auto     lowk,
-                  meta::ce_of<bool> auto     reverse,
-                  meta::ce_of<bool> auto     conj_tw,
-                  meta::maybe_ce_of<uZ> auto bucket_size,
-                  meta::maybe_ce_of<uZ> auto batch_size,
-                  meta::maybe_ce_of<uZ> auto dst_stride,
-                  meta::maybe_ce_of<uZ> auto o_src_stride,    // if uZ_ce<0> uses dst_stride
-                  data_info_for<T> auto      dest_data,
-                  data_info_for<T> auto      src_data,
-                  uZ&                        k_count,
-                  tw_data_for<T> auto&       tw_data) {
+    fft_iteration(cxpack_for<T> auto          dst_pck,
+                  cxpack_for<T> auto          src_pck,
+                  meta::ce_of<bool> auto      lowk,
+                  meta::ce_of<bool> auto      reverse,
+                  meta::ce_of<bool> auto      conj_tw,
+                  meta::maybe_ce_of<uZ> auto  bucket_size,
+                  meta::maybe_ce_of<uZ> auto  batch_size,
+                  meta::maybe_ce_of<uZ> auto  dst_stride,
+                  meta::maybe_ce_of<uZ> auto  o_src_stride,    // if uZ_ce<0> uses dst_stride
+                  data_info_for<T> auto       dest_data,
+                  data_info_for<const T> auto src_data,
+                  uZ&                         k_count,
+                  tw_data_for<T> auto&        tw_data) {
         using btfly_node        = btfly_node_dit<NodeSizeL, T, width>;
         constexpr auto settings = val_ce<typename btfly_node::settings{
             .pack_dest = dst_pck,
@@ -588,7 +616,8 @@ struct subtransform {
         // [E0:i0, ... , E0:i<k_group_size/2 - 1>, ... , O1:i0,           ... ]
         auto make_dst_tup = [=] PCX_LAINLINE(uZ i, uZ k, uZ offset) {
             auto k_stride = dst_stride * batch_count;
-            auto base_ptr = dest_data.get_batch_base(i * dst_stride + k * k_stride) + offset * 2;
+            auto base_ptr = dest_data.get_batch_base(i * dst_stride + k * k_stride)
+                            + offset * 2;    // TODO: move inside pack expansion
             return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 return tupi::make_tuple((base_ptr + k_stride * 2 / NodeSizeL * Is)...);
             }(make_uZ_seq<NodeSizeL>{});
@@ -709,9 +738,9 @@ struct subtransform {
                                     meta::maybe_ce_of<uZ> auto dst_stride,
                                     meta::maybe_ce_of<uZ> auto o_src_stride,    // if uZ_ce<0> uses dst_stride
                                     data_info_for<T> auto      dst_data,
-                                    data_info_for<T> auto      src_data,
-                                    uZ                         final_k_count,
-                                    tw_data_for<T> auto&       tw_data) {
+                                    data_info_for<const T> auto src_data,
+                                    uZ                          final_k_count,
+                                    tw_data_for<T> auto&        tw_data) {
         assert(dst_pck == w_pck                    //
                || src_pck == w_pck                 //
                || align.size_pre() == 1            //
@@ -866,17 +895,17 @@ struct coherent_subtransform {
         return align_node;
     }
 
-    PCX_AINLINE static void perform(cxpack_for<T> auto         dst_pck,
-                                    cxpack_for<T> auto         src_pck,
-                                    meta::ce_of<bool> auto     lowk,
-                                    meta::ce_of<bool> auto     half_tw,
-                                    meta::ce_of<bool> auto     reverse,
-                                    meta::ce_of<bool> auto     conj_tw,
-                                    uZ                         data_size,
-                                    data_info_for<T> auto      dst_data,
-                                    data_info_for<T> auto      src_data,
-                                    meta::maybe_ce_of<uZ> auto align_node,
-                                    tw_data_for<T> auto&       tw) {
+    PCX_AINLINE static void perform(cxpack_for<T> auto          dst_pck,
+                                    cxpack_for<T> auto          src_pck,
+                                    meta::ce_of<bool> auto      lowk,
+                                    meta::ce_of<bool> auto      half_tw,
+                                    meta::ce_of<bool> auto      reverse,
+                                    meta::ce_of<bool> auto      conj_tw,
+                                    uZ                          data_size,
+                                    data_info_for<T> auto       dst_data,
+                                    data_info_for<const T> auto src_data,
+                                    meta::maybe_ce_of<uZ> auto  align_node,
+                                    tw_data_for<T> auto&        tw) {
         [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             auto check_align = [&]<uZ I> PCX_LAINLINE(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
@@ -901,19 +930,19 @@ struct coherent_subtransform {
         }(make_uZ_seq<log2i(NodeSize)>{});
     }
 
-    PCX_AINLINE static void perform_impl(cxpack_for<T> auto         dst_pck,
-                                         cxpack_for<T> auto         src_pck,
-                                         any_align auto             align,
-                                         meta::ce_of<bool> auto     lowk,
-                                         meta::ce_of<bool> auto     half_tw,
-                                         meta::ce_of<bool> auto     reverse,
-                                         meta::ce_of<bool> auto     conj_tw,
-                                         meta::maybe_ce_of<uZ> auto data_size,
-                                         data_info_for<T> auto      dst_data,
-                                         data_info_for<T> auto      src_data,
-                                         tw_data_for<T> auto&       tw_data) {
+    PCX_AINLINE static void perform_impl(cxpack_for<T> auto          dst_pck,
+                                         cxpack_for<T> auto          src_pck,
+                                         any_align auto              align,
+                                         meta::ce_of<bool> auto      lowk,
+                                         meta::ce_of<bool> auto      half_tw,
+                                         meta::ce_of<bool> auto      reverse,
+                                         meta::ce_of<bool> auto      conj_tw,
+                                         meta::maybe_ce_of<uZ> auto  data_size,
+                                         data_info_for<T> auto       dst_data,
+                                         data_info_for<const T> auto src_data,
+                                         tw_data_for<T> auto&        tw_data) {
         static_assert(dst_data.contiguous());
-        static_assert(src_data.contiguous());
+        // static_assert(src_data.contiguous());
 
         constexpr auto single_load_size = node_size * width;
         const auto     local            = tw_data.is_local();
@@ -1556,8 +1585,20 @@ struct par_transform {
         constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
         auto           pass_count      = logKi(pass_k_count * 2, fft_size);
 
-        uZ   pre_pass_k_count    = 1;
+        uZ pre_pass_k_count = fft_size / (bucket_size / batch_size) / powi(pass_k_count * 2, pass_count) / 2;
         auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
+
+        [&]<uZ... Is>(uZ_seq<Is...>) {
+            auto check_align = [&]<uZ I>(uZ_ce<I>) {
+                constexpr auto l_node_size = powi(2, I);
+                if (l_node_size != pre_pass_align_node)
+                    return false;
+                constexpr auto align = align_param<l_node_size, true>{};
+                iterate_buckets(src_pck, align, pre_pass_k_count, src_data);
+                return true;
+            };
+            (void)(check_align(uZ_ce<Is>{}) || ...);
+        }(make_uZ_seq<log2i(NodeSize)>{});
 
         //
     }
@@ -1600,22 +1641,31 @@ struct transform {
      * Subdivides the data into buckets. Default bucket size is `coherent_size`.
      * A bucket is a set of `batches`, distributed with a constant stride. `Batch` is contiguous data with default size of `lane_size`.
      */
-    PCX_AINLINE static void perform(cxpack_for<T> auto     dst_pck,
-                                    cxpack_for<T> auto     src_pck,
-                                    meta::ce_of<bool> auto half_tw,
-                                    meta::ce_of<bool> auto lowk,
-                                    data_info_for<T> auto  dst_data,
-                                    data_info_for<T> auto  src_data,
-                                    uZ                     data_size,
-                                    tw_data_for<T> auto    tw_data) {
-        const auto bucket_size  = coherent_size;
-        const auto batch_size   = lane_size;
+    PCX_AINLINE static void perform(cxpack_for<T> auto          dst_pck,
+                                    cxpack_for<T> auto          src_pck,
+                                    meta::ce_of<bool> auto      half_tw,
+                                    meta::ce_of<bool> auto      lowk,
+                                    data_info_for<T> auto       dst_data,
+                                    data_info_for<const T> auto src_data,
+                                    uZ                          fft_size,
+                                    tw_data_for<T> auto         tw_data) {
+        const auto     bucket_size   = coherent_size;
+        const auto     batch_size    = lane_size;
+        const auto     coherent      = dst_data.coherent();
+        constexpr auto bucket_tfsize = [=] {
+            if constexpr (coherent) {
+                return bucket_size;
+            } else {
+                return uZ_ce<bucket_size / batch_size>{};
+            }
+        }();
+
         const auto pass_k_count = bucket_size / batch_size / 2;
         const auto reverse      = std::false_type{};
         const auto conj_tw      = std::false_type{};
 
-        if (data_size <= bucket_size) {
-            auto coherent_align_node = coh_subtf_t::get_align_node(data_size);
+        if (fft_size <= bucket_tfsize) {
+            auto coherent_align_node = coh_subtf_t::get_align_node(fft_size);
             [&]<uZ... Is>(uZ_seq<Is...>) {
                 auto check_align = [&]<uZ I>(uZ_ce<I>) {
                     constexpr auto l_node_size = powi(2, I);
@@ -1627,7 +1677,7 @@ struct transform {
                                          half_tw,
                                          reverse,
                                          conj_tw,
-                                         data_size,
+                                         fft_size,
                                          dst_data,
                                          src_data,
                                          uZ_ce<l_node_size>{},
@@ -1639,38 +1689,44 @@ struct transform {
             return;
         }
 
-        uZ bucket_count       = data_size / bucket_size;    // per bucket group
+        uZ bucket_count       = fft_size / bucket_tfsize;    // per bucket group
         uZ bucket_group_count = 1;
         uZ stride             = batch_size * bucket_count;
 
-        auto pass_count       = logKi(pass_k_count * 2, data_size / bucket_size);
-        uZ   pre_pass_k_count = data_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
+        uZ pass_count       = logKi(pass_k_count * 2, fft_size / bucket_size);
+        uZ pre_pass_k_count = fft_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
 
-        auto subtf =
-            [&](auto src_pck, auto align, auto lowk, auto dst, auto src, auto k_count, auto& tw_data) {
-                subtf_t::perform(w_pck,
-                                 src_pck,
-                                 align,
-                                 lowk,
-                                 reverse,
-                                 conj_tw,
-                                 bucket_size,
-                                 batch_size,
-                                 stride,
-                                 stride,
-                                 dst,
-                                 src,
-                                 k_count,
-                                 tw_data);
-            };
+        auto subtf = [&](auto  dst_pck,
+                         auto  src_pck,
+                         auto  align,
+                         auto  lowk,
+                         auto  dst,
+                         auto  src,
+                         auto  k_count,
+                         auto& tw_data) {
+            subtf_t::perform(dst_pck,
+                             src_pck,
+                             align,
+                             lowk,
+                             reverse,
+                             conj_tw,
+                             bucket_size,
+                             batch_size,
+                             stride,
+                             stride,
+                             dst,
+                             src,
+                             k_count,
+                             tw_data);
+        };
 
-        auto iterate_buckets = [&](auto src_pck, auto align, auto k_count, auto src_data) {
+        auto iterate_buckets = [&](auto dst_pck, auto src_pck, auto align, auto k_count, auto src_data) {
             auto l_tw_data = tw_data;
             for (uZ i_b: stdv::iota(0U, bucket_count)) {
                 l_tw_data       = tw_data;
                 auto bucket_dst = dst_data.offset_k(i_b * batch_size);
                 auto bucket_src = src_data.offset_k(i_b * batch_size);
-                subtf(src_pck, align, lowk, bucket_dst, bucket_src, k_count, l_tw_data);
+                subtf(dst_pck, src_pck, align, lowk, bucket_dst, bucket_src, k_count, l_tw_data);
             }
             tw_data = l_tw_data;
             for (uZ i_bg: stdv::iota(1U, bucket_group_count)) {
@@ -1685,7 +1741,7 @@ struct transform {
                     }
                     auto bucket_dst = bg_dst_start.offset_k(i_b * batch_size);
                     auto bucket_src = bg_src_start.offset_k(i_b * batch_size);
-                    subtf(src_pck, align, not_lowk, bucket_dst, bucket_src, k_count, l_tw_data);
+                    subtf(dst_pck, src_pck, align, not_lowk, bucket_dst, bucket_src, k_count, l_tw_data);
                 }
                 tw_data = l_tw_data;
             }
@@ -1705,7 +1761,7 @@ struct transform {
                 if (l_node_size != pre_pass_align_node)
                     return false;
                 constexpr auto align = align_param<l_node_size, true>{};
-                iterate_buckets(src_pck, align, pre_pass_k_count, src_data);
+                iterate_buckets(w_pck, src_pck, align, pre_pass_k_count, src_data);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -1715,57 +1771,64 @@ struct transform {
         constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
         for (uZ pass: stdv::iota(0U, pass_count)) {
             tw_data = tw_data_bak;
-            iterate_buckets(w_pck, pass_align_node, pass_k_count, inplace_src);
+            iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_count, inplace_src);
         }
-        if constexpr (skip_coherent_subtf) {
-            for (auto i: stdv::iota(0U, data_size / width)) {
-                auto ptr = dst_data.get_batch_base(i * width);
-                auto rd  = (simd::cxload<width, width> | simd::repack<1>)(ptr);
-                simd::cxstore<1>(ptr, rd);
-            }
-            return;
-        }
-        bucket_group_count = data_size / bucket_size;
-        if constexpr (tw_data.is_local()) {
-            tw_data.start_fft_size = bucket_group_count;
-            tw_data.start_k        = 0;
-        }
-        tw_data_bak = tw_data;
 
-        auto coh = [&] PCX_LAINLINE(auto lowk, auto offset) {
-            constexpr auto coherent_align_node = uZ_ce<coh_subtf_t::get_align_node(bucket_size)>{};
-            coh_subtf_t::perform(dst_pck,
-                                 w_pck,
-                                 lowk,
-                                 half_tw,
-                                 reverse,
-                                 conj_tw,
-                                 bucket_size,
-                                 dst_data.offset_k(offset),
-                                 inplace_src,
-                                 coherent_align_node,
-                                 tw_data);
-        };
-        if constexpr (lowk)
-            coh(lowk, 0);
-        constexpr uZ coh_start = lowk ? 1U : 0U;
-        for (uZ i_bg: stdv::iota(coh_start, bucket_group_count)) {
-            if constexpr (tw_data.is_local()) {
-                tw_data         = tw_data_bak;
-                tw_data.start_k = i_bg;
+        if constexpr (!coherent) {
+            tw_data = tw_data_bak;
+            iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_count, inplace_src);
+        } else {
+            if constexpr (skip_coherent_subtf) {
+                for (auto i: stdv::iota(0U, fft_size / width)) {
+                    auto ptr = dst_data.get_batch_base(i * width);
+                    auto rd  = (simd::cxload<width, width> | simd::repack<1>)(ptr);
+                    simd::cxstore<1>(ptr, rd);
+                }
+                return;
             }
-            auto bucket_offset = i_bg * bucket_size;
-            coh(not_lowk, bucket_offset);
+            bucket_group_count = fft_size / bucket_size;
+            if constexpr (tw_data.is_local()) {
+                tw_data.start_fft_size = bucket_group_count;
+                tw_data.start_k        = 0;
+            }
+            tw_data_bak = tw_data;
+
+            auto coh = [&] PCX_LAINLINE(auto lowk, auto offset) {
+                constexpr auto coherent_align_node = uZ_ce<coh_subtf_t::get_align_node(bucket_size)>{};
+                coh_subtf_t::perform(dst_pck,
+                                     w_pck,
+                                     lowk,
+                                     half_tw,
+                                     reverse,
+                                     conj_tw,
+                                     bucket_size,
+                                     dst_data.offset_k(offset),
+                                     inplace_src,
+                                     coherent_align_node,
+                                     tw_data);
+            };
+            if constexpr (lowk)
+                coh(lowk, 0);
+            constexpr uZ coh_start = lowk ? 1U : 0U;
+            for (uZ i_bg: stdv::iota(coh_start, bucket_group_count)) {
+                if constexpr (tw_data.is_local()) {
+                    tw_data         = tw_data_bak;
+                    tw_data.start_k = i_bg;
+                }
+                auto bucket_offset = i_bg * bucket_size;
+                coh(not_lowk, bucket_offset);
+            }
         }
     };
-    PCX_AINLINE static void perform_rev(cxpack_for<T> auto     dst_pck,
-                                        cxpack_for<T> auto     src_pck,
-                                        meta::ce_of<bool> auto half_tw,
-                                        meta::ce_of<bool> auto lowk,
-                                        data_info_for<T> auto  dst_data,
-                                        data_info_for<T> auto  src_data,
-                                        uZ                     data_size,
-                                        tw_data_for<T> auto    tw_data) {
+
+    PCX_AINLINE static void perform_rev(cxpack_for<T> auto          dst_pck,
+                                        cxpack_for<T> auto          src_pck,
+                                        meta::ce_of<bool> auto      half_tw,
+                                        meta::ce_of<bool> auto      lowk,
+                                        data_info_for<T> auto       dst_data,
+                                        data_info_for<const T> auto src_data,
+                                        uZ                          data_size,
+                                        tw_data_for<T> auto         tw_data) {
         const auto bucket_size  = coherent_size;
         const auto batch_size   = lane_size;
         const auto pass_k_count = bucket_size / batch_size / 2;

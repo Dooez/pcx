@@ -160,10 +160,10 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return check_correctness(chk_rev, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     };
 
-    using dst_info_t = detail_::data_info<fX, true>;
+    using dst_info_t = detail_::coherent_data_info<fX>;
     auto s1_info     = dst_info_t{data_ptr};
     // auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(data_ptr)};
-    auto src_info = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(signal.data())};
+    auto src_info = detail_::coherent_data_info<const fX>{reinterpret_cast<const fX*>(signal.data())};
 
 
     if (inplace && fwd) {
