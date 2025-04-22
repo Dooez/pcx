@@ -69,8 +69,8 @@ struct br_permute_t {
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count    = sizeof...(Ts);
-        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count = sizeof...(Ts);
+        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -82,7 +82,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto count = sizeof...(Tsl) * 2;
+        constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -309,8 +309,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count    = sizeof...(Ts);
-        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count = sizeof...(Ts);
+        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -329,7 +329,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto count = sizeof...(Tsl) * 2;
+        constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -1661,9 +1661,10 @@ struct transform {
         }();
         auto stride = batch_tfsize * bucket_cnt;
 
-        dst_data     = dst_bak.mul_stride(stride);
-        src_data     = src_bak.mul_stride(stride);
-        auto l_tform = [&](auto width, auto batch_size, auto dst, auto src) {
+        dst_data = dst_bak.mul_stride(stride);
+        src_data = src_bak.mul_stride(stride);
+
+        auto tform = [&](auto width, auto batch_size, auto dst, auto src) {
             using subtf_t = subtransform<NodeSize, T, width>;
             auto subtf    = [&](auto  dst_pck,
                              auto  src_pck,
@@ -1714,8 +1715,8 @@ struct transform {
                 }
                 bucket_cnt /= k_count * 2;
                 bucket_grp_cnt *= k_count * 2;
-                dst      = dst.div_stride(k_count * 2);
-                src_data = src_data.div_stride(k_count * 2);
+                dst = dst.div_stride(k_count * 2);
+                // src_data = src_data.div_stride(k_count * 2);
                 if constexpr (tw_data.is_local()) {
                     tw_data.start_fft_size *= k_count * 2;
                     tw_data.start_k = 0;
@@ -1790,10 +1791,10 @@ struct transform {
         };
 
         if constexpr (coherent) {
-            l_tform(width, batch_size, dst_data, src_data);
+            tform(width, batch_size, dst_data, src_data);
         } else {
             while (data_size >= batch_size) {
-                l_tform(width, batch_size, dst_data, src_data);
+                tform(width, batch_size, dst_data, src_data);
                 data_size -= batch_size;
                 dst_data = dst_data.offset_contents(batch_size);
                 src_data = src_data.offset_contents(batch_size);
@@ -1802,7 +1803,7 @@ struct transform {
                 auto pw = [&](auto bsize) {
                     if (data_size >= bsize) {
                         constexpr auto lwidth = uZ_ce<std::min(width, bsize)>{};
-                        l_tform(lwidth, bsize, dst_data, src_data);
+                        tform(lwidth, bsize, dst_data, src_data);
                         data_size -= bsize;
                         dst_data = dst_data.offset_contents(bsize);
                         src_data = src_data.offset_contents(bsize);
@@ -2013,7 +2014,8 @@ struct transform {
     static void insert_tw(twiddle_range_for<T> auto& r,    //
                           uZ                         data_size,
                           bool                       lowk,
-                          meta::ce_of<bool> auto     half_tw) {
+                          meta::ce_of<bool> auto     half_tw,
+                          bool                       coherent = true) {
         const auto bucket_size  = coherent_size;
         const auto batch_size   = lane_size;
         const auto pass_k_count = bucket_size / batch_size / 2;
@@ -2061,19 +2063,24 @@ struct transform {
         }(make_uZ_seq<log2i(NodeSize)>{});
 
         constexpr auto pass_align_node = get_align_node(pass_k_count * 2);
+
+        pass_count = coherent ? pass_count : pass_count + 1;
         if (pass_count > 0) {
             const auto final_bucket_group_count =
                 pre_pass_k_count * 2 * powi(pass_k_count * 2, pass_count - 1);
             iterate_buckets(uZ_ce<pass_align_node>{}, pass_k_count, final_bucket_group_count);
         }
-        if constexpr (skip_coherent_subtf)
-            return;
-        auto bucket_count = data_size / bucket_size;
+        if (coherent) {
+            if constexpr (skip_coherent_subtf)
+                return;
+            auto bucket_count = data_size / bucket_size;
 
-        constexpr auto coherent_align = align_param<coh_subtf_t::get_align_node(bucket_size), true>{};
-        for (uZ i_bg: stdv::iota(0U, bucket_count)) {
-            auto l_tw_data = tw_data_t<T, true>{bucket_count, i_bg};
-            coh_subtf_t::insert_tw(r, coherent_align, lowk && i_bg == 0, bucket_size, l_tw_data, half_tw);
+            constexpr auto coherent_align = align_param<coh_subtf_t::get_align_node(bucket_size), true>{};
+            for (uZ i_bg: stdv::iota(0U, bucket_count)) {
+                auto l_tw_data = tw_data_t<T, true>{bucket_count, i_bg};
+                coh_subtf_t::insert_tw(r, coherent_align, lowk && i_bg == 0, bucket_size, l_tw_data, half_tw);
+            }
+            return;
         }
     };
 };
