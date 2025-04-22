@@ -245,7 +245,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                            std::false_type{},    //reverse
                            std::false_type{},    //conj_tw
                            fft_size,
-                           s1_info,
+                           s1_info.mul_stride(Width),
                            detail_::inplace_src,
                            coh_align,
                            tw_coh_c);
@@ -263,7 +263,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                            std::true_type{},    // reverse
                            std::true_type{},    // conj_tw
                            fft_size,
-                           s1_info,
+                           s1_info.mul_stride(Width),
                            detail_::inplace_src,
                            coh_align,
                            tw_coh_c);

@@ -186,6 +186,7 @@ int main() {
         };
     // uZ fft_size = 2048 * 256;
     uZ fft_size = 256 * 2;
+    // uZ fft_size = 2048;
     // uZ fft_size = 131072 * 4;
 
     // for (auto i: stdv::iota(0U, fft_size)) {
