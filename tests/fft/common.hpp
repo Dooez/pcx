@@ -148,8 +148,8 @@ bool par_test_proto(const std_vec2d<fX>&                 signal,
     }
 
     fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw, data_size);
+    return true;
 }
-
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
 bool test_prototype(const std::vector<std::complex<fX>>& signal,

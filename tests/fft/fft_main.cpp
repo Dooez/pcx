@@ -216,7 +216,7 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 256 * 4) {
-        if (!test_par(f32_tid, fft_size, 127, 13.001))
+        if (!test_par(f32_tid, fft_size, 128, 13.001))
             return -1;
         //     if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
         //         return -1;

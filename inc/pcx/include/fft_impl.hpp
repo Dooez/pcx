@@ -446,7 +446,7 @@ struct data_info {
         if constexpr (Contiguous) {
             new_info.data_ptr += n * 2;
         } else {
-            new_info.k_offset += n;
+            new_info.data_offset += n;
         }
         return new_info;
     }
@@ -1838,6 +1838,7 @@ struct transform {
             tform(width, batch_size, dst_data, src_data, tw_data);
         } else {
             while (data_size >= batch_size) {
+                uZ btf = bucket_tfsize;
                 tform(width, batch_size, dst_data, src_data, tw_data);
                 data_size -= batch_size;
                 dst_data = dst_data.offset_contents(batch_size);
