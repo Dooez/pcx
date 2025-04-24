@@ -404,10 +404,11 @@ struct data_info {
     using data_ptr_t    = std::conditional_t<Contiguous, T*, C*>;
     using data_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
     using k_offset_t    = std::conditional_t<Contiguous, decltype([] {}), uZ>;
+    using k_stride_t    = std::conditional_t<Contiguous, uZ, decltype([] {})>;
 
     data_ptr_t                          data_ptr;
-    uZ                                  k_stride = 1;
-    uZ                                  stride   = k_stride;
+    uZ                                  stride = 1;
+    [[no_unique_address]] k_stride_t    k_stride;
     [[no_unique_address]] k_offset_t    k_offset{};
     [[no_unique_address]] data_offset_t data_offset{};
 
@@ -1679,7 +1680,9 @@ struct transform {
                             auto small_tform = [&](auto batch_ce) {
                                 auto small_batch = uZ_ce<powi(2, log2i(lane_size) - 1 - batch_ce)>{};
                                 if (data_size >= small_batch) {
-                                    constexpr auto lwidth = uZ_ce<std::min(width, small_batch)>{};
+                                    constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
+                                    // constexpr auto lwidth =
+                                    //     uZ_ce<(width < small_batch ? width : small_batch)>{};
                                     tform(width, align, small_batch, dst_data, src_data, tw_data);
                                     data_size -= small_batch;
                                     dst_data = dst_data.offset_contents(small_batch);
@@ -1843,7 +1846,8 @@ struct transform {
             [&]<uZ... Ws> PCX_LAINLINE(uZ_seq<Ws...>) {
                 auto small_tform = [&](auto small_batch) {
                     if (data_size >= small_batch) {
-                        constexpr auto lwidth = uZ_ce<std::min(width, small_batch)>{};
+                        constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
+                        // constexpr auto lwidth = uZ_ce<(width < small_batch ? width : small_batch)>{};
                         tform(lwidth, small_batch, dst_data, src_data, tw_data);
                         data_size -= small_batch;
                         dst_data = dst_data.offset_contents(small_batch);

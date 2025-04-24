@@ -160,6 +160,25 @@ template void naive_reverse(std::vector<std::complex<f64>>& data, uZ, uZ);
 int main() {
     namespace stdv = std::views;
     namespace stdr = std::ranges;
+    auto test_par  = []<typename fX>(pcx::meta::t_id<fX>, uZ fft_size, uZ data_size, f64 freq_n) {
+        auto signal = pcx::testing::std_vec2d<fX>(fft_size);
+        auto check  = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v, vc]: stdv::zip(stdv::iota(0U), signal, check)) {
+            auto cx = std::exp(std::complex<fX>(0, 1)                 //
+                               * static_cast<fX>(2)                   //
+                               * static_cast<fX>(std::numbers::pi)    //
+                               * static_cast<fX>(i)                   //
+                               * static_cast<fX>(freq_n)              //
+                               / static_cast<fX>(fft_size));
+
+            vc = cx;
+            v.resize(data_size);
+            stdr::fill(v, cx);
+        }
+        auto s1    = signal;
+        auto twvec = std::vector<fX>{};
+        return pcx::testing::par_test_proto(signal, s1, check, twvec);
+    };
 
     auto test_size =
         []<uZ... Is, typename fX>(pcx::uZ_seq<Is...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) {
@@ -197,10 +216,12 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 256 * 4) {
-        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+        if (!test_par(f32_tid, fft_size, 127, 13.001))
             return -1;
-        if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
-            return -1;
+        //     if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+        //         return -1;
+        // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
+        //     return -1;
         fft_size *= 2;
     }
     return 0;

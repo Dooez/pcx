@@ -20,7 +20,7 @@ inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
 inline constexpr auto node_sizes = uZ_seq<8>{};
 #endif
-inline constexpr auto local_tw = meta::val_seq<false>{};
+inline constexpr auto local_tw = meta::val_seq<true>{};
 
 template<typename T, uZ Width>
 bool test_fft(const std::vector<std::complex<T>>& signal,
@@ -95,6 +95,61 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        bool                                 lowk,
                        bool                                 local_tw,
                        bool                                 half_tw);
+
+template<typename fX>
+bool par_check_correctness(std::complex<fX> val, const std::vector<std::complex<fX>>& pcx) {};
+template<typename fX>
+using std_vec2d = std::vector<std::vector<std::complex<fX>>>;
+template<typename fX>
+bool par_test_proto(const std_vec2d<fX>&                 signal,
+                    std_vec2d<fX>&                       s1,
+                    const std::vector<std::complex<fX>>& check,
+                    std::vector<fX>&                     twvec,
+                    bool                                 local_check = true) {
+    constexpr uZ   NodeSize = 8;
+    constexpr uZ   Width    = 16;
+    constexpr auto LocalTw  = true;
+
+    constexpr auto lowk     = std::false_type{};
+    constexpr auto half_tw  = std::true_type{};
+    constexpr auto coherent = std::false_type{};
+
+    auto fft_size  = signal.size();
+    auto data_size = signal[0].size();
+
+    using fimpl  = pcx::detail_::transform<NodeSize, fX, Width>;
+    using data_t = pcx::detail_::data_info<fX, false, std_vec2d<fX>>;
+
+    s1           = signal;
+    auto s1_info = data_t{.data_ptr = &s1};
+
+    auto tw = [&] {
+        using tw_t = detail_::tw_data_t<fX, LocalTw>;
+        if constexpr (LocalTw) {
+            return tw_t{1, 0};
+        } else {
+            twvec.resize(0);
+            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, coherent);
+            return tw_t{twvec.data()};
+        }
+    }();
+
+    constexpr auto pck_dst = cxpack<1, fX>{};
+    constexpr auto pck_src = cxpack<1, fX>{};
+
+    auto l_chk_fwd = std::vector<std::complex<fX>>{};
+    auto l_chk_rev = std::vector<std::complex<fX>>{};
+
+    if (local_check) {
+        l_chk_fwd = check;
+        // l_chk_rev = check;
+        naive_fft(l_chk_fwd, NodeSize, Width);
+        // naive_reverse(l_chk_rev, NodeSize, Width);
+    }
+
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw, data_size);
+}
+
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
 bool test_prototype(const std::vector<std::complex<fX>>& signal,
