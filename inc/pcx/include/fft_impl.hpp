@@ -1614,16 +1614,15 @@ struct transform {
                 return uZ_ce<1>{};
             }
         }();
-        if constexpr (coherent) {
-            if (fft_size <= bucket_tfsize) {
-                dst_data = dst_data.mul_stride(width);
-                src_data = src_data.mul_stride(width);
-
-                auto coherent_align_node = coh_subtf_t::get_align_node(fft_size);
+        if (fft_size <= bucket_tfsize) {
+            if constexpr (coherent) {
+                dst_data        = dst_data.mul_stride(width);
+                src_data        = src_data.mul_stride(width);
+                auto align_node = coh_subtf_t::get_align_node(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
                     auto check_align = [&]<uZ I>(uZ_ce<I>) {
                         constexpr auto l_node_size = powi(2, I);
-                        if (l_node_size != coherent_align_node)
+                        if (l_node_size != align_node)
                             return false;
                         coh_subtf_t::perform(dst_pck,
                                              src_pck,
@@ -1636,6 +1635,60 @@ struct transform {
                                              src_data,
                                              uZ_ce<l_node_size>{},
                                              tw_data);
+                        return true;
+                    };
+                    (void)(check_align(uZ_ce<Is>{}) || ...);
+                }(make_uZ_seq<log2i(NodeSize)>{});
+                return;
+            } else {
+                auto batch_size = bucket_tfsize / fft_size * lane_size;
+                auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
+                    using subtf_t = subtransform<NodeSize, T, width>;
+                    subtf_t::perform(dst_pck,
+                                     src_pck,
+                                     align,
+                                     lowk,
+                                     reverse,
+                                     conj_tw,
+                                     bucket_size,
+                                     batch_size,
+                                     dst,
+                                     src,
+                                     fft_size / 2,
+                                     tw);
+                };
+                auto align_node = get_align_node(fft_size);
+                [&]<uZ... Is>(uZ_seq<Is...>) {
+                    auto check_align = [&]<uZ I>(uZ_ce<I>) {
+                        constexpr auto l_node_size = powi(2, I);
+                        if (l_node_size != align_node)
+                            return false;
+                        constexpr auto align = align_param<l_node_size, true>{};
+                        while (true) {
+                            if (data_size < batch_size) {
+                                if (batch_size <= lane_size)
+                                    break;
+                                batch_size /= 2;
+                            }
+                            tform(width, align, batch_size, dst_data, src_data, tw_data);
+                            data_size -= batch_size;
+                            dst_data = dst_data.offset_contents(batch_size);
+                            src_data = src_data.offset_contents(batch_size);
+                        }
+                        [&]<uZ... Ws> PCX_LAINLINE(uZ_seq<Ws...>) {
+                            auto small_tform = [&](auto batch_ce) {
+                                auto small_batch = uZ_ce<powi(2, log2i(lane_size) - 1 - batch_ce)>{};
+                                if (data_size >= small_batch) {
+                                    constexpr auto lwidth = uZ_ce<std::min(width, small_batch)>{};
+                                    tform(width, align, small_batch, dst_data, src_data, tw_data);
+                                    data_size -= small_batch;
+                                    dst_data = dst_data.offset_contents(small_batch);
+                                    src_data = src_data.offset_contents(small_batch);
+                                }
+                                return data_size != 0;
+                            };
+                            (void)(small_tform(uZ_ce<Ws>{}) && ...);
+                        }(make_uZ_seq<log2i(lane_size) - 1>{});
                         return true;
                     };
                     (void)(check_align(uZ_ce<Is>{}) || ...);
