@@ -1655,6 +1655,7 @@ struct transform {
                 return;
             } else {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
+                auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
                     using subtf_t = subtransform<NodeSize, T, width>;
                     subtf_t::perform(dst_pck,

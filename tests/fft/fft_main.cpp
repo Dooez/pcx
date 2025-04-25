@@ -204,7 +204,7 @@ int main() {
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 256 * 2;
+    uZ fft_size = 16;
     // uZ fft_size = 2048;
     // uZ fft_size = 131072 * 4;
 
