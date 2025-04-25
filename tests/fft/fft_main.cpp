@@ -161,9 +161,18 @@ int main() {
     namespace stdv = std::views;
     namespace stdr = std::ranges;
     auto test_par  = []<typename fX>(pcx::meta::t_id<fX>, uZ fft_size, uZ data_size, f64 freq_n) {
-        auto signal = pcx::testing::std_vec2d<fX>(fft_size);
-        auto check  = std::vector<std::complex<fX>>(fft_size);
-        for (auto [i, v, vc]: stdv::zip(stdv::iota(0U), signal, check)) {
+        constexpr uZ width = 16;
+
+        bool local_check = true;
+        bool fwd         = true;
+        bool rev         = false;
+        bool inplace     = true;
+        bool external    = true;
+
+        auto signal  = pcx::testing::std_vec2d<fX>(fft_size);
+        auto chk_fwd = std::vector<std::complex<fX>>(fft_size);
+        auto chk_rev = std::vector<std::complex<fX>>(fft_size);
+        for (auto [i, v, vc]: stdv::zip(stdv::iota(0U), signal, chk_fwd)) {
             auto cx = std::exp(std::complex<fX>(0, 1)                 //
                                * static_cast<fX>(2)                   //
                                * static_cast<fX>(std::numbers::pi)    //
@@ -177,7 +186,16 @@ int main() {
         }
         auto s1    = signal;
         auto twvec = std::vector<fX>{};
-        return pcx::testing::par_test_proto(signal, s1, check, twvec);
+        return pcx::testing::test_par<fX, width>(signal,
+                                                 s1,
+                                                 chk_fwd,
+                                                 chk_rev,
+                                                 twvec,
+                                                 local_check,
+                                                 fwd,
+                                                 rev,
+                                                 inplace,
+                                                 external);
     };
 
     auto test_size =
@@ -239,7 +257,7 @@ bool par_check_correctness(std::complex<fX>                     val,
     for (auto [i, v]: stdv::enumerate(pcx)) {
         if (v == val)
             continue;
-        std::println("[Error] {}×{}@{}:{} , width {}, node size {}{}.",
+        std::println("[Error] {}×{}@{}:{}, width {}, node size {}{}.",
                      pcx::meta::types<fX>{},
                      fft_size,
                      fft_id,
@@ -247,10 +265,9 @@ bool par_check_correctness(std::complex<fX>                     val,
                      width,
                      node_size,
                      local_tw ? ", local tw" : "");
-        uZ err_cnt = 0;
         std::println("expected: {}", val);
-        for (auto [ei, ev]: stdv::drop(pcx, i) | stdv::take(100) | stdv::enumerate) {
-            std::println("{:>3}| pcx:{: >6.2f}, diff:{}",    //
+        for (auto [ei, ev]: stdv::enumerate(pcx | stdv::drop(i)) | stdv::take(100)) {
+            std::println("{:>3}| pcx:{: >6.4f}, diff:{}",    //
                          ei,
                          ev,
                          abs(ev - val));

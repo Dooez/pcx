@@ -1,0 +1,40 @@
+#include "common.hpp"
+namespace pcx::testing {
+using fX                  = f32;
+static constexpr uZ width = 16;
+template<>
+bool test_par<fX, width>(const std_vec2d<fX>&                 signal,
+                         std_vec2d<fX>&                       s1,
+                         const std::vector<std::complex<fX>>& chk_fwd,
+                         const std::vector<std::complex<fX>>& chk_rev,
+                         std::vector<fX>&                     twvec,
+                         bool                                 local_check,
+                         bool                                 fwd,
+                         bool                                 rev,
+                         bool                                 inplace,
+                         bool                                 external) {
+    return par_run_tests<fX, width>(node_sizes,
+                                    low_k,
+                                    local_tw,
+                                    signal,
+                                    s1,
+                                    chk_fwd,
+                                    chk_rev,
+                                    twvec,
+                                    local_check,
+                                    fwd,
+                                    rev,
+                                    inplace,
+                                    external);
+};
+template bool test_par<fX, width>(const std_vec2d<fX>&                 signal,
+                                  std_vec2d<fX>&                       s1,
+                                  const std::vector<std::complex<fX>>& chk_fwd,
+                                  const std::vector<std::complex<fX>>& chk_rev,
+                                  std::vector<fX>&                     twvec,
+                                  bool                                 local_check,
+                                  bool                                 fwd,
+                                  bool                                 rev,
+                                  bool                                 inplace,
+                                  bool                                 external);
+}    // namespace pcx::testing

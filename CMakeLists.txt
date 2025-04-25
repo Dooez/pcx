@@ -12,7 +12,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(FULL_FFT_TEST ON)
+    set(FULL_FFT_TEST OFF)
     set(SPLIT_COMPILATION ON)
     if(${FULL_FFT_TEST})
         if(${SPLIT_COMPILATION})
@@ -32,13 +32,13 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
             target_compile_definitions(test_fft PRIVATE -DNO_SPLIT_COMPILE)
         endif()
         target_compile_definitions(test_fft PUBLIC FULL_FFT_TEST)
-        set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=8)
+        set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=1)
         set_property(TARGET test_fft PROPERTY JOB_POOL_COMPILE build_jobs)
     else()
         set(FFT_NODE_SIZE 8)
         target_sources(test_fft PUBLIC
-            tests/fft/f32_w16.cpp
-            tests/fft/f64_w8.cpp
+            tests/fft/f32_w16par.cpp
+            # tests/fft/f64_w8.cpp
             tests/fft/fft_main.cpp
         )
         target_compile_definitions(test_fft PRIVATE -DFFT_NODE_SIZE=${FFT_NODE_SIZE})
@@ -59,7 +59,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
 
     target_link_libraries(test_fft PUBLIC pcx)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
-    target_compile_options(test_fft PRIVATE -march=native #[[ -ftemplate-backtrace-limit=0 ]])
+    target_compile_options(test_fft PRIVATE -march=native -ftemplate-backtrace-limit=0)
 
     target_link_libraries(test_simd PUBLIC pcx)
     set_target_properties(test_simd PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)

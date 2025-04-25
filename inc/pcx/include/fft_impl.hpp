@@ -822,7 +822,7 @@ struct subtransform {
                 if constexpr (lowk && !local_tw)
                     l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_post() : 0);
             } else if constexpr (dst_pck != w_pck) {
-                fft_iter(node_size, w_pck, w_pck, inplace_src);
+                fft_iter(node_size, dst_pck, w_pck, inplace_src);
             }
         } else {
             k_count = final_k_count * 2;
@@ -1693,7 +1693,7 @@ struct transform {
                             auto small_tform = [&](auto small_batch) {
                                 if (data_size >= small_batch) {
                                     constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
-                                    tform(width, align, small_batch, dst_data, src_data, tw_data);
+                                    tform(lwidth, align, small_batch, dst_data, src_data, tw_data);
                                     data_size -= small_batch;
                                     dst_data = dst_data.offset_contents(small_batch);
                                     src_data = src_data.offset_contents(small_batch);
@@ -1729,6 +1729,8 @@ struct transform {
         src_data = src_data.mul_stride(stride);
 
         auto tform = [=](auto width, auto batch_size, auto dst, auto src, auto tw_data) {
+            constexpr auto w_pck = cxpack<width, T>{};
+
             uZ bucket_cnt     = fft_size / bucket_tfsize;
             uZ bucket_grp_cnt = 1;
             using subtf_t     = subtransform<NodeSize, T, width>;
@@ -1848,7 +1850,6 @@ struct transform {
             tform(width, batch_size, dst_data, src_data, tw_data);
         } else {
             while (data_size >= batch_size) {
-                uZ btf = bucket_tfsize;
                 tform(width, batch_size, dst_data, src_data, tw_data);
                 data_size -= batch_size;
                 dst_data = dst_data.offset_contents(batch_size);

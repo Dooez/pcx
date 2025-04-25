@@ -28,6 +28,19 @@ bool test_fft(const std::vector<std::complex<T>>& signal,
               const std::vector<std::complex<T>>& chk_rev,
               std::vector<std::complex<T>>&       s1,
               std::vector<T>&                     twvec);
+template<typename fX>
+using std_vec2d = std::vector<std::vector<std::complex<fX>>>;
+template<typename fX, uZ Width>
+bool test_par(const std_vec2d<fX>&                 signal,
+              std_vec2d<fX>&                       s1,
+              const std::vector<std::complex<fX>>& chk_fwd,
+              const std::vector<std::complex<fX>>& chk_rev,
+              std::vector<fX>&                     twvec,
+              bool                                 local_check,
+              bool                                 fwd,
+              bool                                 rev,
+              bool                                 inplace,
+              bool                                 external);
 
 }    // namespace pcx::testing
 
@@ -105,25 +118,27 @@ bool par_check_correctness(std::complex<fX>                     val,
                            uZ                                   node_size,
                            bool                                 local_tw);
 template<typename fX>
-using std_vec2d = std::vector<std::vector<std::complex<fX>>>;
-template<typename fX>
-bool par_test_proto(const std_vec2d<fX>&                 signal,
+bool par_test_proto(auto                                 node_size,
+                    auto                                 width,
+                    auto                                 lowk,
+                    auto                                 local_tw,
+                    const std_vec2d<fX>&                 signal,
                     std_vec2d<fX>&                       s1,
-                    const std::vector<std::complex<fX>>& check,
+                    const std::vector<std::complex<fX>>& chk_fwd,
+                    const std::vector<std::complex<fX>>& chk_rev,
                     std::vector<fX>&                     twvec,
-                    bool                                 local_check = true) {
-    constexpr uZ   NodeSize = 8;
-    constexpr uZ   Width    = 16;
-    constexpr auto LocalTw  = true;
-
-    constexpr auto lowk     = std::false_type{};
+                    bool                                 local_check,
+                    bool                                 fwd,
+                    bool                                 rev,
+                    bool                                 inplace,
+                    bool                                 external) {
     constexpr auto half_tw  = std::true_type{};
     constexpr auto coherent = std::false_type{};
 
     auto fft_size  = signal.size();
     auto data_size = signal[0].size();
 
-    using fimpl      = pcx::detail_::transform<NodeSize, fX, Width>;
+    using fimpl      = pcx::detail_::transform<node_size, fX, width>;
     using data_t     = pcx::detail_::data_info<fX, false, std_vec2d<fX>>;
     using src_data_t = pcx::detail_::data_info<const fX, false, const std_vec2d<fX>>;
 
@@ -132,8 +147,8 @@ bool par_test_proto(const std_vec2d<fX>&                 signal,
     auto src_info = src_data_t{.data_ptr = &signal};
 
     auto tw = [&] {
-        using tw_t = detail_::tw_data_t<fX, LocalTw>;
-        if constexpr (LocalTw) {
+        using tw_t = detail_::tw_data_t<fX, local_tw>;
+        if constexpr (local_tw) {
             return tw_t{1, 0};
         } else {
             twvec.resize(0);
@@ -149,35 +164,73 @@ bool par_test_proto(const std_vec2d<fX>&                 signal,
     auto l_chk_rev = std::vector<std::complex<fX>>{};
 
     if (local_check) {
-        l_chk_fwd = check;
-        // l_chk_rev = check;
-        naive_fft(l_chk_fwd, NodeSize, Width);
-        // naive_reverse(l_chk_rev, NodeSize, Width);
+        l_chk_fwd = chk_fwd;
+        l_chk_rev = chk_rev;
+        naive_fft(l_chk_fwd, node_size, width);
+        naive_reverse(l_chk_rev, node_size, width);
+    }
+    auto run_check = [&](bool fwd) {
+        if (local_check) {
+            if (fwd) {
+                for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, l_chk_fwd)) {
+                    if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                        return false;
+                }
+                return true;
+            }
+            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, l_chk_rev)) {
+                if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                    return false;
+            }
+            return true;
+        }
+        if (fwd) {
+            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, chk_fwd)) {
+                if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                    return false;
+            }
+            return true;
+        }
+        for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, chk_rev)) {
+            if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                return false;
+        }
+        return true;
+    };
+
+    if (inplace && fwd) {
+        std::print("[Internal]");
+        fimpl::perform(pck_dst,
+                       pck_src,
+                       half_tw,
+                       lowk,
+                       s1_info,
+                       detail_::inplace_src,
+                       fft_size,
+                       tw,
+                       data_size);
+        if (!run_check(true))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
+    if (external && fwd) {
+        std::print("[External]");
+        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
+        if (!run_check(true))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
     }
 
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw, data_size);
-    for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal, check)) {
-        if (!par_check_correctness(check_v, sv, fft_size, i, Width, NodeSize, LocalTw))
-            return false;
-    }
-    std::println("[Success    ] par {}×{}, width {}, node size {}{}.",
-                 pcx::meta::types<fX>{},
-                 fft_size,
-                 Width,
-                 NodeSize,
-                 LocalTw ? ", local tw" : "");
-
-    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
-    for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal, check)) {
-        if (!par_check_correctness(check_v, sv, fft_size, i, Width, NodeSize, LocalTw))
-            return false;
-    }
-    std::println("[Success ext] par {}×{}, width {}, node size {}{}.",
-                 pcx::meta::types<fX>{},
-                 fft_size,
-                 Width,
-                 NodeSize,
-                 LocalTw ? ", local tw" : "");
     return true;
 }
 
@@ -363,6 +416,44 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     //     return false;
 
     return true;
+}
+
+template<typename fX, uZ VecWidth, uZ... NodeSize, bool... LowK, bool... LocalTw>
+bool par_run_tests(uZ_seq<NodeSize...>,
+                   meta::val_seq<LowK...>,
+                   meta::val_seq<LocalTw...>,
+                   const std_vec2d<fX>&                 signal,
+                   std_vec2d<fX>&                       s1,
+                   const std::vector<std::complex<fX>>& chk_fwd,
+                   const std::vector<std::complex<fX>>& chk_rev,
+                   std::vector<fX>&                     twvec,
+                   bool                                 local_check,
+                   bool                                 fwd,
+                   bool                                 rev,
+                   bool                                 inplace,
+                   bool                                 external) {
+    auto lk_passed = [&](auto lowk) {
+        auto ltw_passed = [&](auto local_tw) {
+            return ((signal.size() <= NodeSize
+                     || par_test_proto(uZ_ce<NodeSize>{},
+                                       uZ_ce<VecWidth>{},
+                                       lowk,
+                                       local_tw,
+                                       signal,
+                                       s1,
+                                       chk_fwd,
+                                       chk_rev,
+                                       twvec,
+                                       local_check,
+                                       fwd,
+                                       rev,
+                                       inplace,
+                                       external))
+                    && ...);
+        };
+        return (ltw_passed(val_ce<LocalTw>{}) && ...);
+    };
+    return (lk_passed(val_ce<LowK>{}) && ...);
 }
 
 template<typename fX, uZ VecWidth, uZ... NodeSize, bool... low_k, bool... local_tw, bool... half_tw>
