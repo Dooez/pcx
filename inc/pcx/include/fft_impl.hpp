@@ -1719,7 +1719,7 @@ struct transform {
                 return tupi::make_tuple(pass_cnt, rem_k_cnt);
             } else {
                 uZ pass_cnt  = logKi(pass_k_cnt * 2, fft_size) - 1;
-                uZ rem_k_cnt = fft_size / powi(pass_k_cnt * 2, pass_cnt) / 2;
+                uZ rem_k_cnt = fft_size / powi(pass_k_cnt * 2, pass_cnt + 1) / 2;
                 return tupi::make_tuple(pass_cnt, rem_k_cnt);
             }
         }();
