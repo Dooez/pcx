@@ -203,6 +203,7 @@ int main() {
             constexpr uZ node_size = 8;
             constexpr uZ width     = 16;
 
+            auto tw     = std::vector<fX>();
             auto signal = std::vector<std::complex<fX>>(fft_size);
             for (auto [i, v]: stdv::enumerate(signal)) {
                 v = std::exp(std::complex<fX>(0, 1)                 //
@@ -218,11 +219,11 @@ int main() {
             pcx::testing::naive_fft(chk_fwd, node_size, width);
             pcx::testing::naive_reverse(chk_rev, node_size, width);
             auto s1 = std::vector<std::complex<fX>>(fft_size);
-            auto tw = std::vector<fX>(fft_size);
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 16;
+    uZ fft_size = 128;
+    // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
     // uZ fft_size = 131072 * 4;
 
@@ -234,7 +235,7 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 256 * 4) {
-        if (!test_par(f32_tid, fft_size, 127, 13.001))
+        if (!test_par(f32_tid, fft_size, 31, 13.001))
             return -1;
         // if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
         //     return -1;
@@ -268,7 +269,7 @@ bool par_check_correctness(std::complex<fX>                     val,
         std::println("expected: {}", val);
         for (auto [ei, ev]: stdv::enumerate(pcx | stdv::drop(i)) | stdv::take(100)) {
             std::println("{:>3}| pcx:{: >6.4f}, diff:{}",    //
-                         ei,
+                         ei + i,
                          ev,
                          abs(ev - val));
         }
