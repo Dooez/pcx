@@ -1845,10 +1845,12 @@ struct transform {
                 src_data = src_data.offset_contents(batch_size);
             }
             [&]<uZ... Ws> PCX_LAINLINE(uZ_seq<Ws...>) {
-                auto small_tform = [&](auto small_batch) {
+                auto small_tform = [&](auto batch_ce) {
+                    auto small_batch = uZ_ce<powi(2, log2i(batch_size) - 1 - batch_ce)>{};
                     if (data_size >= small_batch) {
                         constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
-                        // constexpr auto lwidth = uZ_ce<(width < small_batch ? width : small_batch)>{};
+                        auto           sbv    = small_batch.value;
+                        auto           lv     = lwidth.value;
                         tform(lwidth, small_batch, dst_data, src_data, tw_data);
                         data_size -= small_batch;
                         dst_data = dst_data.offset_contents(small_batch);
@@ -1856,7 +1858,7 @@ struct transform {
                     }
                     return data_size != 0;
                 };
-                (void)(small_tform(uZ_ce<powi(2, Ws)>{}) && ...);
+                (void)(small_tform(uZ_ce<Ws>{}) && ...);
             }(make_uZ_seq<log2i(batch_size) - 1>{});
         }
     };

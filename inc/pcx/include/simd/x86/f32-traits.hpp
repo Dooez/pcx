@@ -28,10 +28,10 @@ struct vec_traits<f32, 1> {
         return 0;
     }
     PCX_AINLINE static auto load(const f32* src) -> impl_vec {
-        return src[0];
+        return *src;
     }
     PCX_AINLINE static void store(f32* dest, impl_vec vec) {
-        dest[0] = vec;
+        *dest = vec;
     }
     PCX_AINLINE static auto add(impl_vec lhs, impl_vec rhs) -> impl_vec {
         return lhs + rhs;

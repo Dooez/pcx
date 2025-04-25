@@ -97,7 +97,13 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        bool                                 half_tw);
 
 template<typename fX>
-bool par_check_correctness(std::complex<fX> val, const std::vector<std::complex<fX>>& pcx) {};
+bool par_check_correctness(std::complex<fX>                     val,
+                           const std::vector<std::complex<fX>>& pcx,
+                           uZ                                   fft_size,
+                           uZ                                   fft_id,
+                           uZ                                   width,
+                           uZ                                   node_size,
+                           bool                                 local_tw);
 template<typename fX>
 using std_vec2d = std::vector<std::vector<std::complex<fX>>>;
 template<typename fX>
@@ -148,6 +154,23 @@ bool par_test_proto(const std_vec2d<fX>&                 signal,
     }
 
     fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw, data_size);
+    for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal, check)) {
+        // std::complex<fX>                     val,
+        //                            const std::vector<std::complex<fX>>& pcx,
+        //                            uZ                                   fft_size,
+        //                            uZ                                   fft_id,
+        //                            uZ                                   width,
+        //                            uZ                                   node_size,
+        //                            bool                                 local_tw
+        if (!par_check_correctness(check_v, sv, fft_size, i, Width, NodeSize, LocalTw))
+            return false;
+    }
+    std::println("[Success] par {}×{}, width {}, node size {}{}.",
+                 pcx::meta::types<fX>{},
+                 fft_size,
+                 Width,
+                 NodeSize,
+                 LocalTw ? ", local tw" : "");
     return true;
 }
 

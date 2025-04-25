@@ -216,7 +216,7 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 256 * 4) {
-        if (!test_par(f32_tid, fft_size, 128, 13.001))
+        if (!test_par(f32_tid, fft_size, 127, 13.001))
             return -1;
         //     if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
         //         return -1;
@@ -228,6 +228,42 @@ int main() {
 }
 
 namespace pcx::testing {
+template<typename fX>
+bool par_check_correctness(std::complex<fX>                     val,
+                           const std::vector<std::complex<fX>>& pcx,
+                           uZ                                   fft_size,
+                           uZ                                   fft_id,
+                           uZ                                   width,
+                           uZ                                   node_size,
+                           bool                                 local_tw) {
+    for (auto [i, v]: stdv::enumerate(pcx)) {
+        if (v == val)
+            continue;
+        std::println("[Error] {}×{}@{}:{} , width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     fft_id,
+                     i,
+                     width,
+                     node_size,
+                     local_tw ? ", local tw" : "");
+        uZ err_cnt = 0;
+        std::println("expected: {}", val);
+        for (auto [ei, ev]: stdv::drop(pcx, i) | stdv::take(100) | stdv::enumerate) {
+            std::println("{:>3}| pcx:{: >6.2f}, diff:{}",    //
+                         ei,
+                         ev,
+                         abs(ev - val));
+        }
+        return false;
+    }
+    return true;
+}
+template bool
+par_check_correctness(std::complex<f32>, const std::vector<std::complex<f32>>&, uZ, uZ, uZ, uZ, bool);
+template bool
+par_check_correctness(std::complex<f64>, const std::vector<std::complex<f64>>&, uZ, uZ, uZ, uZ, bool);
+
 template<typename fX>
 bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        const std::vector<std::complex<fX>>& pcx,
