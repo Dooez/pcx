@@ -123,11 +123,13 @@ bool par_test_proto(const std_vec2d<fX>&                 signal,
     auto fft_size  = signal.size();
     auto data_size = signal[0].size();
 
-    using fimpl  = pcx::detail_::transform<NodeSize, fX, Width>;
-    using data_t = pcx::detail_::data_info<fX, false, std_vec2d<fX>>;
+    using fimpl      = pcx::detail_::transform<NodeSize, fX, Width>;
+    using data_t     = pcx::detail_::data_info<fX, false, std_vec2d<fX>>;
+    using src_data_t = pcx::detail_::data_info<const fX, false, const std_vec2d<fX>>;
 
-    s1           = signal;
-    auto s1_info = data_t{.data_ptr = &s1};
+    s1            = signal;
+    auto s1_info  = data_t{.data_ptr = &s1};
+    auto src_info = src_data_t{.data_ptr = &signal};
 
     auto tw = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
@@ -155,17 +157,22 @@ bool par_test_proto(const std_vec2d<fX>&                 signal,
 
     fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw, data_size);
     for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal, check)) {
-        // std::complex<fX>                     val,
-        //                            const std::vector<std::complex<fX>>& pcx,
-        //                            uZ                                   fft_size,
-        //                            uZ                                   fft_id,
-        //                            uZ                                   width,
-        //                            uZ                                   node_size,
-        //                            bool                                 local_tw
         if (!par_check_correctness(check_v, sv, fft_size, i, Width, NodeSize, LocalTw))
             return false;
     }
-    std::println("[Success] par {}×{}, width {}, node size {}{}.",
+    std::println("[Success    ] par {}×{}, width {}, node size {}{}.",
+                 pcx::meta::types<fX>{},
+                 fft_size,
+                 Width,
+                 NodeSize,
+                 LocalTw ? ", local tw" : "");
+
+    fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
+    for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal, check)) {
+        if (!par_check_correctness(check_v, sv, fft_size, i, Width, NodeSize, LocalTw))
+            return false;
+    }
+    std::println("[Success ext] par {}×{}, width {}, node size {}{}.",
                  pcx::meta::types<fX>{},
                  fft_size,
                  Width,
