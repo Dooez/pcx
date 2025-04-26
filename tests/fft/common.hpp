@@ -261,7 +261,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return tw_t{1, 0};
         } else {
             twvec.resize(0);
-            fimpl::insert_tw(twvec, fft_size, lowk, half_tw);
+            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, std::true_type{});
             return tw_t{twvec.data()};
         }
     }();

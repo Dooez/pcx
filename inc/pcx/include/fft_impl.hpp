@@ -2121,8 +2121,8 @@ struct transform {
             return;
         }
 
-        auto pass_count       = logKi(pass_k_count * 2, fft_size / bucket_size);
-        uZ   pre_pass_k_count = fft_size / bucket_size / powi(pass_k_count * 2, pass_count) / 2;
+        auto pass_count       = logKi(pass_k_count * 2, fft_size / bucket_tfsize);
+        uZ   pre_pass_k_count = fft_size / bucket_tfsize / powi(pass_k_count * 2, pass_count) / 2;
 
         auto iterate_buckets = [&](meta::ce_of<uZ> auto align_node,    //
                                    uZ                   k_count,
