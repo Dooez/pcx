@@ -160,7 +160,11 @@ template void naive_reverse(std::vector<std::complex<f64>>& data, uZ, uZ);
 int main() {
     namespace stdv = std::views;
     namespace stdr = std::ranges;
-    auto test_par  = []<typename fX>(pcx::meta::t_id<fX>, uZ fft_size, uZ data_size, f64 freq_n) {
+    auto test_par  = []<uZ... Ws, typename fX>(pcx::uZ_seq<Ws...>,
+                                              pcx::meta::t_id<fX>,
+                                              uZ  fft_size,
+                                              uZ  data_size,
+                                              f64 freq_n) {
         constexpr uZ width = 16;
 
         bool local_check = true;
@@ -186,16 +190,17 @@ int main() {
         }
         auto s1    = signal;
         auto twvec = std::vector<fX>{};
-        return pcx::testing::test_par<fX, width>(signal,
-                                                 s1,
-                                                 chk_fwd,
-                                                 chk_rev,
-                                                 twvec,
-                                                 local_check,
-                                                 fwd,
-                                                 rev,
-                                                 inplace,
-                                                 external);
+        return (pcx::testing::test_par<fX, Ws>(signal,
+                                               s1,
+                                               chk_fwd,
+                                               chk_rev,
+                                               twvec,
+                                               local_check,
+                                               fwd,
+                                               rev,
+                                               inplace,
+                                               external)
+                && ...);
     };
 
     auto test_size =
@@ -222,7 +227,7 @@ int main() {
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    uZ fft_size = 512;
+    uZ fft_size = 16;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
     // uZ fft_size = 131072 * 4;
@@ -235,7 +240,7 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 256 * 4) {
-        if (!test_par(f32_tid, fft_size, 31, 13.001))
+        if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
             return -1;
         // if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
         //     return -1;

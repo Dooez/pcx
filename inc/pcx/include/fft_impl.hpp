@@ -1596,14 +1596,15 @@ struct transform {
                                     uZ                          fft_size,
                                     tw_data_for<T> auto         tw_data,
                                     uZ                          data_size = 1) {
-        const auto bucket_size     = coherent_size;
-        const auto batch_size      = lane_size;
-        const auto batch_cnt       = bucket_size / batch_size;
-        const auto reverse         = std::false_type{};
-        const auto conj_tw         = std::false_type{};
-        const auto local_tw        = tw_data.is_local();
-        const auto coherent        = dst_data.coherent();
-        const auto coh_src         = src_data.coherent();
+        const auto bucket_size = coherent_size;
+        const auto batch_size  = lane_size;
+        const auto batch_cnt   = bucket_size / batch_size;
+        const auto reverse     = std::false_type{};
+        const auto conj_tw     = std::false_type{};
+        const auto local_tw    = tw_data.is_local();
+        const auto coherent    = dst_data.coherent();
+        static_assert(src_data.coherent() == coherent || src_data.empty());
+
         const auto batch_align_seq = [=] {
             constexpr auto min_align = std::min(dst_pck.value, src_pck.value);
             constexpr auto pbegin    = log2i(min_align);
@@ -1612,23 +1613,9 @@ struct transform {
                 return std::index_sequence<powi(2, pend - 1 - Ps)...>{};
             }(std::make_index_sequence<pend - pbegin>{});
         }();
+        constexpr auto bucket_tfsize = uZ_ce<bucket_size / (coherent ? 1 : batch_size)>{};
+        constexpr auto batch_tfsize  = uZ_ce<coherent ? batch_size : 1>{};
 
-        static_assert(coh_src == coherent || src_data.empty());
-
-        constexpr auto bucket_tfsize = [=] {
-            if constexpr (coherent) {
-                return bucket_size;
-            } else {
-                return uZ_ce<bucket_size / batch_size>{};
-            }
-        }();
-        constexpr auto batch_tfsize = [=] {
-            if constexpr (coherent) {
-                return batch_size;
-            } else {
-                return uZ_ce<1>{};
-            }
-        }();
         if (fft_size <= bucket_tfsize) {
             if constexpr (coherent) {
                 dst_data        = dst_data.mul_stride(width);
