@@ -2005,6 +2005,7 @@ struct transform {
                              auto  src,
                              auto  k_cnt,
                              auto& tw) {
+                using subtf_t = subtransform<NodeSize, T, width>;
                 subtf_t::perform(dst_pck,
                                  src_pck,
                                  align,
@@ -2018,14 +2019,20 @@ struct transform {
                                  k_cnt,
                                  tw);
             };
-            auto iterate_buckets = [&](auto dst_pck, auto src_pck, auto align, auto k_cnt, auto src) {
-                dst = dst.mul_stride(k_cnt * 2);
-                src = src.mul_stride(k_cnt * 2);
-                bucket_cnt *= k_cnt * 2;
-                bucket_group_cnt /= k_cnt * 2;
-
+            auto iterate_buckets = [&](auto dst_pck,
+                                       auto src_pck,
+                                       auto align,
+                                       auto k_cnt,
+                                       auto src,
+                                       bool first = false) {
+                if (!first) {
+                    dst = dst.mul_stride(k_cnt * 2);
+                    src = src.mul_stride(k_cnt * 2);
+                    bucket_cnt *= k_cnt * 2;
+                    bucket_group_cnt /= k_cnt * 2;
+                }
                 auto l_tw_data = tw_data;
-                for (uZ i_bg: stdv::iota(1U, bucket_group_cnt) | stdv::reverse) {
+                for (uZ i_bg: stdv::iota(0U, bucket_group_cnt) | stdv::drop(1) | stdv::reverse) {
                     if constexpr (local_tw)
                         tw_data.start_k = i_bg * k_cnt * 2;
                     auto bg_offset    = i_bg * bucket_cnt * bucket_tfsize;
@@ -2056,13 +2063,15 @@ struct transform {
             auto tw_data_bak = tw_data;
 
             constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
-            if constexpr (!coherent)
-                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_count, src);
+            if constexpr (!coherent) {
+                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_count, src, true);
+            }
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
                 iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_count, inplace_src);
             }
+
             auto pre_pass_align_node = get_align_node(rem_k_cnt * 2);
             [&]<uZ... Is>(uZ_seq<Is...>) {
                 auto check_align = [&]<uZ I>(uZ_ce<I>) {

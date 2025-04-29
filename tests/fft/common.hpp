@@ -156,6 +156,14 @@ bool par_test_proto(auto                                 node_size,
             return tw_t{twvec.data()};
         }
     }();
+    auto tw_rev = [&] {
+        using tw_t = detail_::tw_data_t<fX, local_tw>;
+        if constexpr (local_tw) {
+            return tw_t{fft_size, 0};
+        } else {
+            return tw_t{&(*twvec.end())};
+        }
+    }();
 
     constexpr auto pck_dst = cxpack<1, fX>{};
     constexpr auto pck_src = cxpack<1, fX>{};
@@ -228,7 +236,7 @@ bool par_test_proto(auto                                 node_size,
                            s1_info,
                            detail_::inplace_src,
                            fft_size,
-                           tw,
+                           tw_rev,
                            data_size);
         if (!run_check(false))
             return false;
@@ -253,7 +261,7 @@ bool par_test_proto(auto                                 node_size,
     }
     if (external && rev) {
         std::print("[Externl rev    ]");
-        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
+        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw_rev, data_size);
         if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",

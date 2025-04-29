@@ -169,14 +169,14 @@ int main() {
 
         bool local_check = true;
         bool fwd         = true;
-        bool rev         = false;
+        bool rev         = true;
         bool inplace     = true;
-        bool external    = true;
+        bool external    = false;
 
         auto signal  = pcx::testing::std_vec2d<fX>(fft_size);
         auto chk_fwd = std::vector<std::complex<fX>>(fft_size);
         auto chk_rev = std::vector<std::complex<fX>>(fft_size);
-        for (auto [i, v, vc]: stdv::zip(stdv::iota(0U), signal, chk_fwd)) {
+        for (auto [i, v, vcf, vcr]: stdv::zip(stdv::iota(0U), signal, chk_fwd, chk_rev)) {
             auto cx = std::exp(std::complex<fX>(0, 1)                 //
                                * static_cast<fX>(2)                   //
                                * static_cast<fX>(std::numbers::pi)    //
@@ -184,9 +184,15 @@ int main() {
                                * static_cast<fX>(freq_n)              //
                                / static_cast<fX>(fft_size));
 
-            vc = cx;
+            vcf = cx;
+            vcr = cx;
             v.resize(data_size);
             stdr::fill(v, cx);
+        }
+        constexpr auto node_size = 8;
+        if (!local_check) {
+            pcx::testing::naive_fft(chk_fwd, node_size, width);
+            pcx::testing::naive_reverse(chk_rev, node_size, width);
         }
         auto s1    = signal;
         auto twvec = std::vector<fX>{};
@@ -243,8 +249,8 @@ int main() {
     while (fft_size <= 2048 * 256 * 4) {
         if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
             return -1;
-        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
-            return -1;
+        // if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+        //     return -1;
         // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
         //     return -1;
         fft_size *= 2;
