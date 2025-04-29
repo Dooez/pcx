@@ -199,7 +199,7 @@ bool par_test_proto(auto                                 node_size,
     };
 
     if (inplace && fwd) {
-        std::print("[Internal]");
+        std::print("[Inplace fwd    ]");
         fimpl::perform(pck_dst,
                        pck_src,
                        half_tw,
@@ -218,10 +218,43 @@ bool par_test_proto(auto                                 node_size,
                      node_size.value,
                      local_tw ? ", local tw" : "");
     }
+    if (inplace && rev) {
+        s1 = signal;
+        std::print("[Inplace rev    ]");
+        fimpl::perform_rev(pck_dst,
+                           pck_src,
+                           half_tw,
+                           lowk,
+                           s1_info,
+                           detail_::inplace_src,
+                           fft_size,
+                           tw,
+                           data_size);
+        if (!run_check(false))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
     if (external && fwd) {
-        std::print("[External]");
+        std::print("[Externl fwd    ]");
         fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
         if (!run_check(true))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
+    if (external && rev) {
+        std::print("[Externl rev    ]");
+        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
+        if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
                      pcx::meta::types<fX>{},

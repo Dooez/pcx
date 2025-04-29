@@ -69,8 +69,8 @@ struct br_permute_t {
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -82,7 +82,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -309,8 +309,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -329,7 +329,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -1990,12 +1990,6 @@ struct transform {
                 return tupi::make_tuple(pass_cnt, rem_k_cnt);
             }
         }();
-        auto stride = batch_tfsize * fft_size / bucket_tfsize;
-        dst_data    = dst_data.mul_stride(stride);
-        src_data    = src_data.mul_stride(stride);
-
-        uZ bucket_cnt       = 1;    // per bucket group
-        uZ bucket_group_cnt = fft_size / bucket_tfsize;
 
         auto tform = [=](auto width, auto batch_size, auto dst, auto src, auto tw_data) {
             constexpr auto w_pck = cxpack<width, T>{};
@@ -2083,6 +2077,8 @@ struct transform {
             }(make_uZ_seq<log2i(NodeSize)>{});
         };
         if constexpr (coherent) {
+            dst_data = dst_data.mul_stride(width);
+            src_data = src_data.mul_stride(width);
             auto coh = [&] PCX_LAINLINE(auto lowk, auto offset) {
                 constexpr auto coherent_align_node = uZ_ce<coh_subtf_t::get_align_node(bucket_tfsize)>{};
                 uZ             btf                 = bucket_tfsize;
@@ -2103,7 +2099,7 @@ struct transform {
             auto tw_data_bak = tw_data;
             if constexpr (skip_coherent_subtf) {
                 for (auto i: stdv::iota(0U, fft_size / width)) {
-                    // auto src_ptr = src_data.get_batch_base(i * width);
+                    // auto src_ptr = src_data.get_batch_base(i);
                     auto dst_ptr = dst_data.get_batch_base(i);
                     auto rd      = (simd::cxload<1, width> | simd::repack<width>)(dst_ptr);
                     simd::cxstore<width>(dst_ptr, rd);
@@ -2113,7 +2109,8 @@ struct transform {
                     tw_data.start_k = 0;
                 }
             } else {
-                auto bg_range = stdv::iota(lowk ? 1U : 0U, bucket_group_cnt) | stdv::reverse;
+                uZ   bucket_group_cnt = fft_size / bucket_tfsize;
+                auto bg_range         = stdv::iota(lowk ? 1U : 0U, bucket_group_cnt) | stdv::reverse;
                 for (uZ i_bg: bg_range) {
                     if constexpr (local_tw) {
                         tw_data         = tw_data_bak;
