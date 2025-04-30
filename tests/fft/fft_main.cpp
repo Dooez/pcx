@@ -167,7 +167,7 @@ int main() {
                                               f64 freq_n) {
         constexpr uZ width = 16;
 
-        bool local_check = true;
+        bool local_check = false;
         bool fwd         = true;
         bool rev         = true;
         bool inplace     = true;
@@ -233,8 +233,9 @@ int main() {
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
-    // uZ fft_size = 16;
-    uZ fft_size = 256;
+    // uZ fft_size = 32768;
+    uZ fft_size = 16;
+    // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
     // uZ fft_size = 131072 * 4;
@@ -249,8 +250,8 @@ int main() {
     while (fft_size <= 2048 * 256 * 4) {
         if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
             return -1;
-        // if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
-        //     return -1;
+        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+            return -1;
         // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
         //     return -1;
         fft_size *= 2;

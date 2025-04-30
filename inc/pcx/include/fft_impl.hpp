@@ -1556,7 +1556,7 @@ struct coherent_subtransform {
 template<uZ NodeSize, typename T, uZ Width, uZ CohSize = 0, uZ LaneSize = 0>
 struct transform {
     using coh_subtf_t = coherent_subtransform<NodeSize, T, Width>;
-    using subtf_t     = subtransform<NodeSize, T, Width>;
+    // using subtf_t     = subtransform<NodeSize, T, Width>;
 
     /**
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
@@ -1978,15 +1978,15 @@ struct transform {
             }
             return;
         }
-        const auto pass_k_count          = bucket_size / batch_size / 2;
+        const auto pass_k_cnt            = bucket_size / batch_size / 2;
         const auto [pass_cnt, rem_k_cnt] = [=] {
             if constexpr (coherent) {
-                uZ pass_cnt  = logKi(pass_k_count * 2, fft_size / bucket_size);
-                uZ rem_k_cnt = fft_size / bucket_size / powi(pass_k_count * 2, pass_cnt) / 2;
+                uZ pass_cnt  = logKi(pass_k_cnt * 2, fft_size / bucket_size);
+                uZ rem_k_cnt = fft_size / bucket_size / powi(pass_k_cnt * 2, pass_cnt) / 2;
                 return tupi::make_tuple(pass_cnt, rem_k_cnt);
             } else {
-                uZ pass_cnt  = logKi(pass_k_count * 2, fft_size) - 1;
-                uZ rem_k_cnt = fft_size / powi(pass_k_count * 2, pass_cnt + 1) / 2;
+                uZ pass_cnt  = logKi(pass_k_cnt * 2, fft_size) - 1;
+                uZ rem_k_cnt = fft_size / powi(pass_k_cnt * 2, pass_cnt + 1) / 2;
                 return tupi::make_tuple(pass_cnt, rem_k_cnt);
             }
         }();
@@ -2019,6 +2019,7 @@ struct transform {
                                  k_cnt,
                                  tw);
             };
+            auto tw_data_bak     = tw_data;
             auto iterate_buckets = [&](auto dst_pck,
                                        auto src_pck,
                                        auto align,
@@ -2035,6 +2036,8 @@ struct transform {
                 for (uZ i_bg: stdv::iota(0U, bucket_group_cnt) | stdv::drop(1) | stdv::reverse) {
                     if constexpr (local_tw)
                         tw_data.start_k = i_bg * k_cnt * 2;
+                    if (i_bg == bucket_group_cnt / (k_cnt * 2) - 1)
+                        tw_data_bak = tw_data;
                     auto bg_offset    = i_bg * bucket_cnt * bucket_tfsize;
                     auto bg_dst_start = dst.offset_k(bg_offset);
                     auto bg_src_start = src.offset_k(bg_offset);
@@ -2046,7 +2049,6 @@ struct transform {
                     }
                     tw_data = l_tw_data;
                 }
-
                 if constexpr (local_tw)
                     tw_data.start_k = 0;
                 for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
@@ -2060,16 +2062,15 @@ struct transform {
                 else
                     tw_data = l_tw_data;
             };
-            auto tw_data_bak = tw_data;
 
-            constexpr auto pass_align_node = align_param<get_align_node(pass_k_count * 2), true>{};
-            if constexpr (!coherent) {
-                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_count, src, true);
-            }
+            constexpr auto pass_align_node = align_param<get_align_node(pass_k_cnt * 2), true>{};
+            if constexpr (!coherent)
+                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_cnt, src, true);
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_count, inplace_src);
+
+                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src);
             }
 
             auto pre_pass_align_node = get_align_node(rem_k_cnt * 2);
@@ -2182,6 +2183,9 @@ struct transform {
                 return uZ_ce<1>{};
             }
         }();
+        using coh_subtf_t = coherent_subtransform<NodeSize, T, Width>;
+        using subtf_t     = subtransform<NodeSize, T, Width>;
+
         if (fft_size <= bucket_tfsize) {
             auto l_tw_data = tw_data_t<T, true>{1, 0};
             uZ   align_node{};

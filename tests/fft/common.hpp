@@ -20,7 +20,7 @@ inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
 inline constexpr auto node_sizes = uZ_seq<8>{};
 #endif
-inline constexpr auto local_tw = meta::val_seq<true>{};
+inline constexpr auto local_tw = meta::val_seq<false>{};
 
 template<typename T, uZ Width>
 bool test_fft(const std::vector<std::complex<T>>& signal,
