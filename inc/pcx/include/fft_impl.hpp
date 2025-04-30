@@ -195,6 +195,8 @@ static auto make_tw_node(uZ fft_size, uZ k) {
 template<uZ NodeSize, typename T, uZ Width>
     requires(NodeSize >= 2)
 struct btfly_node_dit {
+    static constexpr auto width = uZ_ce<Width>{};
+
     using cx_vec = simd::cx_vec<T, false, false, Width>;
 
     struct settings {
@@ -399,8 +401,11 @@ struct btfly_node_dit {
     } const_tw_getter{};
 };
 
+template<typename T>
+struct data_info_base {};
+
 template<floating_point T, bool Contiguous, typename C = void>
-struct data_info {
+struct data_info : public data_info_base<T> {
     using data_ptr_t    = std::conditional_t<Contiguous, T*, C*>;
     using data_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
     using k_offset_t    = std::conditional_t<Contiguous, decltype([] {}), uZ>;
@@ -460,7 +465,7 @@ struct data_info {
     };
 };
 template<floating_point T>
-struct coherent_data_info {
+struct coherent_data_info : public data_info_base<T> {
     T* data_ptr;
     uZ stride = 1;
 
@@ -485,10 +490,10 @@ struct coherent_data_info {
         return new_info;
     }
     constexpr auto offset_k(uZ n) const -> coherent_data_info {
-        return {data_ptr + n * 2, stride};
+        return {{}, data_ptr + n * 2, stride};
     }
     constexpr auto offset_contents(uZ n) const -> coherent_data_info {
-        return {data_ptr + n * 2, stride};
+        return {{}, data_ptr + n * 2, stride};
     }
     constexpr auto get_batch_base(uZ i) const -> T* {
         return data_ptr + i * stride * 2;
@@ -517,20 +522,12 @@ struct empty_data_info {
         return {};
     };
 };
+
 template<typename T, typename U>
-struct is_data_info_for : public std::false_type {};
-template<typename U>
-struct is_data_info_for<empty_data_info, U> : public std::true_type {};
-template<typename U>
-struct is_data_info_for<coherent_data_info<U>, U> : public std::true_type {};
-template<typename U>
-struct is_data_info_for<coherent_data_info<U>, const U> : public std::true_type {};
-template<typename U, bool Contiguous, typename C>
-struct is_data_info_for<data_info<U, Contiguous, C>, U> : public std::true_type {};
-template<typename U, bool Contiguous, typename C>
-struct is_data_info_for<data_info<U, Contiguous, C>, const U> : public std::true_type {};
-template<typename T, typename U>
-concept data_info_for = floating_point<U> && is_data_info_for<T, U>::value;
+concept data_info_for = floating_point<U>
+                        && (std::derived_from<T, data_info_base<U>>                            //
+                            || std::derived_from<T, data_info_base<std::remove_const_t<U>>>    //
+                            || std::same_as<T, empty_data_info>);
 
 inline constexpr auto inplace_src    = empty_data_info{};
 inline constexpr auto inplace_stride = uZ_ce<0>{};
