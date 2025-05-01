@@ -1803,8 +1803,7 @@ struct transform {
                     tw_data = tw_data_bak;
                 iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src);
             } else {
-                // if (width < batch_size && dst.stride != width)
-                if (width < batch_size && dst.stride != width)
+                if constexpr (width < batch_size)
                     dst = dst.div_stride(dst.stride / width);
                 if constexpr (skip_coherent_subtf) {
                     for (auto i: stdv::iota(0U, fft_size / width)) {

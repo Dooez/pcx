@@ -171,7 +171,7 @@ int main() {
         bool fwd         = true;
         bool rev         = true;
         bool inplace     = true;
-        bool external    = false;
+        bool external    = true;
 
         auto signal  = pcx::testing::std_vec2d<fX>(fft_size);
         auto chk_fwd = std::vector<std::complex<fX>>(fft_size);
