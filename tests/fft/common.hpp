@@ -14,7 +14,7 @@ inline constexpr auto low_k      = meta::val_seq<false, true>{};
 inline constexpr auto node_sizes = uZ_seq<2, 4, 8, 16>{};
 
 #else
-inline constexpr auto f32_widths = uZ_seq<16>{};
+inline constexpr auto f32_widths = uZ_seq<4>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};

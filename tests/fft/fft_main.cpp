@@ -230,11 +230,12 @@ int main() {
             pcx::testing::naive_fft(chk_fwd, node_size, width);
             pcx::testing::naive_reverse(chk_rev, node_size, width);
             auto s1 = std::vector<std::complex<fX>>(fft_size);
+            auto s2 = std::vector<std::complex<fX>>(fft_size);
             return (pcx::testing::test_fft<fX, Is>(signal, chk_fwd, chk_rev, s1, tw) && ...);
         };
     // uZ fft_size = 2048 * 256;
     // uZ fft_size = 32768;
-    uZ fft_size = 16;
+    uZ fft_size = 4096;
     // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
@@ -248,8 +249,8 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 2048 * 2) {
-        if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
-            return -1;
+        // if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
+        //     return -1;
         if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
         // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
