@@ -1577,8 +1577,8 @@ struct transform {
     }
     static constexpr auto get_align_node(uZ size) {
         auto slog       = log2i(size);
-        auto a          = slog / log2i(NodeSize);
-        auto b          = a * log2i(NodeSize);
+        auto a          = slog / log2i(node_size);
+        auto b          = a * log2i(node_size);
         auto align_node = powi(2, slog - b);
         return align_node;
     };
@@ -1640,12 +1640,12 @@ struct transform {
                         return true;
                     };
                     (void)(check_align(uZ_ce<Is>{}) || ...);
-                }(make_uZ_seq<log2i(NodeSize)>{});
+                }(make_uZ_seq<log2i(node_size)>{});
             } else {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
-                    using subtf_t = subtransform<NodeSize, T, width>;
+                    using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform(dst_pck,
                                      src_pck,
                                      align,
@@ -1695,7 +1695,7 @@ struct transform {
                         return true;
                     };
                     (void)(check_align(uZ_ce<Is>{}) || ...);
-                }(make_uZ_seq<log2i(NodeSize)>{});
+                }(make_uZ_seq<log2i(node_size)>{});
             }
             return;
         }
@@ -1722,7 +1722,7 @@ struct transform {
 
             uZ bucket_cnt     = fft_size / bucket_tfsize;
             uZ bucket_grp_cnt = 1;
-            using subtf_t     = subtransform<NodeSize, T, width>;
+            using subtf_t     = subtransform<node_size, T, width>;
             auto subtf        = [&](auto  dst_pck,
                              auto  src_pck,
                              auto  align,
@@ -1788,7 +1788,7 @@ struct transform {
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
-            }(make_uZ_seq<log2i(NodeSize)>{});
+            }(make_uZ_seq<log2i(node_size)>{});
 
             auto           tw_data_bak     = tw_data;
             constexpr auto pass_align_node = align_param<get_align_node(pass_k_cnt * 2), true>{};
@@ -1919,12 +1919,12 @@ struct transform {
                         return true;
                     };
                     (void)(check_align(uZ_ce<Is>{}) || ...);
-                }(make_uZ_seq<log2i(NodeSize)>{});
+                }(make_uZ_seq<log2i(node_size)>{});
             } else {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
-                    using subtf_t = subtransform<NodeSize, T, width>;
+                    using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform(dst_pck,
                                      src_pck,
                                      align,
@@ -1974,7 +1974,7 @@ struct transform {
                         return true;
                     };
                     (void)(check_align(uZ_ce<Is>{}) || ...);
-                }(make_uZ_seq<log2i(NodeSize)>{});
+                }(make_uZ_seq<log2i(node_size)>{});
             }
             return;
         }
@@ -2005,7 +2005,7 @@ struct transform {
                              auto  src,
                              auto  k_cnt,
                              auto& tw) {
-                using subtf_t = subtransform<NodeSize, T, width>;
+                using subtf_t = subtransform<node_size, T, width>;
                 subtf_t::perform(dst_pck,
                                  src_pck,
                                  align,
@@ -2084,7 +2084,7 @@ struct transform {
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
-            }(make_uZ_seq<log2i(NodeSize)>{});
+            }(make_uZ_seq<log2i(node_size)>{});
         };
         if constexpr (coherent) {
             dst_data = dst_data.mul_stride(width);
@@ -2185,8 +2185,8 @@ struct transform {
                 return uZ_ce<1>{};
             }
         }();
-        using coh_subtf_t = coherent_subtransform<NodeSize, T, Width>;
-        using subtf_t     = subtransform<NodeSize, T, Width>;
+        using coh_subtf_t = coherent_subtransform<node_size, T, Width>;
+        using subtf_t     = subtransform<node_size, T, Width>;
 
         if (fft_size <= bucket_tfsize) {
             auto l_tw_data = tw_data_t<T, true>{1, 0};
@@ -2209,7 +2209,7 @@ struct transform {
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
-            }(make_uZ_seq<log2i(NodeSize)>{});
+            }(make_uZ_seq<log2i(node_size)>{});
             return;
         }
 
@@ -2236,7 +2236,7 @@ struct transform {
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
-        }(make_uZ_seq<log2i(NodeSize)>{});
+        }(make_uZ_seq<log2i(node_size)>{});
 
         constexpr auto pass_align_node = get_align_node(pass_k_count * 2);
 
