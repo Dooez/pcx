@@ -2137,6 +2137,8 @@ struct transform {
                 if constexpr (lowk)
                     coh(lowk, 0);
             }
+            dst_data = dst_data.mul_stride(batch_size / width);
+            src_data = src_data.mul_stride(batch_size / width);
             tform(width, batch_size, dst_data, src_data, tw_data);
         } else {
             while (data_size >= batch_size) {
