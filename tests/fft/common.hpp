@@ -339,10 +339,10 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
             return check_correctness(chk_rev, s1, Width, NodeSize, LowK, LocalTw, half_tw);
     };
 
-    using dst_info_t = detail_::coherent_data_info<fX>;
+    using dst_info_t = detail_::sequential_data_info<fX>;
     auto s1_info     = dst_info_t{{}, data_ptr};
     // auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(data_ptr)};
-    auto src_info = detail_::coherent_data_info<const fX>{{}, reinterpret_cast<const fX*>(signal.data())};
+    auto src_info = detail_::sequential_data_info<const fX>{{}, reinterpret_cast<const fX*>(signal.data())};
 
 
     if (inplace && fwd) {
@@ -378,7 +378,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     }
 
     s1              = signal;
-    using fimpl_coh = pcx::detail_::coherent_subtransform<NodeSize, fX, Width>;
+    using fimpl_coh = pcx::detail_::sequential_subtransform<NodeSize, fX, Width>;
     auto coh_align  = fimpl_coh::get_align_node(fft_size);
     auto tw_coh_fwd = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;

@@ -6,7 +6,7 @@
 
 namespace pcx::testing {
 void foo(f32* data, f32* tw) {
-    using coh = pcx::detail_::coherent_subtransform<8, f32, 16>;
+    using coh = pcx::detail_::contiguous_subtransform<8, f32, 16>;
 
     auto           tw_data = detail_::tw_data_t<f32, false>{tw};
     constexpr auto src_pck = cxpack<16, f32>{};
