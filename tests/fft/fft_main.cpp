@@ -194,6 +194,11 @@ int main() {
             pcx::testing::naive_fft(chk_fwd, node_size, width);
             pcx::testing::naive_reverse(chk_rev, node_size, width);
         }
+        for (auto i: stdv::iota(0U, chk_fwd.size())) {
+            auto br = pcx::detail_::reverse_bit_order(i, pcx::detail_::log2i(fft_size));
+            if (br > i)
+                std::swap(chk_fwd[i], chk_fwd[br]);
+        }
         auto s1    = signal;
         auto twvec = std::vector<fX>{};
         return (pcx::testing::test_par<fX, Ws>(signal,
@@ -235,7 +240,7 @@ int main() {
         };
     // uZ fft_size = 2048 * 256;
     // uZ fft_size = 32768;
-    uZ fft_size = 16;
+    uZ fft_size = 1024;
     // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
@@ -285,7 +290,7 @@ bool par_check_correctness(std::complex<fX>                     val,
             std::println("{:>3}| pcx:{: >6.4f}, diff:{}",    //
                          ei + i,
                          ev,
-                         abs(ev - val));
+                         (ev - val));
         }
         return false;
     }

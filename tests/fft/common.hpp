@@ -132,8 +132,8 @@ bool par_test_proto(auto                                 node_size,
                     bool                                 rev,
                     bool                                 inplace,
                     bool                                 external) {
-    constexpr auto half_tw  = std::true_type{};
-    constexpr auto coherent = std::false_type{};
+    constexpr auto half_tw    = std::true_type{};
+    constexpr auto sequential = std::false_type{};
 
     auto fft_size  = signal.size();
     auto data_size = signal[0].size();
@@ -152,7 +152,7 @@ bool par_test_proto(auto                                 node_size,
             return tw_t{1, 0};
         } else {
             twvec.resize(0);
-            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, coherent);
+            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, sequential);
             return tw_t{twvec.data()};
         }
     }();
@@ -170,6 +170,13 @@ bool par_test_proto(auto                                 node_size,
 
     auto l_chk_fwd = std::vector<std::complex<fX>>{};
     auto l_chk_rev = std::vector<std::complex<fX>>{};
+
+    auto sort_idxs = std::vector<u32>{};
+    auto coh_size  = 2048 / 16;
+    auto n_subdiv  = fft_size / coh_size;
+    u32  n_coh     = detail_::br_sorter::insert_indexes(sort_idxs, fft_size, coh_size);
+    u32  n_noncoh  = sort_idxs.size() / 2 - n_coh * n_subdiv;
+    auto sort      = detail_::br_sorter{{}, sort_idxs.data(), n_coh, n_noncoh};
 
     if (local_check) {
         l_chk_fwd = chk_fwd;
@@ -216,7 +223,8 @@ bool par_test_proto(auto                                 node_size,
                        detail_::inplace_src,
                        fft_size,
                        tw,
-                       detail_::blank_sorter,
+                       // detail_::blank_sorter,
+                       sort,
                        data_size);
         if (!run_check(true))
             return false;
@@ -258,7 +266,8 @@ bool par_test_proto(auto                                 node_size,
                        src_info,
                        fft_size,
                        tw,
-                       detail_::blank_sorter,
+                       // detail_::blank_sorter,
+                       sort,
                        data_size);
         if (!run_check(true))
             return false;

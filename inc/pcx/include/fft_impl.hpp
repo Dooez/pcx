@@ -1748,8 +1748,8 @@ struct transform {
             };
             auto l_sorter      = sorter;
             auto unsorted      = blank_sorter;
-            auto coherent_sort = [=](auto sorter, auto pck, auto dst, auto src) {
-                sorter.coherent_sort(node_size, width, batch_size, reverse, pck, pck, dst, src);
+            auto coherent_sort = [=](auto& sorter, auto pck, auto dst, auto src) {
+                sorter.coherent_sort(uZ_ce<4>{}, width, batch_size, reverse, pck, pck, dst, src);
             };
 
             auto iterate_buckets = [&](auto  dst_pck,
@@ -1821,7 +1821,8 @@ struct transform {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
                 iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_sorter);
-                l_sorter.sort(node_size, width, batch_size, reverse, dst_pck, dst_pck, dst_data, dst_data);
+                dst.stride = 1;
+                l_sorter.sort(uZ_ce<2>{}, width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
             } else {
                 if constexpr (width < batch_size)
                     dst = dst.div_stride(dst.stride / width);

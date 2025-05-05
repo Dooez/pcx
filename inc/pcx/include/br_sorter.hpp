@@ -73,10 +73,10 @@ struct br_sorter_nonseq : public br_sorter_base {
                 }(make_uZ_seq<grp_size>{});
             };
             return [&]<uZ... Is>(uZ_seq<Is...>) {
-                return tupi::make_flat_tuple(make_grp(uZ_ce<Is>{})...);
+                return tupi::make_flat_tuple(tupi::make_tuple(make_grp(uZ_ce<Is>{})...));
             }(make_uZ_seq<tupi::tuple_size_v<decltype(tuple)> / grp_size>{});
         };
-        auto& l_src = [&] {
+        decltype(auto) l_src = [&] -> decltype(auto) {
             if constexpr (inplace)
                 return dst_data;
             else
@@ -164,8 +164,8 @@ struct br_sorter : br_sorter_nonseq {
             for (uZ i: stdv::iota(coh_begin, coh_end)) {
                 auto br = rbo(i);
                 if (br > i && br < coh_end) {
-                    r.push_back(i);
-                    r.push_back(br);
+                    r.push_back(i - coh_begin);
+                    r.push_back(br - coh_begin);
                     if (coh_begin == 0)
                         ++coherent_cnt;
                 }
