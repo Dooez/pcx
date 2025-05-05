@@ -1660,8 +1660,7 @@ struct transform {
                                      src,
                                      fft_size / 2,
                                      tw);
-                    auto l_sorter = sorter;
-                    l_sorter.coherent_sort(width, batch_size, reverse, dst_pck, dst_pck, dst, dst);
+                    auto(sorter).coherent_sort(width, batch_size, reverse, dst_pck, dst_pck, dst, dst);
                 };
                 auto align_node = get_align_node(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
