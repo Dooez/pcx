@@ -1744,6 +1744,9 @@ struct transform {
                                  k_cnt,
                                  tw);
             };
+            // auto coherent_sort = [=](auto pck, auto dst, auto src) {
+            //     sorter.sort(width, batch_size, pck, pck, dst, src, std::true_type{});
+            // };
 
             auto iterate_buckets = [&](auto dst_pck, auto src_pck, auto align, auto k_cnt, auto src) {
                 auto l_tw_data = tw_data;
@@ -1752,7 +1755,7 @@ struct transform {
                     auto bucket_dst = dst.offset_k(i_b * batch_tfsize);
                     auto bucket_src = src.offset_k(i_b * batch_tfsize);
                     subtf(dst_pck, src_pck, align, lowk, bucket_dst, bucket_src, k_cnt, l_tw_data);
-                    // sort(bucket_dst, bucket_src)
+                    // coherent_sort(dst_pck, bucket_dst, bucket_src)
                 }
                 tw_data = l_tw_data;
                 for (uZ i_bg: stdv::iota(1U, bucket_grp_cnt)) {
@@ -2173,22 +2176,10 @@ struct transform {
         const auto batch_size   = lane_size;
         const auto pass_k_count = bucket_size / batch_size / 2;
 
-        constexpr auto bucket_tfsize = [=] {
-            if constexpr (sequential) {
-                return bucket_size;
-            } else {
-                return uZ_ce<bucket_size / batch_size>{};
-            }
-        }();
-        constexpr auto batch_tfsize = [=] {
-            if constexpr (sequential) {
-                return batch_size;
-            } else {
-                return uZ_ce<1>{};
-            }
-        }();
-        using seq_subtf_t = sequential_subtransform<node_size, T, Width>;
-        using subtf_t     = subtransform<node_size, T, Width>;
+        constexpr auto bucket_tfsize = uZ_ce<bucket_size / (sequential ? 1 : batch_size)>{};
+        constexpr auto batch_tfsize  = uZ_ce<sequential ? batch_size : 1>{};
+        using seq_subtf_t            = sequential_subtransform<node_size, T, width>;
+        using subtf_t                = subtransform<node_size, T, width>;
 
         if (fft_size <= bucket_tfsize) {
             auto l_tw_data = tw_data_t<T, true>{1, 0};
@@ -2217,8 +2208,7 @@ struct transform {
 
         auto pass_count       = logKi(pass_k_count * 2, fft_size / bucket_tfsize);
         uZ   pre_pass_k_count = fft_size / bucket_tfsize / powi(pass_k_count * 2, pass_count) / 2;
-
-        auto iterate_buckets = [&](meta::ce_of<uZ> auto align_node,    //
+        auto iterate_buckets  = [&](meta::ce_of<uZ> auto align_node,    //
                                    uZ                   k_count,
                                    uZ                   bucket_group_count) {
             constexpr auto align = align_param<align_node, true>{};
