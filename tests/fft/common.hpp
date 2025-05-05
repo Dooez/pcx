@@ -216,6 +216,7 @@ bool par_test_proto(auto                                 node_size,
                        detail_::inplace_src,
                        fft_size,
                        tw,
+                       detail_::blank_sorter,
                        data_size);
         if (!run_check(true))
             return false;
@@ -249,7 +250,16 @@ bool par_test_proto(auto                                 node_size,
     }
     if (external && fwd) {
         std::print("[Externl fwd    ]");
-        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, data_size);
+        fimpl::perform(pck_dst,
+                       pck_src,
+                       half_tw,
+                       lowk,
+                       s1_info,
+                       src_info,
+                       fft_size,
+                       tw,
+                       detail_::blank_sorter,
+                       data_size);
         if (!run_check(true))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -348,7 +358,15 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     if (inplace && fwd) {
         std::print("[inplace fwd    ]");
         s1 = signal;
-        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw);
+        fimpl::perform(pck_dst,
+                       pck_src,
+                       half_tw,
+                       lowk,
+                       s1_info,
+                       detail_::inplace_src,
+                       fft_size,
+                       tw,
+                       detail_::blank_sorter);
         if (!run_check(true))
             return false;
     }
@@ -364,7 +382,15 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
         std::print("[externl fwd    ]");
         // s1 = signal;
         stdr::fill(s1, -69.);
-        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw);
+        fimpl::perform(pck_dst,
+                       pck_src,
+                       half_tw,
+                       lowk,
+                       s1_info,
+                       src_info,
+                       fft_size,
+                       tw,
+                       detail_::blank_sorter);
         if (!run_check(true))
             return false;
     }

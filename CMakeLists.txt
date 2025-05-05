@@ -40,8 +40,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     else()
         set(FFT_NODE_SIZE 8)
         target_sources(test_fft PUBLIC
-            tests/fft/par_f32_w4.cpp
-            tests/fft/f32_w4.cpp
+            tests/fft/par_f32_w16.cpp
+            tests/fft/f32_w16.cpp
             # tests/fft/f64_w8.cpp
             tests/fft/fft_main.cpp
         )

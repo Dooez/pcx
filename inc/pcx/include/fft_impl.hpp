@@ -1,4 +1,5 @@
 #pragma once
+#include "pcx/include/br_sorter.hpp"
 #include "pcx/include/meta.hpp"
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
@@ -69,8 +70,8 @@ struct br_permute_t {
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -82,7 +83,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -96,39 +97,39 @@ inline constexpr auto br_permute = br_permute_t{};
 
 namespace pcx::detail_ {
 
-constexpr auto log2i(u64 num) -> uZ {
-    u64 order = 0;
-    for (u8 shift = 32; shift > 0; shift /= 2) {
-        if (num >> shift > 0) {
-            order += num >> shift > 0 ? shift : 0;
-            num >>= shift;
-        }
-    }
-    return order;
-}
+// inline constexpr auto log2i(u64 num) -> uZ {
+//     u64 order = 0;
+//     for (u8 shift = 32; shift > 0; shift /= 2) {
+//         if (num >> shift > 0) {
+//             order += num >> shift > 0 ? shift : 0;
+//             num >>= shift;
+//         }
+//     }
+//     return order;
+// }
 
-constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
-    auto res = (pow % 2) == 1 ? num : 1UL;
-    if (pow > 1) {
-        auto half_pow = powi(num, pow / 2UL);
-        res *= half_pow * half_pow;
-    }
-    return res;
-}
+// constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
+//     auto res = (pow % 2) == 1 ? num : 1UL;
+//     if (pow > 1) {
+//         auto half_pow = powi(num, pow / 2UL);
+//         res *= half_pow * half_pow;
+//     }
+//     return res;
+// }
 
-constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
-    if (depth == 0)
-        return 0;
-    //NOLINTBEGIN(*magic-numbers*)
-    num = num >> 32U | num << 32U;
-    num = (num & 0xFFFF0000FFFF0000U) >> 16U | (num & 0x0000FFFF0000FFFFU) << 16U;
-    num = (num & 0xFF00FF00FF00FF00U) >> 8U | (num & 0x00FF00FF00FF00FFU) << 8U;
-    num = (num & 0xF0F0F0F0F0F0F0F0U) >> 4U | (num & 0x0F0F0F0F0F0F0F0FU) << 4U;
-    num = (num & 0xCCCCCCCCCCCCCCCCU) >> 2U | (num & 0x3333333333333333U) << 2U;
-    num = (num & 0xAAAAAAAAAAAAAAAAU) >> 1U | (num & 0x5555555555555555U) << 1U;
-    //NOLINTEND(*magic-numbers*)
-    return num >> (64 - depth);
-}
+// constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
+//     if (depth == 0)
+//         return 0;
+//     //NOLINTBEGIN(*magic-numbers*)
+//     num = num >> 32U | num << 32U;
+//     num = (num & 0xFFFF0000FFFF0000U) >> 16U | (num & 0x0000FFFF0000FFFFU) << 16U;
+//     num = (num & 0xFF00FF00FF00FF00U) >> 8U | (num & 0x00FF00FF00FF00FFU) << 8U;
+//     num = (num & 0xF0F0F0F0F0F0F0F0U) >> 4U | (num & 0x0F0F0F0F0F0F0F0FU) << 4U;
+//     num = (num & 0xCCCCCCCCCCCCCCCCU) >> 2U | (num & 0x3333333333333333U) << 2U;
+//     num = (num & 0xAAAAAAAAAAAAAAAAU) >> 1U | (num & 0x5555555555555555U) << 1U;
+//     //NOLINTEND(*magic-numbers*)
+//     return num >> (64 - depth);
+// }
 template<typename T = f64>
 inline auto wnk(uZ n, uZ k) -> std::complex<T> {
     if (n == 0)
@@ -311,8 +312,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -331,7 +332,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -1595,7 +1596,8 @@ struct transform {
                                     data_info_for<const T> auto src_data,
                                     uZ                          fft_size,
                                     tw_data_for<T> auto         tw_data,
-                                    uZ                          data_size = 1) {
+                                    auto                        sorter,
+                                    uZ                          data_size = 0) {
         const auto bucket_size = coherent_size;
         const auto batch_size  = lane_size;
         const auto batch_cnt   = bucket_size / batch_size;
@@ -1744,20 +1746,30 @@ struct transform {
                                  k_cnt,
                                  tw);
             };
-            // auto coherent_sort = [=](auto pck, auto dst, auto src) {
-            //     sorter.sort(width, batch_size, pck, pck, dst, src, std::true_type{});
-            // };
+            auto l_sorter      = sorter;
+            auto unsorted      = blank_sorter;
+            auto coherent_sort = [=](auto sorter, auto pck, auto dst, auto src) {
+                sorter.coherent_sort(node_size, width, batch_size, reverse, pck, pck, dst, src);
+            };
 
-            auto iterate_buckets = [&](auto dst_pck, auto src_pck, auto align, auto k_cnt, auto src) {
+            auto iterate_buckets = [&](auto  dst_pck,
+                                       auto  src_pck,
+                                       auto  align,
+                                       auto  k_cnt,
+                                       auto  src,
+                                       auto& sorter) {
                 auto l_tw_data = tw_data;
+                auto l_sorter  = sorter;
                 for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                     l_tw_data       = tw_data;
+                    l_sorter        = sorter;
                     auto bucket_dst = dst.offset_k(i_b * batch_tfsize);
                     auto bucket_src = src.offset_k(i_b * batch_tfsize);
                     subtf(dst_pck, src_pck, align, lowk, bucket_dst, bucket_src, k_cnt, l_tw_data);
-                    // coherent_sort(dst_pck, bucket_dst, bucket_src)
+                    coherent_sort(l_sorter, dst_pck, bucket_dst, bucket_src);
                 }
                 tw_data = l_tw_data;
+                sorter  = l_sorter;
                 for (uZ i_bg: stdv::iota(1U, bucket_grp_cnt)) {
                     if constexpr (local_tw)
                         tw_data.start_k = i_bg;
@@ -1766,11 +1778,14 @@ struct transform {
                     auto bg_src_start = src.offset_k(bg_offset);
                     for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                         l_tw_data       = tw_data;
+                        l_sorter        = sorter;
                         auto bucket_dst = bg_dst_start.offset_k(i_b * batch_tfsize);
                         auto bucket_src = bg_src_start.offset_k(i_b * batch_tfsize);
                         subtf(dst_pck, src_pck, align, not_lowk, bucket_dst, bucket_src, k_cnt, l_tw_data);
+                        coherent_sort(l_sorter, dst_pck, bucket_dst, bucket_src);
                     }
                     tw_data = l_tw_data;
+                    sorter  = l_sorter;
                 }
                 bucket_cnt /= k_cnt * 2;
                 bucket_grp_cnt *= k_cnt * 2;
@@ -1788,7 +1803,7 @@ struct transform {
                     if (l_node_size != pre_pass_align_node)
                         return false;
                     constexpr auto align = align_param<l_node_size, true>{};
-                    iterate_buckets(w_pck, src_pck, align, rem_k_cnt, src);
+                    iterate_buckets(w_pck, src_pck, align, rem_k_cnt, src, unsorted);
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -1799,13 +1814,14 @@ struct transform {
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src);
+                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, unsorted);
             }
 
             if constexpr (!sequential) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src);
+                iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_sorter);
+                l_sorter.sort(node_size, width, batch_size, reverse, dst_pck, dst_pck, dst_data, dst_data);
             } else {
                 if constexpr (width < batch_size)
                     dst = dst.div_stride(dst.stride / width);
