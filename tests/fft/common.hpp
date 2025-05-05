@@ -174,9 +174,9 @@ bool par_test_proto(auto                                 node_size,
     auto sort_idxs = std::vector<u32>{};
     auto coh_size  = 2048 / 16;
     auto n_subdiv  = fft_size / coh_size;
-    u32  n_coh     = detail_::br_sorter::insert_indexes(sort_idxs, fft_size, coh_size);
+    u32  n_coh     = detail_::br_sorter<16>::insert_indexes(sort_idxs, fft_size, coh_size);
     u32  n_noncoh  = sort_idxs.size() / 2 - n_coh * n_subdiv;
-    auto sort      = detail_::br_sorter{{}, sort_idxs.data(), n_coh, n_noncoh};
+    auto sort      = detail_::br_sorter<16>{{}, sort_idxs.data(), n_coh, n_noncoh};
 
     if (local_check) {
         l_chk_fwd = chk_fwd;

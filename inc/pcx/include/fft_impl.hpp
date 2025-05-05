@@ -70,8 +70,8 @@ struct br_permute_t {
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count    = sizeof...(Ts);
-        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count = sizeof...(Ts);
+        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -83,7 +83,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto count = sizeof...(Tsl) * 2;
+        constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -312,8 +312,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count    = sizeof...(Ts);
-        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count = sizeof...(Ts);
+        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -332,7 +332,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto count = sizeof...(Tsl) * 2;
+        constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -1660,6 +1660,8 @@ struct transform {
                                      src,
                                      fft_size / 2,
                                      tw);
+                    auto l_sorter = sorter;
+                    l_sorter.coherent_sort(width, batch_size, reverse, dst_pck, dst_pck, dst, dst);
                 };
                 auto align_node = get_align_node(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -1749,7 +1751,7 @@ struct transform {
             auto l_sorter      = sorter;
             auto unsorted      = blank_sorter;
             auto coherent_sort = [=](auto& sorter, auto pck, auto dst, auto src) {
-                sorter.coherent_sort(uZ_ce<4>{}, width, batch_size, reverse, pck, pck, dst, src);
+                sorter.coherent_sort(width, batch_size, reverse, pck, pck, dst, src);
             };
 
             auto iterate_buckets = [&](auto  dst_pck,
@@ -1822,7 +1824,7 @@ struct transform {
                     tw_data = tw_data_bak;
                 iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_sorter);
                 dst.stride = 1;
-                l_sorter.sort(uZ_ce<2>{}, width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
+                l_sorter.sort(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
             } else {
                 if constexpr (width < batch_size)
                     dst = dst.div_stride(dst.stride / width);
