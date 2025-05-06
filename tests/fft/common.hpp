@@ -177,7 +177,10 @@ bool par_test_proto(auto                                 node_size,
 
     auto [coh_swap_cnt, non_swap_cnt] = detail_::br_sorter<16>::insert_indexes(sort_idxs, fft_size, coh_size);
     u32  n_noncoh                     = (sort_idxs.size() - (coh_swap_cnt * 2 + non_swap_cnt) * n_subdiv) / 2;
-    auto sort = detail_::br_sorter<16>{{}, sort_idxs.data(), coh_swap_cnt, non_swap_cnt, n_noncoh};
+    auto sort     = detail_::br_sorter<16>{{}, sort_idxs.data(), coh_swap_cnt, non_swap_cnt, n_noncoh};
+    auto rev_sort = detail_::br_sorter<16>{{}, &(*sort_idxs.end()), coh_swap_cnt, non_swap_cnt, n_noncoh};
+    // auto rev_sort = detail_::blank_sorter;
+
 
     if (local_check) {
         l_chk_fwd = chk_fwd;
@@ -247,7 +250,8 @@ bool par_test_proto(auto                                 node_size,
                            detail_::inplace_src,
                            fft_size,
                            tw_rev,
-                           detail_::blank_sorter,
+                           // detail_::blank_sorter,
+                           rev_sort,
                            data_size);
         if (!run_check(false))
             return false;
@@ -290,7 +294,8 @@ bool par_test_proto(auto                                 node_size,
                            src_info,
                            fft_size,
                            tw_rev,
-                           detail_::blank_sorter,
+                           // detail_::blank_sorter,
+                           rev_sort,
                            data_size);
         if (!run_check(false))
             return false;

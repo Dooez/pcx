@@ -272,31 +272,34 @@ struct br_sorter_nonseq : public br_sorter_base {
             return true;
         };
 
-        auto check_nonswap_ns = [&](auto p) {
-            constexpr auto sort_node_size = uZ_ce<powi(2, node_p - p)>{};
-            if (nonswap_cnt % sort_node_size != 0)
-                return false;
-            for (auto i: stdv::iota(0U, nonswap_cnt) | stdv::stride(sort_node_size)) {
-                const auto idxs = [&]<uZ... Is>(uZ_seq<Is...>) {
-                    if constexpr (reverse)
-                        idx_ptr -= sort_node_size;
-                    auto idxs = tupi::make_tuple(*(idx_ptr + Is)...);
-                    if constexpr (!reverse)
-                        idx_ptr += sort_node_size;
-                    return idxs;
-                }(make_uZ_seq<sort_node_size>{});
+        auto check_nonswap_ns =
+            [&](auto
+                    p) {    // TODO: maybe move inside check_ns since sum of swaps and non-swaps is equal to coherent size and is a power of two, so they must share the 2^N-arity
+                constexpr auto sort_node_size = uZ_ce<powi(2, node_p - p)>{};
+                if (nonswap_cnt % sort_node_size != 0)
+                    return false;
+                for (auto i: stdv::iota(0U, nonswap_cnt) | stdv::stride(sort_node_size)) {
+                    const auto idxs = [&]<uZ... Is>(uZ_seq<Is...>) {
+                        if constexpr (reverse)
+                            idx_ptr -= sort_node_size;
+                        auto idxs = tupi::make_tuple(*(idx_ptr + Is)...);
+                        if constexpr (!reverse)
+                            idx_ptr += sort_node_size;
+                        return idxs;
+                    }(make_uZ_seq<sort_node_size>{});
 
-                auto src_base = tupi::group_invoke([&](auto i) { return l_src.get_batch_base(i); }, idxs);
-                auto dst_base = tupi::group_invoke([&](auto i) { return dst_data.get_batch_base(i); }, idxs);
-                for (auto ibs: stdv::iota(0U, batch_size) | stdv::stride(width)) {
-                    auto src  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, src_base);
-                    auto dst  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, dst_base);
-                    auto data = tupi::group_invoke(simd::cxload<src_pck, width>, src);
-                    tupi::group_invoke(simd::cxstore<dst_pck>, dst, data);
+                    auto src_base = tupi::group_invoke([&](auto i) { return l_src.get_batch_base(i); }, idxs);
+                    auto dst_base =
+                        tupi::group_invoke([&](auto i) { return dst_data.get_batch_base(i); }, idxs);
+                    for (auto ibs: stdv::iota(0U, batch_size) | stdv::stride(width)) {
+                        auto src  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, src_base);
+                        auto dst  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, dst_base);
+                        auto data = tupi::group_invoke(simd::cxload<src_pck, width>, src);
+                        tupi::group_invoke(simd::cxstore<dst_pck>, dst, data);
+                    }
                 }
-            }
-            return true;
-        };
+                return true;
+            };
         if constexpr (reverse) {
             if constexpr (inplace) {
                 idx_ptr -= nonswap_cnt;
@@ -350,7 +353,10 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                           noncoh_swap_cnt,
                           uZ_ce<0>{},
                           uZ_ce<2>{});
-        return inplace_src;
+        if constexpr (reverse)
+            return src_data;
+        else
+            return inplace_src;
     };
     auto coherent_sort(auto width,
                        auto batch_size,
@@ -416,7 +422,7 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
             for (uZ i: stdv::iota(coh_begin, coh_end)) {
                 auto br = rbo(i);
                 if (br == i) {
-                    r.push_back(i);
+                    r.push_back(i - coh_begin);
                     if (coh_begin == 0)
                         ++coh_nonswap_cnt;
                 }

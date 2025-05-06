@@ -1819,7 +1819,8 @@ struct transform {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
-                    auto o_src    = sorter.small_sort(width, batch_size, reverse, src_pck, src_pck, dst, src);
+                    auto o_src =
+                        auto(sorter).small_sort(width, batch_size, reverse, src_pck, src_pck, dst, src);
                     using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform(dst_pck,
                                      src_pck,
@@ -2062,7 +2063,7 @@ struct transform {
                 auto small_tform = [&](auto small_batch) {
                     if (data_size >= small_batch) {
                         constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
-                        auto [o_src, sorter]  = sort(width, batch_size);
+                        auto [o_src, sorter]  = sort(lwidth, small_batch);
                         tform(lwidth, small_batch, dst_data, o_src, tw_data, sorter);
                         data_size -= small_batch;
                         dst_data = dst_data.offset_contents(small_batch);

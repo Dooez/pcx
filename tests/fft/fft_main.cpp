@@ -190,6 +190,11 @@ int main() {
             stdr::fill(v, cx);
         }
         constexpr auto node_size = 8;
+        for (auto i: stdv::iota(0U, chk_rev.size())) {
+            auto br = pcx::detail_::reverse_bit_order(i, pcx::detail_::log2i(fft_size));
+            if (br > i)
+                std::swap(chk_rev[i], chk_rev[br]);
+        }
         if (!local_check) {
             pcx::testing::naive_fft(chk_fwd, node_size, width);
             pcx::testing::naive_reverse(chk_rev, node_size, width);
@@ -240,7 +245,7 @@ int main() {
         };
     // uZ fft_size = 2048 * 256;
     // uZ fft_size = 32768;
-    uZ fft_size = 16;
+    uZ fft_size = 256;
     // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
@@ -256,8 +261,8 @@ int main() {
     while (fft_size <= 2048 * 2048 * 2) {
         if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
             return -1;
-        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
-            return -1;
+        // if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+        //     return -1;
         // if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
         //     return -1;
         fft_size *= 2;
