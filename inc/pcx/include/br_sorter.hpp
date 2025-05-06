@@ -5,7 +5,136 @@
 #include "pcx/include/types.hpp"
 
 namespace pcx::detail_ {
-constexpr auto log2i(u64 num) -> uZ {
+template<typename T>
+struct data_info_base {};
+
+template<floating_point T, bool Contiguous, typename C = void>
+struct data_info : public data_info_base<T> {
+    using data_ptr_t    = std::conditional_t<Contiguous, T*, C*>;
+    using data_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
+    using k_offset_t    = std::conditional_t<Contiguous, decltype([] {}), uZ>;
+    using k_stride_t    = std::conditional_t<Contiguous, uZ, decltype([] {})>;
+
+    data_ptr_t                          data_ptr;
+    uZ                                  stride = 1;
+    [[no_unique_address]] k_stride_t    k_stride;
+    [[no_unique_address]] k_offset_t    k_offset{};
+    [[no_unique_address]] data_offset_t data_offset{};
+
+    static constexpr auto sequential() -> std::false_type {
+        return {};
+    }
+    static constexpr auto contiguous() -> std::bool_constant<Contiguous> {
+        return {};
+    }
+    static constexpr auto empty() -> std::false_type {
+        return {};
+    }
+
+    constexpr auto mul_stride(uZ n) const -> data_info {
+        auto new_info = *this;
+        new_info.stride *= n;
+        return new_info;
+    }
+    constexpr auto div_stride(uZ n) const -> data_info {
+        auto new_info = *this;
+        new_info.stride /= n;
+        return new_info;
+    }
+    constexpr auto offset_k(uZ n) const -> data_info {
+        auto new_info = *this;
+        if constexpr (Contiguous) {
+            new_info.data_ptr += k_stride * n * 2;
+        } else {
+            new_info.k_offset += n;
+        }
+        return new_info;
+    }
+    constexpr auto offset_contents(uZ n) const -> data_info {
+        auto new_info = *this;
+        if constexpr (Contiguous) {
+            new_info.data_ptr += n * 2;
+        } else {
+            new_info.data_offset += n;
+        }
+        return new_info;
+    }
+    constexpr auto get_batch_base(uZ i) const -> T* {
+        if constexpr (Contiguous) {
+            return data_ptr + i * stride * 2;
+        } else {
+            auto ptr = reinterpret_cast<T*>((*data_ptr)[i * stride + k_offset].data());
+            return ptr + data_offset * 2;
+        }
+    };
+};
+template<floating_point T>
+struct sequential_data_info : public data_info_base<T> {
+    T* data_ptr;
+    uZ stride = 1;
+
+    static constexpr auto sequential() -> std::true_type {
+        return {};
+    }
+    static constexpr auto contiguous() -> std::true_type {
+        return {};
+    }
+    static constexpr auto empty() -> std::false_type {
+        return {};
+    }
+
+    constexpr auto mul_stride(uZ n) const -> sequential_data_info {
+        auto new_info = *this;
+        new_info.stride *= n;
+        return new_info;
+    }
+    constexpr auto div_stride(uZ n) const -> sequential_data_info {
+        auto new_info = *this;
+        new_info.stride /= n;
+        return new_info;
+    }
+    constexpr auto offset_k(uZ n) const -> sequential_data_info {
+        return {{}, data_ptr + n * 2, stride};
+    }
+    constexpr auto offset_contents(uZ n) const -> sequential_data_info {
+        return {{}, data_ptr + n * 2, stride};
+    }
+    constexpr auto get_batch_base(uZ i) const -> T* {
+        return data_ptr + i * stride * 2;
+    };
+};
+struct empty_data_info {
+    static constexpr auto sequential() -> std::false_type {
+        return {};
+    }
+    static constexpr auto contiguous() -> std::false_type {
+        return {};
+    }
+    static constexpr auto empty() -> std::true_type {
+        return {};
+    }
+    static constexpr auto mul_stride(uZ /*n*/) -> empty_data_info {
+        return {};
+    }
+    static constexpr auto div_stride(uZ /*n*/) -> empty_data_info {
+        return {};
+    }
+    static constexpr auto offset_k(uZ /*n*/) -> empty_data_info {
+        return {};
+    };
+    static constexpr auto offset_contents(uZ /*n*/) -> empty_data_info {
+        return {};
+    };
+};
+
+template<typename T, typename U>
+concept data_info_for = floating_point<U>
+                        && (std::derived_from<T, data_info_base<U>>                            //
+                            || std::derived_from<T, data_info_base<std::remove_const_t<U>>>    //
+                            || std::same_as<T, empty_data_info>);
+
+inline constexpr auto inplace_src = empty_data_info{};
+constexpr auto        log2i(u64 num) -> uZ {
     u64 order = 0;
     for (u8 shift = 32; shift > 0; shift /= 2) {
         if (num >> shift > 0) {
@@ -40,8 +169,33 @@ constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
 
 struct br_sorter_base {};
 inline constexpr struct unsorted_t : br_sorter_base {
-    void                  coherent_sort(auto...) {};
-    void                  sort(auto...) {};
+    static auto coherent_sort(auto width,
+                              auto batch_size,
+                              auto reverse,
+                              auto dst_pck,
+                              auto src_pck,
+                              auto dst_data,
+                              auto src_data) {
+        return src_data;
+    };
+    static auto sort(auto width,
+                     auto batch_size,
+                     auto reverse,
+                     auto dst_pck,
+                     auto src_pck,
+                     auto dst_data,
+                     auto src_data) {
+        return src_data;
+    };
+    static auto small_sort(auto width,
+                           auto batch_size,
+                           auto reverse,
+                           auto dst_pck,
+                           auto src_pck,
+                           auto dst_data,
+                           auto src_data) {
+        return src_data;
+    };
     static constexpr auto empty() -> std::true_type {
         return {};
     }
@@ -120,7 +274,7 @@ struct br_sorter_nonseq : public br_sorter_base {
 
         auto check_nonswap_ns = [&](auto p) {
             constexpr auto sort_node_size = uZ_ce<powi(2, node_p - p)>{};
-            if (nonswap_cnt % (sort_node_size / 2) != 0)
+            if (nonswap_cnt % sort_node_size != 0)
                 return false;
             for (auto i: stdv::iota(0U, nonswap_cnt) | stdv::stride(sort_node_size)) {
                 const auto idxs = [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -168,7 +322,7 @@ struct br_sorter_nonseq : public br_sorter_base {
         }
     }
 };
-template<uZ NodeSize, uZ CoherentSize>
+template<uZ NodeSize>
 struct br_sorter : br_sorter_nonseq<NodeSize> {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     using impl_t                    = br_sorter_nonseq<NodeSize>;
@@ -178,7 +332,7 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
     u32        coh_nonswap_cnt;
     u32        noncoh_swap_cnt;
 
-    void sort(auto width,
+    auto sort(auto width,
               auto batch_size,
               auto reverse,
               auto dst_pck,
@@ -196,8 +350,9 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                           noncoh_swap_cnt,
                           uZ_ce<0>{},
                           uZ_ce<2>{});
+        return inplace_src;
     };
-    void coherent_sort(auto width,
+    auto coherent_sort(auto width,
                        auto batch_size,
                        auto reverse,
                        auto dst_pck,
@@ -213,9 +368,30 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                           src_data,
                           idx_ptr,
                           coh_swap_cnt,
-                          nonswap_cnt,
+                          coh_nonswap_cnt,
                           uZ_ce<2>{});
+        return inplace_src;
     };
+    auto small_sort(auto width,
+                    auto batch_size,
+                    auto reverse,
+                    auto dst_pck,
+                    auto src_pck,
+                    auto dst_data,
+                    auto src_data) {
+        impl_t::sort_impl(width,
+                          batch_size,
+                          reverse,
+                          dst_pck,
+                          src_pck,
+                          dst_data,
+                          src_data,
+                          idx_ptr,
+                          coh_swap_cnt,
+                          coh_nonswap_cnt,
+                          uZ_ce<2>{});
+        return inplace_src;
+    }
 
     static constexpr auto n_swaps(uZ fft_size) {
         uZ n_no_swap = powi(2, log2i(fft_size) / 2);
@@ -256,23 +432,21 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                 }
             }
         }
-        return tupi::make_tuple(coh_swap_cnt, coh_nonswap_cnt);
+        return tupi::make_tuple(static_cast<u32>(coh_swap_cnt), static_cast<u32>(coh_nonswap_cnt));
     }
 };
 struct br_sorter_shifted {
     const u32* idx_ptr;
     u32        swap_cnt;
 
-    auto sort(auto sort_node_size,
-              auto width,
+    auto sort(auto width,
               auto batch_size,
               auto reverse,
               auto dst_pck,
               auto src_pck,
               auto dst_data,
               auto src_data) {
-        sort_impl(sort_node_size,
-                  width,
+        sort_impl(width,
                   batch_size,
                   reverse,
                   dst_pck,
@@ -281,19 +455,39 @@ struct br_sorter_shifted {
                   src_data,
                   idx_ptr,
                   swap_cnt,
+                  uZ_ce<0>{},
                   uZ_ce<4>{});
-        return dst_data;
+        return inplace_src;
     };
-    auto coherent_sort(auto sort_node_size,
-                       auto width,
+    auto small_sort(auto width,
+                    auto batch_size,
+                    auto reverse,
+                    auto dst_pck,
+                    auto src_pck,
+                    auto dst_data,
+                    auto src_data) {
+        sort_impl(width,
+                  batch_size,
+                  reverse,
+                  dst_pck,
+                  src_pck,
+                  dst_data,
+                  src_data,
+                  idx_ptr,
+                  swap_cnt,
+                  uZ_ce<0>{},
+                  uZ_ce<4>{});
+        return inplace_src;
+    };
+    auto coherent_sort(auto width,
                        auto batch_size,
                        auto reverse,
                        auto dst_pck,
                        auto src_pck,
                        auto dst_data,
                        auto src_data) {
-        return dst_data;
-    };
+        return inplace_src;
+    }
 
     static constexpr auto n_swaps_shifted(uZ fft_size) {
         return fft_size;

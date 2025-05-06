@@ -174,9 +174,10 @@ bool par_test_proto(auto                                 node_size,
     auto sort_idxs = std::vector<u32>{};
     auto coh_size  = 2048 / 16;
     auto n_subdiv  = fft_size / coh_size;
-    u32  n_coh     = detail_::br_sorter<16>::insert_indexes(sort_idxs, fft_size, coh_size);
-    u32  n_noncoh  = sort_idxs.size() / 2 - n_coh * n_subdiv;
-    auto sort      = detail_::br_sorter<16>{{}, sort_idxs.data(), n_coh, n_noncoh};
+
+    auto [coh_swap_cnt, non_swap_cnt] = detail_::br_sorter<16>::insert_indexes(sort_idxs, fft_size, coh_size);
+    u32  n_noncoh                     = (sort_idxs.size() - (coh_swap_cnt * 2 + non_swap_cnt) * n_subdiv) / 2;
+    auto sort = detail_::br_sorter<16>{{}, sort_idxs.data(), coh_swap_cnt, non_swap_cnt, n_noncoh};
 
     if (local_check) {
         l_chk_fwd = chk_fwd;
@@ -246,6 +247,7 @@ bool par_test_proto(auto                                 node_size,
                            detail_::inplace_src,
                            fft_size,
                            tw_rev,
+                           detail_::blank_sorter,
                            data_size);
         if (!run_check(false))
             return false;
@@ -280,7 +282,16 @@ bool par_test_proto(auto                                 node_size,
     }
     if (external && rev) {
         std::print("[Externl rev    ]");
-        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw_rev, data_size);
+        fimpl::perform_rev(pck_dst,
+                           pck_src,
+                           half_tw,
+                           lowk,
+                           s1_info,
+                           src_info,
+                           fft_size,
+                           tw_rev,
+                           detail_::blank_sorter,
+                           data_size);
         if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -382,7 +393,15 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     if (inplace && rev) {
         std::print("[inplace rev    ]");
         s1 = signal;
-        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, detail_::inplace_src, fft_size, tw_rev);
+        fimpl::perform_rev(pck_dst,
+                           pck_src,
+                           half_tw,
+                           lowk,
+                           s1_info,
+                           detail_::inplace_src,
+                           fft_size,
+                           tw_rev,
+                           detail_::blank_sorter);
         if (!run_check(false))
             return false;
     }
@@ -407,7 +426,15 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
         std::print("[externl rev    ]");
         // s1 = signal;
         stdr::fill(s1, -69.);
-        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw_rev);
+        fimpl::perform_rev(pck_dst,
+                           pck_src,
+                           half_tw,
+                           lowk,
+                           s1_info,
+                           src_info,
+                           fft_size,
+                           tw_rev,
+                           detail_::blank_sorter);
         if (!run_check(false))
             return false;
     }
