@@ -70,8 +70,8 @@ struct br_permute_t {
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -83,7 +83,7 @@ struct br_permute_t {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -312,8 +312,8 @@ struct btfly_node_dit {
      */
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
-        constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
+        constexpr auto count    = sizeof...(Ts);
+        auto           get_half = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
             auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
             };
@@ -332,7 +332,7 @@ struct btfly_node_dit {
     template<uZ Stride, typename... Tsl, typename... Tsh>
         requires(simd::any_cx_vec<Tsl> && ...) && (simd::any_cx_vec<Tsh> && ...)
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
-        constexpr auto        count = sizeof...(Tsl) * 2;
+        constexpr auto count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
             auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
                 return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
@@ -1660,7 +1660,7 @@ struct transform {
                                      src,
                                      fft_size / 2,
                                      tw);
-                    auto(sorter).coherent_sort(width, batch_size, reverse, dst_pck, dst_pck, dst, dst);
+                    auto(sorter).sort(width, batch_size, reverse, dst_pck, dst_pck, dst, dst);
                 };
                 auto align_node = get_align_node(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -1896,6 +1896,7 @@ struct transform {
                                         data_info_for<const T> auto src_data,
                                         uZ                          fft_size,
                                         tw_data_for<T> auto         tw_data,
+                                        auto                        sorter,
                                         uZ                          data_size = 1) {
         const auto bucket_size = coherent_size;
         const auto batch_size  = lane_size;
@@ -1947,6 +1948,13 @@ struct transform {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
+                    auto(sorter).sort(width, batch_size, reverse, src_pck, src_pck, dst, src);
+                    auto l_src = [=] {
+                        if constexpr (sorter.empty())
+                            return src;
+                        else
+                            return dst;
+                    }();
                     using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform(dst_pck,
                                      src_pck,
@@ -1957,7 +1965,7 @@ struct transform {
                                      batch_cnt,
                                      batch_size,
                                      dst,
-                                     src,
+                                     l_src,
                                      fft_size / 2,
                                      tw);
                 };

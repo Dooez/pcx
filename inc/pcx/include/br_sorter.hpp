@@ -40,8 +40,11 @@ constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
 
 struct br_sorter_base {};
 inline constexpr struct unsorted_t : br_sorter_base {
-    void coherent_sort(auto...) {};
-    void sort(auto...) {};
+    void                  coherent_sort(auto...) {};
+    void                  sort(auto...) {};
+    static constexpr auto empty() -> std::true_type {
+        return {};
+    }
 } blank_sorter;
 
 
@@ -51,6 +54,9 @@ inline constexpr struct unsorted_t : br_sorter_base {
  */
 template<uZ NodeSize>
 struct br_sorter_nonseq : public br_sorter_base {
+    static constexpr auto empty() -> std::false_type {
+        return {};
+    }
     using idx_ptr_t = const u32*;
     static auto sort_impl(auto                   width,
                           auto                   batch_size,
@@ -61,6 +67,7 @@ struct br_sorter_nonseq : public br_sorter_base {
                           auto                   src_data,
                           idx_ptr_t&             idx_ptr,
                           auto                   swap_cnt,
+                          auto                   nonswap_cnt,
                           auto                   swap_grp_size) {
         const auto sequential = dst_data.sequential();
         static_assert(!sequential);
@@ -110,18 +117,65 @@ struct br_sorter_nonseq : public br_sorter_base {
             }
             return true;
         };
+
+        auto check_nonswap_ns = [&](auto p) {
+            constexpr auto sort_node_size = uZ_ce<powi(2, node_p - p)>{};
+            if (nonswap_cnt % (sort_node_size / 2) != 0)
+                return false;
+            for (auto i: stdv::iota(0U, nonswap_cnt) | stdv::stride(sort_node_size)) {
+                const auto idxs = [&]<uZ... Is>(uZ_seq<Is...>) {
+                    if constexpr (reverse)
+                        idx_ptr -= sort_node_size;
+                    auto idxs = tupi::make_tuple(*(idx_ptr + Is)...);
+                    if constexpr (!reverse)
+                        idx_ptr += sort_node_size;
+                    return idxs;
+                }(make_uZ_seq<sort_node_size>{});
+
+                auto src_base = tupi::group_invoke([&](auto i) { return l_src.get_batch_base(i); }, idxs);
+                auto dst_base = tupi::group_invoke([&](auto i) { return dst_data.get_batch_base(i); }, idxs);
+                for (auto ibs: stdv::iota(0U, batch_size) | stdv::stride(width)) {
+                    auto src  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, src_base);
+                    auto dst  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, dst_base);
+                    auto data = tupi::group_invoke(simd::cxload<src_pck, width>, src);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst, data);
+                }
+            }
+            return true;
+        };
+        if constexpr (reverse) {
+            if constexpr (inplace) {
+                idx_ptr -= nonswap_cnt;
+            } else {
+                [=]<uZ... Is>(uZ_seq<Is...>) {
+                    (void)(check_nonswap_ns(uZ_ce<Is>{}) || ...);
+                }(make_uZ_seq<node_p - log2i(swap_grp_size) + 1>{});
+            }
+        }
+
         [=]<uZ... Is>(uZ_seq<Is...>) {
             (void)(check_ns(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<node_p - log2i(swap_grp_size) + 1>{});
+
+        if constexpr (!reverse) {
+            if constexpr (inplace) {
+                idx_ptr += nonswap_cnt;
+            } else {
+                [=]<uZ... Is>(uZ_seq<Is...>) {
+                    (void)(check_nonswap_ns(uZ_ce<Is>{}) || ...);
+                }(make_uZ_seq<node_p - log2i(swap_grp_size) + 1>{});
+            }
+        }
     }
 };
-template<uZ NodeSize>
+template<uZ NodeSize, uZ CoherentSize>
 struct br_sorter : br_sorter_nonseq<NodeSize> {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     using impl_t                    = br_sorter_nonseq<NodeSize>;
 
     const u32* idx_ptr;
     u32        coh_swap_cnt;
+    u32        coh_nonswap_cnt;
     u32        noncoh_swap_cnt;
 
     void sort(auto width,
@@ -140,6 +194,7 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                           src_data,
                           idx_ptr,
                           noncoh_swap_cnt,
+                          uZ_ce<0>{},
                           uZ_ce<2>{});
     };
     void coherent_sort(auto width,
@@ -158,17 +213,18 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                           src_data,
                           idx_ptr,
                           coh_swap_cnt,
+                          nonswap_cnt,
                           uZ_ce<2>{});
     };
-
 
     static constexpr auto n_swaps(uZ fft_size) {
         uZ n_no_swap = powi(2, log2i(fft_size) / 2);
         return fft_size - n_no_swap;
     };
-    static auto insert_indexes(auto& r, uZ fft_size, uZ coherent_size) -> uZ {
+    static auto insert_indexes(auto& r, uZ fft_size, uZ coherent_size) {
         auto rbo = [=](auto i) { return reverse_bit_order(i, log2i(fft_size)); };
-        uZ   coherent_cnt{};
+        uZ   coh_swap_cnt{};
+        uZ   coh_nonswap_cnt{};
         for (auto coh_begin: stdv::iota(0U, fft_size) | stdv::stride(coherent_size)) {
             auto l_cnt   = 0;
             auto coh_end = coh_begin + coherent_size;
@@ -178,7 +234,15 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                     r.push_back(i - coh_begin);
                     r.push_back(br - coh_begin);
                     if (coh_begin == 0)
-                        ++coherent_cnt;
+                        ++coh_swap_cnt;
+                }
+            }
+            for (uZ i: stdv::iota(coh_begin, coh_end)) {
+                auto br = rbo(i);
+                if (br == i) {
+                    r.push_back(i);
+                    if (coh_begin == 0)
+                        ++coh_nonswap_cnt;
                 }
             }
         }
@@ -192,14 +256,14 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                 }
             }
         }
-        return coherent_cnt;
+        return tupi::make_tuple(coh_swap_cnt, coh_nonswap_cnt);
     }
 };
 struct br_sorter_shifted {
     const u32* idx_ptr;
     u32        swap_cnt;
 
-    void sort(auto sort_node_size,
+    auto sort(auto sort_node_size,
               auto width,
               auto batch_size,
               auto reverse,
@@ -218,8 +282,18 @@ struct br_sorter_shifted {
                   idx_ptr,
                   swap_cnt,
                   uZ_ce<4>{});
+        return dst_data;
     };
-    void coherent_sort(auto...) {};
+    auto coherent_sort(auto sort_node_size,
+                       auto width,
+                       auto batch_size,
+                       auto reverse,
+                       auto dst_pck,
+                       auto src_pck,
+                       auto dst_data,
+                       auto src_data) {
+        return dst_data;
+    };
 
     static constexpr auto n_swaps_shifted(uZ fft_size) {
         return fft_size;
