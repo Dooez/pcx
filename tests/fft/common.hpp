@@ -175,10 +175,11 @@ bool par_test_proto(auto                                 node_size,
     auto coh_size  = 2048 / 16;
     auto n_subdiv  = fft_size / coh_size;
 
-    auto [coh_swap_cnt, non_swap_cnt] = detail_::br_sorter<16>::insert_indexes(sort_idxs, fft_size, coh_size);
-    u32  n_noncoh                     = (sort_idxs.size() - (coh_swap_cnt * 2 + non_swap_cnt) * n_subdiv) / 2;
-    auto sort     = detail_::br_sorter<16>{{}, sort_idxs.data(), coh_swap_cnt, non_swap_cnt, n_noncoh};
-    auto rev_sort = detail_::br_sorter<16>{{}, &(*sort_idxs.end()), coh_swap_cnt, non_swap_cnt, n_noncoh};
+    auto sort        = detail_::br_sorter<16>::insert_indexes(sort_idxs, fft_size, coh_size);
+    auto rev_sort    = sort;
+    sort.idx_ptr     = sort_idxs.data();
+    rev_sort.idx_ptr = &(*sort_idxs.end());
+    // auto rev_sort = detail_::br_sorter<16>{{}, &(*sort_idxs.end()), coh_swap_cnt, non_swap_cnt, n_noncoh};
     // auto rev_sort = detail_::blank_sorter;
 
 

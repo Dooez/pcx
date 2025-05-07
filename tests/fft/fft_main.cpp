@@ -245,7 +245,7 @@ int main() {
         };
     // uZ fft_size = 2048 * 256;
     // uZ fft_size = 32768;
-    uZ fft_size = 256;
+    uZ fft_size = 16;
     // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
