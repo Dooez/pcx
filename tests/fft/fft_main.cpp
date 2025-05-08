@@ -243,6 +243,12 @@ int main() {
                 if (br > i)
                     std::swap(chk_fwd[i], chk_fwd[br]);
             }
+
+            for (auto i: stdv::iota(0U, chk_rev.size())) {
+                auto br = pcx::detail_::reverse_bit_order(i, pcx::detail_::log2i(fft_size));
+                if (br > i)
+                    std::swap(chk_rev[i], chk_rev[br]);
+            }
             pcx::testing::naive_reverse(chk_rev, node_size, width);
             auto s1 = std::vector<std::complex<fX>>(fft_size);
             auto s2 = std::vector<std::complex<fX>>(fft_size);

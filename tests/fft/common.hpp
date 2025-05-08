@@ -505,6 +505,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                            detail_::inplace_src,
                            coh_align,
                            tw_coh_c);
+        auto(sorter).sequential_sort(pck_dst, pck_dst, s1_info, detail_::inplace_src);
         if (!run_check(true))
             return false;
     }
@@ -512,6 +513,7 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
         std::print("[inplace rev coh]");
         s1            = signal;
         auto tw_coh_c = tw_coh_rev;
+        auto(sorter).sequential_sort(pck_src, pck_src, s1_info, detail_::inplace_src);
         fimpl_coh::perform(pck_dst,
                            pck_src,
                            lowk,

@@ -1715,8 +1715,9 @@ struct transform {
 
         if (fft_size <= bucket_tfsize) {
             if constexpr (sequential) {
-                dst_data = dst_data.mul_stride(width);
-                src_data = src_data.mul_stride(width);
+                auto o_src = sorter.sequential_sort(src_pck, src_pck, dst_data, src_data);
+                dst_data   = dst_data.mul_stride(width);
+                o_src      = o_src.mul_stride(width);
 
                 auto sequential_align_node = seq_subtf_t::get_align_node(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -1732,7 +1733,7 @@ struct transform {
                                              conj_tw,
                                              fft_size,
                                              dst_data,
-                                             src_data,
+                                             o_src,
                                              uZ_ce<l_node_size>{},
                                              tw_data);
                         return true;
@@ -1918,13 +1919,11 @@ struct transform {
             }(make_uZ_seq<log2i(node_size)>{});
         };
         if constexpr (sequential) {
-            dst_data = dst_data.mul_stride(width);
-            src_data = src_data.mul_stride(width);
-            auto seq = [&] PCX_LAINLINE(auto lowk, auto offset) {
+            auto o_src = sorter.sequential_sort(src_pck, src_pck, dst_data, src_data);
+            dst_data   = dst_data.mul_stride(width);
+            o_src      = o_src.mul_stride(width);
+            auto seq   = [&] PCX_LAINLINE(auto lowk, auto offset) {
                 constexpr auto sequential_align_node = uZ_ce<seq_subtf_t::get_align_node(bucket_tfsize)>{};
-                uZ             btf                   = bucket_tfsize;
-                uZ             can                   = sequential_align_node;
-
                 seq_subtf_t::perform(w_pck,
                                      src_pck,
                                      lowk,
@@ -1933,7 +1932,7 @@ struct transform {
                                      conj_tw,
                                      bucket_size,
                                      dst_data.offset_k(offset),
-                                     src_data.offset_k(offset),
+                                     o_src.offset_k(offset),
                                      sequential_align_node,
                                      tw_data);
             };
@@ -1968,8 +1967,8 @@ struct transform {
                     seq(lowk, 0);
             }
             dst_data = dst_data.mul_stride(batch_size / width);
-            src_data = src_data.mul_stride(batch_size / width);
-            tform(width, batch_size, dst_data, src_data, tw_data, blank_sorter);
+            o_src    = o_src.mul_stride(batch_size / width);
+            tform(width, batch_size, dst_data, o_src, tw_data, blank_sorter);
         } else {
             auto sort = [&](auto width, auto batch_size) {
                 auto l_sorter = sorter;

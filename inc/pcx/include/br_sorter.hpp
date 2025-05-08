@@ -648,7 +648,7 @@ struct br_sorter_sequential {
     u32        swap_cnt;
     u32        nonswap_cnt;
 
-    void sequential_sort(auto dst_pck,    //
+    auto sequential_sort(auto dst_pck,    //
                          auto src_pck,
                          auto dst_data,
                          auto src_data) {
@@ -710,10 +710,10 @@ struct br_sorter_sequential {
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
                     } else {
                         auto [dst1, src1] = next_ptr_tup();
-                        tupi::group_invoke(simd::cxstore<dst_pck>, src1, data_perm0);
+                        tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
                         auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, src1);
                         auto data_perm1 = simd::br_permute(data1);
-                        tupi::group_invoke(simd::cxstore<dst_pck>, src0, data_perm1);
+                        tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
                     }
                 }
                 if (swap) {
@@ -724,6 +724,7 @@ struct br_sorter_sequential {
                 break;
             }
         }
+        return inplace_src;
     }
     static auto insert_indexes(auto& r, uZ fft_size) -> br_sorter_sequential {
         u32 n = fft_size / width / width;
