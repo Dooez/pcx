@@ -355,6 +355,10 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     constexpr auto pck_src   = cxpack<1, fX>{};
     auto           l_chk_fwd = std::vector<std::complex<fX>>{};
     auto           l_chk_rev = std::vector<std::complex<fX>>{};
+    auto           sort_v    = std::vector<u32>{};
+
+    auto sorter    = detail_::br_sorter_sequential<Width>::insert_indexes(sort_v, fft_size);
+    sorter.idx_ptr = sort_v.data();
 
     if (local_check) {
         l_chk_fwd = signal;
@@ -380,7 +384,6 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
     // auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(data_ptr)};
     auto src_info = detail_::sequential_data_info<const fX>{{}, reinterpret_cast<const fX*>(signal.data())};
 
-
     if (inplace && fwd) {
         std::print("[inplace fwd    ]");
         s1 = signal;
@@ -392,7 +395,8 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                        detail_::inplace_src,
                        fft_size,
                        tw,
-                       detail_::blank_sorter);
+                       // detail_::blank_sorter
+                       sorter);
         if (!run_check(true))
             return false;
     }
@@ -407,7 +411,9 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                            detail_::inplace_src,
                            fft_size,
                            tw_rev,
-                           detail_::blank_sorter);
+                           // detail_::blank_sorter//
+                           sorter    //
+        );
         if (!run_check(false))
             return false;
     }
@@ -424,7 +430,9 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                        src_info,
                        fft_size,
                        tw,
-                       detail_::blank_sorter);
+                       // detail_::blank_sorter    //
+                       sorter    //
+        );
         if (!run_check(true))
             return false;
     }
@@ -440,7 +448,8 @@ bool test_prototype(const std::vector<std::complex<fX>>& signal,
                            src_info,
                            fft_size,
                            tw_rev,
-                           detail_::blank_sorter);
+                           // detail_::blank_sorter //
+                           sorter);
         if (!run_check(false))
             return false;
     }
