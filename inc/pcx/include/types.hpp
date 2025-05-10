@@ -188,14 +188,23 @@ struct vec {
 
 /**
  * @brief Simd vector of packed complex numbers.
- * Multiplication by imaginary unit and complex conjugation can be lazily evaluated 
- * to be perfromed at a later stage or during other operations.
+ * 
+ * Multiplication by imaginary unit and complex conjugation can be encoded in type 
+ * to be evaluated at a later stage or during other arithmetic operations.
  *
- * @tparam T	    
+ * @tparam T	    The underlying scalar floating point type.
  * @tparam NReal    Negate the real part of a complex vector.
  * @tparam NImag    Negate the imaginary part of a complex vector.
- * @tparam Width    Simd vector width.
- * @tparam PackSize Pack size inside simd vector.
+ *                  Combined with `NReal`, these flags implicitly encode state after common 
+ *                  complex transformations e.g. multiplication by imaginary unit and complex conjugation.
+ * @tparam Width    The total number of scalar elements in the SIMD vector. 
+ *                  Upper bound is defined by hardware capabilities.
+ *                  Defaults to maximum available width.
+ * @tparam PackSize Complex vector pack size. The number of sequential real elements,
+ *                  followed by the same number of imaginary elements. 
+ *                  The `PackSize=1` corresponds to interleaved representation e.g. `std::complex<T>`.
+ *                  `PackSize>Width` is currently unsupported to simplify element access and indexing.
+ *                  Defaults to `Width`.
  */
 template<typename T, bool NReal = false, bool NImag = false, uZ Width = max_width<T>, uZ PackSize = Width>
     requires power_of_two<Width> && power_of_two<PackSize> && (Width <= max_width<T>) && (PackSize <= Width)

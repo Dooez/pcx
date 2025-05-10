@@ -5,17 +5,15 @@
 #include "pcx/include/tupi.hpp"
 #include "pcx/include/types.hpp"
 
-
 namespace pcx::simd {
-
 /**
  * @class br_permute_t
- * @brief performs bit-reverse sort  inside a tuple of simd vectors.
+ * @brief performs bit-reverse permutation inside a tuple of simd complex vectors.
  *
  * Input data is a tuple of vectors containing `W` simd vectors of width `W`.
  *
- * Sort consisnt of multiple iterations.
- * A single sort iteration consists of the following steps:
+ * Permutation consisnt of multiple iterations.
+ * A single iteration consists of the following steps:
  * 1. Data is divided into pairs of vectors (`lo` and `hi`) using a `Stride`.
  *    Example: `W` = 8, `Stride` = 4
  *    data:  [lo0] [lo1] [hi0] [hi1] [lo2] [lo3] [hi2] [hi3]
@@ -36,11 +34,11 @@ namespace pcx::simd {
  *
  * Starting `Stride` value is equal to `W`.
  * Starting `Chunk` value is 1.
- * If `Chunk` is equal to complex vector pack size, the iteration is skipped and `Chunk` is doubled.
+ * If `Chunk` is equal to complex vector pack size (see `PackSize` in `simd::cx_vec<...>`), the iteration is skipped and `Chunk` is doubled.
  * If the `Stride` is equal to 2 the iteration is final.
  * After each iteration `Stride` is halved and `Chunk` is doubled.
  *
- * If the sorting is shifted, the data lower and upper halves are swapped.
+ * If the permutation is shifted, the data lower and upper halves are swapped.
  */
 struct br_permute_t {
     template<eval_cx_vec... Vs>
