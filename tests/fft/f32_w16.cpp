@@ -4,15 +4,55 @@ using fX                  = f32;
 static constexpr uZ width = 16;
 template<>
 bool test_fft<fX, width>(const std::vector<std::complex<fX>>& signal,
-                         const std::vector<std::complex<fX>>& chk_fwd,
-                         const std::vector<std::complex<fX>>& chk_rev,
+                         const chk_t<fX>&                     chk_fwd,
+                         const chk_t<fX>&                     chk_rev,
                          std::vector<std::complex<fX>>&       s1,
-                         std::vector<fX>&                     twvec) {
-    return run_tests<fX, width>(node_sizes, low_k, local_tw, half_tw, signal, chk_fwd, chk_rev, s1, twvec);
+                         std::vector<fX>&                     twvec,
+                         bool                                 local_check,
+                         bool                                 fwd,
+                         bool                                 rev,
+                         bool                                 inplace,
+                         bool                                 external) {
+    //  uZ_seq<NodeSize...>,
+    // meta::val_seq<low_k...>,
+    // meta::val_seq<local_tw...>,
+    // meta::val_seq<half_tw...>,
+    // meta::val_seq<Sort...>,
+    // meta::ce_of<sort_t> auto             sort,
+    // const std::vector<std::complex<fX>>& signal,
+    // const std::vector<std::complex<fX>>& chk_fwd,
+    // const std::vector<std::complex<fX>>& chk_rev,
+    // std::vector<std::complex<fX>>&       s1,
+    // std::vector<fX>&                     twvec,
+    // bool                                 local_check,
+    // bool                                 fwd,
+    // bool                                 rev,
+    // bool                                 inplace,
+    // bool                                 ext
+    return run_tests<fX, width>(node_sizes,
+                                low_k,
+                                local_tw,
+                                half_tw,
+                                sort_types,
+                                signal,
+                                chk_fwd,
+                                chk_rev,
+                                s1,
+                                twvec,
+                                local_check,
+                                fwd,
+                                rev,
+                                inplace,
+                                external);
 };
 template bool test_fft<fX, width>(const std::vector<std::complex<fX>>&,
-                                  const std::vector<std::complex<fX>>&,
-                                  const std::vector<std::complex<fX>>&,
+                                  const chk_t<fX>&,
+                                  const chk_t<fX>&,
                                   std::vector<std::complex<fX>>&,
-                                  std::vector<fX>&);
+                                  std::vector<fX>&,
+                                  bool,
+                                  bool,
+                                  bool,
+                                  bool,
+                                  bool);
 }    // namespace pcx::testing
