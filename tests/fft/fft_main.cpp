@@ -243,7 +243,6 @@ int main() {
                 if (br > i)
                     std::swap(chk_fwd[i], chk_fwd[br]);
             }
-
             for (auto i: stdv::iota(0U, chk_rev.size())) {
                 auto br = pcx::detail_::reverse_bit_order(i, pcx::detail_::log2i(fft_size));
                 if (br > i)

@@ -1,5 +1,5 @@
 #pragma once
-#include "pcx/include/br_sorter.hpp"
+#include "pcx/include/fft/sorters.hpp"
 #include "pcx/include/meta.hpp"
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
@@ -18,82 +18,6 @@ constexpr struct btfly_t {
 }    // namespace pcx::simd
 
 namespace pcx::detail_ {
-
-// inline constexpr auto log2i(u64 num) -> uZ {
-//     u64 order = 0;
-//     for (u8 shift = 32; shift > 0; shift /= 2) {
-//         if (num >> shift > 0) {
-//             order += num >> shift > 0 ? shift : 0;
-//             num >>= shift;
-//         }
-//     }
-//     return order;
-// }
-
-// constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
-//     auto res = (pow % 2) == 1 ? num : 1UL;
-//     if (pow > 1) {
-//         auto half_pow = powi(num, pow / 2UL);
-//         res *= half_pow * half_pow;
-//     }
-//     return res;
-// }
-
-// constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
-//     if (depth == 0)
-//         return 0;
-//     //NOLINTBEGIN(*magic-numbers*)
-//     num = num >> 32U | num << 32U;
-//     num = (num & 0xFFFF0000FFFF0000U) >> 16U | (num & 0x0000FFFF0000FFFFU) << 16U;
-//     num = (num & 0xFF00FF00FF00FF00U) >> 8U | (num & 0x00FF00FF00FF00FFU) << 8U;
-//     num = (num & 0xF0F0F0F0F0F0F0F0U) >> 4U | (num & 0x0F0F0F0F0F0F0F0FU) << 4U;
-//     num = (num & 0xCCCCCCCCCCCCCCCCU) >> 2U | (num & 0x3333333333333333U) << 2U;
-//     num = (num & 0xAAAAAAAAAAAAAAAAU) >> 1U | (num & 0x5555555555555555U) << 1U;
-//     //NOLINTEND(*magic-numbers*)
-//     return num >> (64 - depth);
-// }
-template<typename T = f64>
-inline auto wnk(uZ n, uZ k) -> std::complex<T> {
-    if (n == 0)
-        throw std::runtime_error("N should be non-zero\n");
-
-    while ((k > 0) && (k % 2 == 0)) {
-        k /= 2;
-        n /= 2;
-    }
-    if (k == 0)
-        return {1, 0};
-    if (n == k * 2)
-        return {-1, 0};
-    if (n == k * 4)
-        return {0, -1};
-    if (k > n / 4) {
-        auto v = wnk<T>(n, k - n / 4);
-        return {v.imag(), -v.real()};
-    }
-    constexpr auto pi = std::numbers::pi;
-    return static_cast<std::complex<T>>(
-        std::exp(std::complex<f64>(0, -2 * pi * static_cast<f64>(k) / static_cast<f64>(n))));
-}
-/**
- * @brief Returnes twiddle factor with k bit-reversed
- */
-template<typename T = f64>
-inline auto wnk_br(uZ n, uZ k) -> std::complex<T> {
-    k = reverse_bit_order(k, log2i(n) - 1);
-    return wnk<T>(n, k);
-}
-constexpr auto next_pow_2(u64 v) {
-    v--;
-    v |= v >> 1U;
-    v |= v >> 2U;
-    v |= v >> 4U;
-    v |= v >> 8U;
-    v |= v >> 16U;
-    v |= v >> 32U;
-    v++;
-    return v;
-}
 
 template<typename T, uZ NodeSizeL>
 static auto make_tw_node(uZ fft_size, uZ k) {
@@ -2085,66 +2009,4 @@ struct transform {
         }
     };
 };
-
-template<uZ Width>
-struct br_sort_inplace {
-    static constexpr auto width = uZ_ce<Width>{};
-
-    template<typename T>
-    static void perform(cxpack_for<T> auto pck, uZ size, T* dest_ptr, uZ n_swaps, const uZ* idxs) {
-        uZ n_sort_lanes = n_swaps;
-
-        auto next_ptr_tup = [&] PCX_LAINLINE {
-            return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                auto idx = *idxs;
-                ++idxs;
-                return tupi::make_tuple((dest_ptr + idx * width * 2 + Is * size / width * 2)...);
-            }(make_uZ_seq<width>{});
-        };
-        bool swap = true;
-        while (true) {
-            for ([[maybe_unused]] auto i: stdv::iota(0U, n_sort_lanes)) {
-                auto ptr_tup   = next_ptr_tup();
-                auto data      = tupi::group_invoke(simd::cxload<pck, width>, ptr_tup);
-                auto data_perm = simd::br_permute(data);
-                if (!swap) {
-                    tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data_perm);
-                } else {
-                    auto ptr_tup2   = next_ptr_tup();
-                    auto data2      = tupi::group_invoke(simd::cxload<pck, width>, ptr_tup2);
-                    auto data_perm2 = simd::br_permute(data2);
-                    tupi::group_invoke(simd::cxstore<pck>, ptr_tup, data_perm2);
-                    tupi::group_invoke(simd::cxstore<pck>, ptr_tup2, data_perm);
-                }
-            }
-            if (swap) {
-                swap         = false;
-                n_sort_lanes = size / width / width - n_swaps * 2;
-                continue;
-            }
-            break;
-        }
-    }
-    static constexpr auto swap_count(uZ size) -> uZ {
-        auto n   = size / width / width;
-        auto pow = log2i(n);
-        return (n - powi(2, (pow + 1) / 2)) / 2;
-    };
-    static void insert_idxs(auto& r, uZ size) {
-        auto n = size / width / width;
-        for (auto i: stdv::iota(0U, n)) {
-            auto bri = reverse_bit_order(i, log2i(n));
-            if (bri > i) {
-                r.push_back(i);
-                r.push_back(bri);
-            }
-        }
-        for (auto i: stdv::iota(0U, n)) {
-            auto bri = reverse_bit_order(i, log2i(n));
-            if (bri == i)
-                r.push_back(i);
-        }
-    }
-};
-
 }    // namespace pcx::detail_

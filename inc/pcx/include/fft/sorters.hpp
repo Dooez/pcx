@@ -1,4 +1,5 @@
 #pragma once
+#include "pcx/include/fft/util.hpp"
 #include "pcx/include/meta.hpp"
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/tupi.hpp"
@@ -6,10 +7,45 @@
 
 
 namespace pcx::simd {
+
+/**
+ * @class br_permute_t
+ * @brief performs bit-reverse sort  inside a tuple of simd vectors.
+ *
+ * Input data is a tuple of vectors containing `W` simd vectors of width `W`.
+ *
+ * Sort consisnt of multiple iterations.
+ * A single sort iteration consists of the following steps:
+ * 1. Data is divided into pairs of vectors (`lo` and `hi`) using a `Stride`.
+ *    Example: `W` = 8, `Stride` = 4
+ *    data:  [lo0] [lo1] [hi0] [hi1] [lo2] [lo3] [hi2] [hi3]
+ *    lo:    [lo0] [lo1] [lo2] [lo3]
+ *    hi:    [hi0] [hi1] [hi2] [hi3]
+ *    pairs: {[lo0][hi0]} {[lo1][hi1]} {[lo2][hi2]} {[lo3][hi3]}
+ *
+ * 2. Vectors in each pair are split into chunks, and interleaved pair-wise. 
+ *    Example: `W` = 8, `Chunk` = 2
+ *    pair before: [ 0  1  2  3  4  5  6  7] [ 8  9 10 11 12 13 14 15]
+ *    pair after:  [ 0  1  8  9  4  5 12 13] [ 2  3 10 11  6  7 14 15]
+ *
+ * 3. Vector pairs are combined into a single data. This is the inverse of the step 1.
+ *    Example: `W` = 8, `Stride` = 4
+ *    lo:    [lo0] [lo1] [lo2] [lo3]
+ *    hi:    [hi0] [hi1] [hi2] [hi3]
+ *    data:  [lo0] [lo1] [hi0] [hi1] [lo2] [lo3] [hi2] [hi3]
+ *
+ * Starting `Stride` value is equal to `W`.
+ * Starting `Chunk` value is 1.
+ * If `Chunk` is equal to complex vector pack size, the iteration is skipped and `Chunk` is doubled.
+ * If the `Stride` is equal to 2 the iteration is final.
+ * After each iteration `Stride` is halved and `Chunk` is doubled.
+ *
+ * If the sorting is shifted, the data lower and upper halves are swapped.
+ */
 struct br_permute_t {
     template<eval_cx_vec... Vs>
         requires meta::equal_values<sizeof...(Vs), Vs::width()...> && meta::equal_values<Vs::pack_size()...>
-    PCX_AINLINE static auto operator()(tupi::tuple<Vs...> data) {
+    PCX_AINLINE static auto operator()(tupi::tuple<Vs...> data, meta::ce_of<bool> auto shifted) {
         constexpr auto width = uZ_ce<sizeof...(Vs)>{};
         using data_t         = tupi::tuple<Vs...>;
         using cx_vec_t       = tupi::tuple_element_t<0, data_t>;
@@ -45,10 +81,10 @@ struct br_permute_t {
             auto nhi      = tupi::group_invoke(tupi::get_copy<1>, res);
             return combine_halves<Stride>(nlo, nhi);
         };
-        return [pass]<uZ Stride, uZ Chunk = 1> PCX_LAINLINE(this auto     f,
-                                                            auto          l_data,
-                                                            uZ_ce<Stride> stride,
-                                                            uZ_ce<Chunk>  chunk = {}) {
+        auto br_data = [pass]<uZ Stride, uZ Chunk = 1> PCX_LAINLINE(this auto     f,
+                                                                    auto          l_data,
+                                                                    uZ_ce<Stride> stride,
+                                                                    uZ_ce<Chunk>  chunk = {}) {
             if constexpr (chunk == pack) {
                 return f(l_data, stride, uZ_ce<chunk * 2>{});
             } else if constexpr (stride == 2) {
@@ -58,15 +94,22 @@ struct br_permute_t {
                 return f(tmp, uZ_ce<stride / 2>{}, uZ_ce<chunk * 2>{});
             }
         }(data, width);
+
+        if constexpr (shifted) {
+            auto [lo, hi] = extract_halves<width>(br_data);
+            return combine_halves<width>(hi, lo);
+        } else {
+            return br_data;
+        }
     }
     template<uZ Stride, simd::any_cx_vec... Ts>
     PCX_AINLINE static auto extract_halves(tupi::tuple<Ts...> data) {
         constexpr auto count = sizeof...(Ts);
-        auto get_half        = [=]<uZ... Grp, uZ Start> PCX_LAINLINE(uZ_seq<Grp...>, uZ_ce<Start>) {
-            auto iterate = [=]<uZ... Iters, uZ Offset> PCX_LAINLINE(uZ_seq<Iters...>, uZ_ce<Offset>) {
-                return tupi::make_tuple(tupi::get<Offset + Iters>(data)...);
+        auto get_half        = [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>, auto start) {
+            auto iterate = [=]<uZ... Iters> PCX_LAINLINE(uZ_seq<Iters...>, auto offset) {
+                return tupi::make_tuple(tupi::get<offset + Iters>(data)...);
             };
-            return tupi::tuple_cat(iterate(make_uZ_seq<Stride / 2>{}, uZ_ce<Start + Grp * Stride>{})...);
+            return tupi::tuple_cat(iterate(make_uZ_seq<Stride / 2>{}, uZ_ce<start + Grp * Stride>{})...);
         };
         return tupi::make_tuple(get_half(make_uZ_seq<count / Stride>{}, uZ_ce<0>{}),
                                 get_half(make_uZ_seq<count / Stride>{}, uZ_ce<Stride / 2>{}));
@@ -76,211 +119,49 @@ struct br_permute_t {
     PCX_AINLINE static auto combine_halves(tupi::tuple<Tsl...> lo, tupi::tuple<Tsh...> hi) {
         constexpr auto        count = sizeof...(Tsl) * 2;
         return [=]<uZ... Grp> PCX_LAINLINE(uZ_seq<Grp...>) {
-            auto iterate = [=]<uZ... Is, uZ Offset> PCX_LAINLINE(uZ_seq<Is...>, uZ_ce<Offset>) {
-                return tupi::make_tuple(tupi::get<Offset + Is>(lo)..., tupi::get<Offset + Is>(hi)...);
+            auto iterate = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>, auto offset) {
+                return tupi::make_tuple(tupi::get<offset + Is>(lo)..., tupi::get<offset + Is>(hi)...);
             };
             return tupi::tuple_cat(iterate(make_uZ_seq<Stride / 2>{}, uZ_ce<Grp * Stride / 2>{})...);
         }(make_uZ_seq<count / Stride>{});
     }
 };
 inline constexpr auto br_permute = br_permute_t{};
-
 }    // namespace pcx::simd
+
 namespace pcx::detail_ {
-template<typename T>
-struct data_info_base {};
-
-template<floating_point T, bool Contiguous, typename C = void>
-struct data_info : public data_info_base<T> {
-    using data_ptr_t    = std::conditional_t<Contiguous, T*, C*>;
-    using data_offset_t = std::conditional_t<Contiguous, decltype([] {}), uZ>;
-    using k_offset_t    = std::conditional_t<Contiguous, decltype([] {}), uZ>;
-    using k_stride_t    = std::conditional_t<Contiguous, uZ, decltype([] {})>;
-
-    data_ptr_t                          data_ptr;
-    uZ                                  stride = 1;
-    [[no_unique_address]] k_stride_t    k_stride;
-    [[no_unique_address]] k_offset_t    k_offset{};
-    [[no_unique_address]] data_offset_t data_offset{};
-
-    static constexpr auto sequential() -> std::false_type {
-        return {};
-    }
-    static constexpr auto contiguous() -> std::bool_constant<Contiguous> {
-        return {};
-    }
-    static constexpr auto empty() -> std::false_type {
-        return {};
-    }
-
-    constexpr auto mul_stride(uZ n) const -> data_info {
-        auto new_info = *this;
-        new_info.stride *= n;
-        return new_info;
-    }
-    constexpr auto div_stride(uZ n) const -> data_info {
-        auto new_info = *this;
-        new_info.stride /= n;
-        return new_info;
-    }
-    constexpr auto offset_k(uZ n) const -> data_info {
-        auto new_info = *this;
-        if constexpr (Contiguous) {
-            new_info.data_ptr += k_stride * n * 2;
-        } else {
-            new_info.k_offset += n;
-        }
-        return new_info;
-    }
-    constexpr auto offset_contents(uZ n) const -> data_info {
-        auto new_info = *this;
-        if constexpr (Contiguous) {
-            new_info.data_ptr += n * 2;
-        } else {
-            new_info.data_offset += n;
-        }
-        return new_info;
-    }
-    constexpr auto get_batch_base(uZ i) const -> T* {
-        if constexpr (Contiguous) {
-            return data_ptr + i * stride * 2;
-        } else {
-            auto ptr = reinterpret_cast<T*>((*data_ptr)[i * stride + k_offset].data());
-            return ptr + data_offset * 2;
-        }
-    };
-};
-template<floating_point T>
-struct sequential_data_info : public data_info_base<T> {
-    T* data_ptr;
-    uZ stride = 1;
-
-    static constexpr auto sequential() -> std::true_type {
-        return {};
-    }
-    static constexpr auto contiguous() -> std::true_type {
-        return {};
-    }
-    static constexpr auto empty() -> std::false_type {
-        return {};
-    }
-
-    constexpr auto mul_stride(uZ n) const -> sequential_data_info {
-        auto new_info = *this;
-        new_info.stride *= n;
-        return new_info;
-    }
-    constexpr auto div_stride(uZ n) const -> sequential_data_info {
-        auto new_info = *this;
-        new_info.stride /= n;
-        return new_info;
-    }
-    constexpr auto offset_k(uZ n) const -> sequential_data_info {
-        return {{}, data_ptr + n * 2, stride};
-    }
-    constexpr auto offset_contents(uZ n) const -> sequential_data_info {
-        return {{}, data_ptr + n * 2, stride};
-    }
-    constexpr auto get_batch_base(uZ i) const -> T* {
-        return data_ptr + i * stride * 2;
-    };
-};
-struct empty_data_info {
-    static constexpr auto sequential() -> std::false_type {
-        return {};
-    }
-    static constexpr auto contiguous() -> std::false_type {
-        return {};
-    }
-    static constexpr auto empty() -> std::true_type {
-        return {};
-    }
-    static constexpr auto mul_stride(uZ /*n*/) -> empty_data_info {
-        return {};
-    }
-    static constexpr auto div_stride(uZ /*n*/) -> empty_data_info {
-        return {};
-    }
-    static constexpr auto offset_k(uZ /*n*/) -> empty_data_info {
-        return {};
-    };
-    static constexpr auto offset_contents(uZ /*n*/) -> empty_data_info {
-        return {};
-    };
-};
-
-template<typename T, typename U>
-concept data_info_for = floating_point<U>
-                        && (std::derived_from<T, data_info_base<U>>                            //
-                            || std::derived_from<T, data_info_base<std::remove_const_t<U>>>    //
-                            || std::same_as<T, empty_data_info>);
-
-inline constexpr auto inplace_src = empty_data_info{};
-constexpr auto        log2i(u64 num) -> uZ {
-    u64 order = 0;
-    for (u8 shift = 32; shift > 0; shift /= 2) {
-        if (num >> shift > 0) {
-            order += num >> shift > 0 ? shift : 0;
-            num >>= shift;
-        }
-    }
-    return order;
-}
-constexpr auto powi(u64 num, u64 pow) -> u64 {    // NOLINT(*recursion*)
-    auto res = (pow % 2) == 1 ? num : 1UL;
-    if (pow > 1) {
-        auto half_pow = powi(num, pow / 2UL);
-        res *= half_pow * half_pow;
-    }
-    return res;
-}
-
-constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
-    if (depth == 0)
-        return 0;
-    //NOLINTBEGIN(*magic-numbers*)
-    num = num >> 32U | num << 32U;
-    num = (num & 0xFFFF0000FFFF0000U) >> 16U | (num & 0x0000FFFF0000FFFFU) << 16U;
-    num = (num & 0xFF00FF00FF00FF00U) >> 8U | (num & 0x00FF00FF00FF00FFU) << 8U;
-    num = (num & 0xF0F0F0F0F0F0F0F0U) >> 4U | (num & 0x0F0F0F0F0F0F0F0FU) << 4U;
-    num = (num & 0xCCCCCCCCCCCCCCCCU) >> 2U | (num & 0x3333333333333333U) << 2U;
-    num = (num & 0xAAAAAAAAAAAAAAAAU) >> 1U | (num & 0x5555555555555555U) << 1U;
-    //NOLINTEND(*magic-numbers*)
-    return num >> (64 - depth);
-}
-
 struct br_sorter_base {};
-inline constexpr struct unsorted_t : br_sorter_base {
-    static auto coherent_sort(auto width,
-                              auto batch_size,
-                              auto reverse,
-                              auto dst_pck,
-                              auto src_pck,
-                              auto dst_data,
+inline constexpr struct blank_sorter_t : br_sorter_base {
+    static auto coherent_sort(auto /* width */,
+                              auto /* batch_size */,
+                              auto /* reverse */,
+                              auto /* dst_pck */,
+                              auto /* src_pck */,
+                              auto /* dst_data */,
                               auto src_data) {
         return src_data;
     };
-    static auto sort(auto width,
-                     auto batch_size,
-                     auto reverse,
-                     auto dst_pck,
-                     auto src_pck,
-                     auto dst_data,
+    static auto sort(auto /* width */,
+                     auto /* batch_size */,
+                     auto /* reverse */,
+                     auto /* dst_pck */,
+                     auto /* src_pck */,
+                     auto /* dst_data */,
                      auto src_data) {
         return src_data;
     };
-    static auto small_sort(auto width,
-                           auto batch_size,
-                           auto reverse,
-                           auto dst_pck,
-                           auto src_pck,
-                           auto dst_data,
+    static auto small_sort(auto /* width */,
+                           auto /* batch_size */,
+                           auto /* reverse */,
+                           auto /* dst_pck */,
+                           auto /* src_pck */,
+                           auto /* dst_data */,
                            auto src_data) {
         return src_data;
     };
-    static auto sequential_sort(auto dst_pck,    //
-                                auto src_pck,
-                                auto dst_data,
+    static auto sequential_sort(auto /* dst_pck */,    //
+                                auto /* src_pck */,
+                                auto /* dst_data */,
                                 auto src_data) {
         return src_data;
     };
@@ -640,9 +521,10 @@ struct br_sorter_shifted {
     }
 };
 
-template<uZ Width>
+template<uZ Width, bool Shifted = false>
 struct br_sorter_sequential {
-    static constexpr auto width = uZ_ce<Width>{};
+    static constexpr auto width   = uZ_ce<Width>{};
+    static constexpr auto shifted = std::bool_constant<Shifted>{};
 
     const u32* idx_ptr;
     u32        swap_cnt;
@@ -670,13 +552,13 @@ struct br_sorter_sequential {
                 for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
                     auto dst0       = next_ptr_tup();
                     auto data0      = tupi::group_invoke(simd::cxload<src_pck, width>, dst0);
-                    auto data_perm0 = simd::br_permute(data0);
+                    auto data_perm0 = simd::br_permute(data0, shifted);
                     if (!swap) {
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
                     } else {
                         auto dst1       = next_ptr_tup();
                         auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, dst1);
-                        auto data_perm1 = simd::br_permute(data1);
+                        auto data_perm1 = simd::br_permute(data1, shifted);
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
                     }
@@ -705,14 +587,14 @@ struct br_sorter_sequential {
                 for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
                     auto [dst0, src0] = next_ptr_tup();
                     auto data0        = tupi::group_invoke(simd::cxload<src_pck, width>, src0);
-                    auto data_perm0   = simd::br_permute(data0);
+                    auto data_perm0   = simd::br_permute(data0, shifted);
                     if (!swap) {
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
                     } else {
                         auto [dst1, src1] = next_ptr_tup();
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
                         auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, src1);
-                        auto data_perm1 = simd::br_permute(data1);
+                        auto data_perm1 = simd::br_permute(data1, shifted);
                         tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
                     }
                 }
