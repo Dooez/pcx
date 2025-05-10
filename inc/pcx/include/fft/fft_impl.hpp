@@ -1,5 +1,5 @@
 #pragma once
-#include "pcx/include/fft/sorters.hpp"
+#include "pcx/include/fft/permuters.hpp"
 #include "pcx/include/meta.hpp"
 #include "pcx/include/simd/common.hpp"
 #include "pcx/include/simd/math.hpp"
@@ -1313,7 +1313,7 @@ struct transform {
                                     data_info_for<const T> auto src_data,
                                     uZ                          fft_size,
                                     tw_data_for<T> auto         tw_data,
-                                    auto                        sorter,
+                                    auto                        permuter,
                                     uZ                          data_size = 0) {
         const auto bucket_size = coherent_size;
         const auto batch_size  = lane_size;
@@ -1360,7 +1360,7 @@ struct transform {
                     };
                     (void)(check_align(uZ_ce<Is>{}) || ...);
                 }(make_uZ_seq<log2i(node_size)>{});
-                sorter.sequential_sort(dst_pck, dst_pck, dst_data, inplace_src);
+                permuter.sequential_permute(dst_pck, dst_pck, dst_data, inplace_src);
             } else {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
                 auto batch_cnt  = fft_size;
@@ -1378,7 +1378,8 @@ struct transform {
                                      src,
                                      fft_size / 2,
                                      tw);
-                    auto(sorter).small_sort(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
+                    auto(permuter)
+                        .small_permute(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
                 };
                 auto align_node = get_align_node(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -1465,10 +1466,10 @@ struct transform {
                                  k_cnt,
                                  tw);
             };
-            auto l_sorter      = sorter;
-            auto unsorted      = blank_sorter;
-            auto coherent_sort = [=](auto& sorter, auto pck, auto dst, auto src) {
-                sorter.coherent_sort(width, batch_size, reverse, pck, pck, dst, src);
+            auto l_permuter    = permuter;
+            auto id_perm       = identity_permuter;
+            auto coherent_perm = [=](auto& permuter, auto pck, auto dst, auto src) {
+                permuter.coherent_permute(width, batch_size, reverse, pck, pck, dst, src);
             };
 
             auto iterate_buckets = [&](auto  dst_pck,
@@ -1476,19 +1477,19 @@ struct transform {
                                        auto  align,
                                        auto  k_cnt,
                                        auto  src,
-                                       auto& sorter) {
-                auto l_tw_data = tw_data;
-                auto l_sorter  = sorter;
+                                       auto& permuter) {
+                auto l_tw_data  = tw_data;
+                auto l_permuter = permuter;
                 for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                     l_tw_data       = tw_data;
-                    l_sorter        = sorter;
+                    l_permuter      = permuter;
                     auto bucket_dst = dst.offset_k(i_b * batch_tfsize);
                     auto bucket_src = src.offset_k(i_b * batch_tfsize);
                     subtf(dst_pck, src_pck, align, lowk, bucket_dst, bucket_src, k_cnt, l_tw_data);
-                    coherent_sort(l_sorter, dst_pck, bucket_dst, bucket_src);
+                    coherent_perm(l_permuter, dst_pck, bucket_dst, bucket_src);
                 }
-                tw_data = l_tw_data;
-                sorter  = l_sorter;
+                tw_data  = l_tw_data;
+                permuter = l_permuter;
                 for (uZ i_bg: stdv::iota(1U, bucket_grp_cnt)) {
                     if constexpr (local_tw)
                         tw_data.start_k = i_bg;
@@ -1497,14 +1498,14 @@ struct transform {
                     auto bg_src_start = src.offset_k(bg_offset);
                     for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                         l_tw_data       = tw_data;
-                        l_sorter        = sorter;
+                        l_permuter      = permuter;
                         auto bucket_dst = bg_dst_start.offset_k(i_b * batch_tfsize);
                         auto bucket_src = bg_src_start.offset_k(i_b * batch_tfsize);
                         subtf(dst_pck, src_pck, align, not_lowk, bucket_dst, bucket_src, k_cnt, l_tw_data);
-                        coherent_sort(l_sorter, dst_pck, bucket_dst, bucket_src);
+                        coherent_perm(l_permuter, dst_pck, bucket_dst, bucket_src);
                     }
-                    tw_data = l_tw_data;
-                    sorter  = l_sorter;
+                    tw_data  = l_tw_data;
+                    permuter = l_permuter;
                 }
                 bucket_cnt /= k_cnt * 2;
                 bucket_grp_cnt *= k_cnt * 2;
@@ -1522,7 +1523,7 @@ struct transform {
                     if (l_node_size != pre_pass_align_node)
                         return false;
                     constexpr auto align = align_param<l_node_size, true>{};
-                    iterate_buckets(w_pck, src_pck, align, rem_k_cnt, src, unsorted);
+                    iterate_buckets(w_pck, src_pck, align, rem_k_cnt, src, id_perm);
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -1533,15 +1534,15 @@ struct transform {
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, unsorted);
+                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, id_perm);
             }
 
             if constexpr (!sequential) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_sorter);
+                iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_permuter);
                 dst.stride = 1;
-                l_sorter.sort(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
+                l_permuter.permute(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
             } else {
                 if constexpr (width < batch_size)
                     dst = dst.div_stride(dst.stride / width);
@@ -1578,7 +1579,7 @@ struct transform {
                     auto bucket_offset = i_bg * bucket_tfsize;
                     seq(not_lowk, bucket_offset);
                 }
-                auto(sorter).sequential_sort(dst_pck, dst_pck, dst, inplace_src);
+                auto(permuter).sequential_permute(dst_pck, dst_pck, dst, inplace_src);
             }
         };
 
@@ -1615,7 +1616,7 @@ struct transform {
                                         data_info_for<const T> auto src_data,
                                         uZ                          fft_size,
                                         tw_data_for<T> auto         tw_data,
-                                        auto                        sorter,
+                                        auto                        permuter,
                                         uZ                          data_size = 1) {
         const auto bucket_size = coherent_size;
         const auto batch_size  = lane_size;
@@ -1639,7 +1640,7 @@ struct transform {
 
         if (fft_size <= bucket_tfsize) {
             if constexpr (sequential) {
-                auto o_src = sorter.sequential_sort(src_pck, src_pck, dst_data, src_data);
+                auto o_src = permuter.sequential_permute(src_pck, src_pck, dst_data, src_data);
                 dst_data   = dst_data.mul_stride(width);
                 o_src      = o_src.mul_stride(width);
 
@@ -1669,7 +1670,7 @@ struct transform {
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
                     auto o_src =
-                        auto(sorter).small_sort(width, batch_size, reverse, src_pck, src_pck, dst, src);
+                        auto(permuter).small_permuter(width, batch_size, reverse, src_pck, src_pck, dst, src);
                     using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform(dst_pck,
                                      src_pck,
@@ -1737,7 +1738,7 @@ struct transform {
             }
         }();
 
-        auto tform = [=](auto width, auto batch_size, auto dst, auto src, auto tw_data, auto sorter) {
+        auto tform = [=](auto width, auto batch_size, auto dst, auto src, auto tw_data, auto permuter) {
             constexpr auto w_pck = cxpack<width, T>{};
 
             uZ bucket_cnt       = 1;    // per bucket group
@@ -1766,15 +1767,15 @@ struct transform {
                                  tw);
             };
             auto tw_data_bak   = tw_data;
-            auto coherent_sort = [=](auto& sorter, auto pck, auto dst, auto src) {
-                return sorter.coherent_sort(width, batch_size, reverse, pck, pck, dst, src);
+            auto coherent_perm = [=](auto& permuter, auto pck, auto dst, auto src) {
+                return permuter.coherent_permute(width, batch_size, reverse, pck, pck, dst, src);
             };
             auto iterate_buckets = [&](auto dst_pck,
                                        auto src_pck,
                                        auto align,
                                        auto k_cnt,
                                        auto src,
-                                       auto sorter,
+                                       auto permuter,
                                        bool first = false) {
                 if (!first) {
                     dst = dst.mul_stride(k_cnt * 2);
@@ -1782,8 +1783,8 @@ struct transform {
                     bucket_cnt *= k_cnt * 2;
                     bucket_group_cnt /= k_cnt * 2;
                 }
-                auto l_tw_data = tw_data;
-                auto l_sorter  = sorter;
+                auto l_tw_data  = tw_data;
+                auto l_permuter = permuter;
                 for (uZ i_bg: stdv::iota(0U, bucket_group_cnt) | stdv::drop(1) | stdv::reverse) {
                     if constexpr (local_tw)
                         tw_data.start_k = i_bg * k_cnt * 2;
@@ -1794,39 +1795,39 @@ struct transform {
                     auto bg_src_start = src.offset_k(bg_offset);
                     for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                         l_tw_data       = tw_data;
-                        l_sorter        = sorter;
+                        l_permuter      = permuter;
                         auto bucket_dst = bg_dst_start.offset_k(i_b * batch_tfsize);
                         auto bucket_src = bg_src_start.offset_k(i_b * batch_tfsize);
-                        auto s_src      = coherent_sort(l_sorter, dst_pck, bucket_dst, bucket_src);
+                        auto s_src      = coherent_perm(l_permuter, dst_pck, bucket_dst, bucket_src);
                         subtf(dst_pck, src_pck, align, not_lowk, bucket_dst, s_src, k_cnt, l_tw_data);
                     }
-                    tw_data = l_tw_data;
-                    sorter  = l_sorter;
+                    tw_data  = l_tw_data;
+                    permuter = l_permuter;
                 }
                 if constexpr (local_tw)
                     tw_data.start_k = 0;
                 for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                     l_tw_data       = tw_data;
-                    l_sorter        = sorter;
+                    l_permuter      = permuter;
                     auto bucket_dst = dst.offset_k(i_b * batch_tfsize);
                     auto bucket_src = src.offset_k(i_b * batch_tfsize);
-                    auto s_src      = coherent_sort(l_sorter, dst_pck, bucket_dst, bucket_src);
+                    auto s_src      = coherent_perm(l_permuter, dst_pck, bucket_dst, bucket_src);
                     subtf(dst_pck, src_pck, align, lowk, bucket_dst, s_src, k_cnt, l_tw_data);
                 }
                 if constexpr (local_tw)
                     tw_data.start_fft_size /= k_cnt * 2;
                 else
                     tw_data = l_tw_data;
-                sorter = l_sorter;
+                permuter = l_permuter;
             };
 
             constexpr auto pass_align_node = align_param<get_align_node(pass_k_cnt * 2), true>{};
             if constexpr (!sequential)
-                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_cnt, src, sorter, true);
+                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_cnt, src, permuter, true);
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, blank_sorter);
+                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, identity_permuter);
             }
 
             auto pre_pass_align_node = get_align_node(rem_k_cnt * 2);
@@ -1836,14 +1837,14 @@ struct transform {
                     if (l_node_size != pre_pass_align_node)
                         return false;
                     constexpr auto align = align_param<l_node_size, true>{};
-                    iterate_buckets(dst_pck, w_pck, align, rem_k_cnt, inplace_src, blank_sorter);
+                    iterate_buckets(dst_pck, w_pck, align, rem_k_cnt, inplace_src, identity_permuter);
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
             }(make_uZ_seq<log2i(node_size)>{});
         };
         if constexpr (sequential) {
-            auto o_src = sorter.sequential_sort(src_pck, src_pck, dst_data, src_data);
+            auto o_src = permuter.sequential_permute(src_pck, src_pck, dst_data, src_data);
             dst_data   = dst_data.mul_stride(width);
             o_src      = o_src.mul_stride(width);
             auto seq   = [&] PCX_LAINLINE(auto lowk, auto offset) {
@@ -1892,16 +1893,17 @@ struct transform {
             }
             dst_data = dst_data.mul_stride(batch_size / width);
             o_src    = o_src.mul_stride(batch_size / width);
-            tform(width, batch_size, dst_data, o_src, tw_data, blank_sorter);
+            tform(width, batch_size, dst_data, o_src, tw_data, identity_permuter);
         } else {
-            auto sort = [&](auto width, auto batch_size) {
-                auto l_sorter = sorter;
-                auto o_src = l_sorter.sort(width, batch_size, reverse, src_pck, src_pck, dst_data, src_data);
-                return tupi::make_tuple(o_src, l_sorter);
+            auto permute = [&](auto width, auto batch_size) {
+                auto l_permuter = permuter;
+                auto o_src =
+                    l_permuter.permute(width, batch_size, reverse, src_pck, src_pck, dst_data, src_data);
+                return tupi::make_tuple(o_src, l_permuter);
             };
             while (data_size >= batch_size) {
-                auto [o_src, sorter] = sort(width, batch_size);
-                tform(width, batch_size, dst_data, o_src, tw_data, sorter);
+                auto [o_src, permuter] = permute(width, batch_size);
+                tform(width, batch_size, dst_data, o_src, tw_data, permuter);
                 data_size -= batch_size;
                 dst_data = dst_data.offset_contents(batch_size);
                 src_data = src_data.offset_contents(batch_size);
@@ -1909,9 +1911,9 @@ struct transform {
             [&]<uZ... Batch> PCX_LAINLINE(uZ_seq<Batch...>) {
                 auto small_tform = [&](auto small_batch) {
                     if (data_size >= small_batch) {
-                        constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
-                        auto [o_src, sorter]  = sort(lwidth, small_batch);
-                        tform(lwidth, small_batch, dst_data, o_src, tw_data, sorter);
+                        constexpr auto lwidth  = uZ_ce<std::min(width.value, small_batch.value)>{};
+                        auto [o_src, permuter] = permute(lwidth, small_batch);
+                        tform(lwidth, small_batch, dst_data, o_src, tw_data, permuter);
                         data_size -= small_batch;
                         dst_data = dst_data.offset_contents(small_batch);
                         src_data = src_data.offset_contents(small_batch);

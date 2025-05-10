@@ -241,7 +241,7 @@ int main() {
                              / static_cast<fX>(fft_size));
             }
 
-            using enum pcx::testing::sort_t;
+            using enum pcx::testing::permute_t;
             auto chk_fwd = pcx::testing::chk_t<fX>{};
             auto chk_rev = pcx::testing::chk_t<fX>{};
 

@@ -128,9 +128,27 @@ inline constexpr auto br_permute = br_permute_t{};
 }    // namespace pcx::simd
 
 namespace pcx::detail_ {
-struct br_sorter_base {};
-inline constexpr struct blank_sorter_t : br_sorter_base {
-    static auto coherent_sort(auto /* width */,
+struct br_permuter_base {};
+inline constexpr struct identity_permuter_t : br_permuter_base {
+    static auto coherent_permute(auto /* width */,
+                                 auto /* batch_size */,
+                                 auto /* reverse */,
+                                 auto /* dst_pck */,
+                                 auto /* src_pck */,
+                                 auto /* dst_data */,
+                                 auto src_data) {
+        return src_data;
+    };
+    static auto permute(auto /* width */,
+                        auto /* batch_size */,
+                        auto /* reverse */,
+                        auto /* dst_pck */,
+                        auto /* src_pck */,
+                        auto /* dst_data */,
+                        auto src_data) {
+        return src_data;
+    };
+    static auto small_permute(auto /* width */,
                               auto /* batch_size */,
                               auto /* reverse */,
                               auto /* dst_pck */,
@@ -139,47 +157,29 @@ inline constexpr struct blank_sorter_t : br_sorter_base {
                               auto src_data) {
         return src_data;
     };
-    static auto sort(auto /* width */,
-                     auto /* batch_size */,
-                     auto /* reverse */,
-                     auto /* dst_pck */,
-                     auto /* src_pck */,
-                     auto /* dst_data */,
-                     auto src_data) {
-        return src_data;
-    };
-    static auto small_sort(auto /* width */,
-                           auto /* batch_size */,
-                           auto /* reverse */,
-                           auto /* dst_pck */,
-                           auto /* src_pck */,
-                           auto /* dst_data */,
-                           auto src_data) {
-        return src_data;
-    };
-    static auto sequential_sort(auto /* dst_pck */,    //
-                                auto /* src_pck */,
-                                auto /* dst_data */,
-                                auto src_data) {
+    static auto sequential_permute(auto /* dst_pck */,    //
+                                   auto /* src_pck */,
+                                   auto /* dst_data */,
+                                   auto src_data) {
         return src_data;
     };
     static constexpr auto empty() -> std::true_type {
         return {};
     }
-} blank_sorter;
+} identity_permuter;
 
 
 /**
- *  @brief sorter for nonsequential transform.
+ *  @brief Permuter for nonsequential transform.
  *
  */
 template<uZ NodeSize>
-struct br_sorter_nonseq : public br_sorter_base {
+struct br_permuter_nonseq_base : public br_permuter_base {
     static constexpr auto empty() -> std::false_type {
         return {};
     }
     using idx_ptr_t = const u32*;
-    static auto sort_impl(auto                   width,
+    static auto perm_impl(auto                   width,
                           auto                   batch_size,
                           meta::ce_of<bool> auto reverse,
                           auto                   dst_pck,
@@ -291,9 +291,9 @@ struct br_sorter_nonseq : public br_sorter_base {
     }
 };
 template<uZ NodeSize>
-struct br_sorter : br_sorter_nonseq<NodeSize> {
+struct br_permuter : br_permuter_nonseq_base<NodeSize> {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
-    using impl_t                    = br_sorter_nonseq<NodeSize>;
+    using impl_t                    = br_permuter_nonseq_base<NodeSize>;
 
     const u32* idx_ptr;
     u32        coh_swap_cnt;
@@ -301,14 +301,14 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
     u32        noncoh_swap_cnt;
     u32        noncoh_nonswap_cnt;
 
-    auto sort(auto width,
-              auto batch_size,
-              auto reverse,
-              auto dst_pck,
-              auto src_pck,
-              auto dst_data,
-              auto src_data) {
-        impl_t::sort_impl(width,
+    auto permute(auto width,
+                 auto batch_size,
+                 auto reverse,
+                 auto dst_pck,
+                 auto src_pck,
+                 auto dst_data,
+                 auto src_data) {
+        impl_t::perm_impl(width,
                           batch_size,
                           reverse,
                           dst_pck,
@@ -324,14 +324,14 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
         else
             return inplace_src;
     };
-    auto coherent_sort(auto width,
-                       auto batch_size,
-                       auto reverse,
-                       auto dst_pck,
-                       auto src_pck,
-                       auto dst_data,
-                       auto src_data) {
-        impl_t::sort_impl(width,
+    auto coherent_permute(auto width,
+                          auto batch_size,
+                          auto reverse,
+                          auto dst_pck,
+                          auto src_pck,
+                          auto dst_data,
+                          auto src_data) {
+        impl_t::perm_impl(width,
                           batch_size,
                           reverse,
                           dst_pck,
@@ -344,14 +344,14 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                           uZ_ce<2>{});
         return inplace_src;
     };
-    auto small_sort(auto width,
-                    auto batch_size,
-                    auto reverse,
-                    auto dst_pck,
-                    auto src_pck,
-                    auto dst_data,
-                    auto src_data) {
-        impl_t::sort_impl(width,
+    auto small_permute(auto width,
+                       auto batch_size,
+                       auto reverse,
+                       auto dst_pck,
+                       auto src_pck,
+                       auto dst_data,
+                       auto src_data) {
+        impl_t::perm_impl(width,
                           batch_size,
                           reverse,
                           dst_pck,
@@ -369,7 +369,7 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
         uZ n_no_swap = powi(2, log2i(fft_size) / 2);
         return fft_size - n_no_swap;
     };
-    static auto insert_indexes(auto& r, uZ fft_size, uZ coherent_size) -> br_sorter {
+    static auto insert_indexes(auto& r, uZ fft_size, uZ coherent_size) -> br_permuter {
         auto rbo = [=](auto i) { return reverse_bit_order(i, log2i(fft_size)); };
         u32  coh_swap_cnt{};
         u32  coh_nonswap_cnt{};
@@ -444,21 +444,22 @@ struct br_sorter : br_sorter_nonseq<NodeSize> {
                 }
             }
         }
-        return br_sorter{{}, nullptr, coh_swap_cnt, coh_nonswap_cnt, noncoh_swap_cnt, noncoh_nonswap_cnt};
+        return br_permuter{{}, nullptr, coh_swap_cnt, coh_nonswap_cnt, noncoh_swap_cnt, noncoh_nonswap_cnt};
     }
 };
-struct br_sorter_shifted {
+template<uZ NodeSize>
+struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
     const u32* idx_ptr;
     u32        swap_cnt;
 
-    auto sort(auto width,
-              auto batch_size,
-              auto reverse,
-              auto dst_pck,
-              auto src_pck,
-              auto dst_data,
-              auto src_data) {
-        sort_impl(width,
+    auto permute(auto width,
+                 auto batch_size,
+                 auto reverse,
+                 auto dst_pck,
+                 auto src_pck,
+                 auto dst_data,
+                 auto src_data) {
+        perm_impl(width,
                   batch_size,
                   reverse,
                   dst_pck,
@@ -471,14 +472,14 @@ struct br_sorter_shifted {
                   uZ_ce<4>{});
         return inplace_src;
     };
-    auto small_sort(auto width,
-                    auto batch_size,
-                    auto reverse,
-                    auto dst_pck,
-                    auto src_pck,
-                    auto dst_data,
-                    auto src_data) {
-        sort_impl(width,
+    auto small_permute(auto width,
+                       auto batch_size,
+                       auto reverse,
+                       auto dst_pck,
+                       auto src_pck,
+                       auto dst_data,
+                       auto src_data) {
+        perm_impl(width,
                   batch_size,
                   reverse,
                   dst_pck,
@@ -491,7 +492,7 @@ struct br_sorter_shifted {
                   uZ_ce<4>{});
         return inplace_src;
     };
-    auto coherent_sort(auto...) {
+    auto coherent_permute(auto...) {
         return inplace_src;
     }
 
@@ -520,7 +521,7 @@ struct br_sorter_shifted {
 };
 
 template<uZ Width, bool Shifted = false>
-struct br_sorter_sequential {
+struct br_permuter_sequential : public br_permuter_base {
     static constexpr auto width   = uZ_ce<Width>{};
     static constexpr auto shifted = std::bool_constant<Shifted>{};
 
@@ -528,10 +529,10 @@ struct br_sorter_sequential {
     u32        swap_cnt;
     u32        nonswap_cnt;
 
-    auto sequential_sort(auto dst_pck,    //
-                         auto src_pck,
-                         auto dst_data,
-                         auto src_data) {
+    auto sequential_permute(auto dst_pck,    //
+                            auto src_pck,
+                            auto dst_data,
+                            auto src_data) {
         const auto subsize = (swap_cnt * 2 + nonswap_cnt) * width;
         const auto inplace = src_data.empty();
 
@@ -606,7 +607,7 @@ struct br_sorter_sequential {
         }
         return inplace_src;
     }
-    static auto insert_indexes(auto& r, uZ fft_size) -> br_sorter_sequential {
+    static auto insert_indexes(auto& r, uZ fft_size) -> br_permuter_sequential {
         u32 n = fft_size / width / width;
         u32 swap_cnt{};
         for (auto i: stdv::iota(0U, n)) {
@@ -622,7 +623,7 @@ struct br_sorter_sequential {
             if (bri == i)
                 r.push_back(i);
         }
-        return br_sorter_sequential{nullptr, swap_cnt, n - 2 * swap_cnt};
+        return br_permuter_sequential{{}, nullptr, swap_cnt, n - 2 * swap_cnt};
     }
 };
 }    // namespace pcx::detail_
