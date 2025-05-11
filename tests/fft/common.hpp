@@ -35,7 +35,7 @@ inline constexpr auto perm_types =
 
 #else
 inline constexpr auto f32_widths = uZ_seq<4>{};
-inline constexpr auto f64_widths = uZ_seq<8>{};
+inline constexpr auto f64_widths = uZ_seq<2>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
 inline constexpr auto node_sizes = uZ_seq<2>{};
@@ -217,9 +217,10 @@ bool par_test_proto(auto                 node_size,
     if constexpr (perm_type != permute_t::bit_reversed) {
         using permuter_t = decltype(permute);
         if constexpr (perm_type == permute_t::normal) {
-            constexpr auto lane_size = uZ_ce<std::max(64 / sizeof(fX) / 2, uZ(width))>{};
+            constexpr auto coherent_size = 8194 / sizeof(fX);
+            constexpr auto lane_size     = uZ_ce<std::max(64 / sizeof(fX) / 2, uZ(width))>{};
 
-            auto coh_size = 2048 / lane_size;
+            auto coh_size = coherent_size / lane_size;
             permute       = permuter_t::insert_indexes(permute_idxs, fft_size, coh_size);
         } else {
             permute = permuter_t::insert_indexes(permute_idxs, fft_size);

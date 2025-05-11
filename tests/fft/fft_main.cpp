@@ -393,12 +393,12 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 2048 * 2) {
-        if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
-            return -1;
-        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
-            return -1;
-        // if (!test_par(pcx::testing::f64_widths, f64_tid, fft_size, 31, 13.001))
+        // if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
         //     return -1;
+        // if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+        //     return -1;
+        if (!test_par(pcx::testing::f64_widths, f64_tid, fft_size, 31, 13.001))
+            return -1;
         if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
         fft_size *= 2;
