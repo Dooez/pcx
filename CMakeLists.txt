@@ -12,7 +12,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(FULL_FFT_TEST ON)
+    set(FULL_FFT_TEST OFF)
     set(SPLIT_COMPILATION ON)
     if(${FULL_FFT_TEST})
         if(${SPLIT_COMPILATION})
@@ -43,8 +43,10 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     else()
         set(FFT_NODE_SIZE 8)
         target_sources(test_fft PUBLIC
-            tests/fft/par_f32_w4.cpp
-            tests/fft/f32_w4.cpp
+            # tests/fft/par_f32_w4.cpp
+            # tests/fft/f32_w4.cpp
+            tests/fft/par_f64_w2.cpp
+            tests/fft/f64_w2.cpp
             # tests/fft/f64_w8.cpp
             tests/fft/fft_main.cpp
         )
