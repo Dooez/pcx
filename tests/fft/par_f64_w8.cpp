@@ -1,6 +1,6 @@
 #include "common.hpp"
 namespace pcx::testing {
-using fX                  = f32;
+using fX                  = f64;
 static constexpr uZ width = 8;
 template<>
 bool test_par<fX, width>(const std_vec2d<fX>& signal,

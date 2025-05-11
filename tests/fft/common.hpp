@@ -34,12 +34,12 @@ inline constexpr auto perm_types =
     meta::val_seq<permute_t::bit_reversed, permute_t::normal, permute_t::shifted>{};
 
 #else
-inline constexpr auto f32_widths = uZ_seq<16>{};
+inline constexpr auto f32_widths = uZ_seq<4>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
-inline constexpr auto node_sizes = uZ_seq<8>{};
-inline constexpr auto perm_types = meta::val_seq<permute_t::shifted>{};
+inline constexpr auto node_sizes = uZ_seq<2>{};
+inline constexpr auto perm_types = meta::val_seq<permute_t::normal>{};
 #endif
 inline constexpr auto local_tw = meta::val_seq<false>{};
 
@@ -209,21 +209,24 @@ bool par_test_proto(auto                 node_size,
         } else if constexpr (perm_type == permute_t::normal) {
             return detail_::br_permuter<node_size>{};
         } else if constexpr (perm_type == permute_t::shifted) {
-            return detail_::br_permuter_shifted<node_size>{};
+            constexpr auto shifted_node = std::max({uZ(node_size), 4UZ});
+            return detail_::br_permuter_shifted<shifted_node>{};
         }
     }();
-    auto rev_sort = permute;
+    auto rev_permute = permute;
     if constexpr (perm_type != permute_t::bit_reversed) {
         using permuter_t = decltype(permute);
         if constexpr (perm_type == permute_t::normal) {
-            auto coh_size = 2048 / 16;
+            constexpr auto lane_size = uZ_ce<std::max(64 / sizeof(fX) / 2, uZ(width))>{};
+
+            auto coh_size = 2048 / lane_size;
             permute       = permuter_t::insert_indexes(permute_idxs, fft_size, coh_size);
         } else {
             permute = permuter_t::insert_indexes(permute_idxs, fft_size);
         }
-        rev_sort         = permute;
-        permute.idx_ptr  = permute_idxs.data();
-        rev_sort.idx_ptr = &(*permute_idxs.end());
+        rev_permute         = permute;
+        permute.idx_ptr     = permute_idxs.data();
+        rev_permute.idx_ptr = &(*permute_idxs.end());
     }
     constexpr auto perm_fmt = [=] {
         if constexpr (perm_type == permute_t::bit_reversed) {
@@ -303,7 +306,7 @@ bool par_test_proto(auto                 node_size,
                            detail_::inplace_src,
                            fft_size,
                            tw_rev,
-                           rev_sort,
+                           rev_permute,
                            data_size);
         if (!run_check(false))
             return false;
@@ -338,7 +341,7 @@ bool par_test_proto(auto                 node_size,
                            src_info,
                            fft_size,
                            tw_rev,
-                           rev_sort,
+                           rev_permute,
                            data_size);
         if (!run_check(false))
             return false;

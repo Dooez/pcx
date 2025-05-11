@@ -448,6 +448,7 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
     }
 };
 template<uZ NodeSize>
+    requires(NodeSize >= 4)
 struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
     using base_t = br_permuter_nonseq_base<NodeSize>;
     const u32* idx_ptr;

@@ -12,6 +12,78 @@ using f64 = double;
 namespace pcx::simd::detail_ {
 
 template<>
+struct vec_traits<f64, 1> {
+    using impl_vec            = f64;
+    static constexpr uZ width = 1;
+
+    PCX_AINLINE static auto set1(f64 value) -> impl_vec {
+        return value;
+    }
+    PCX_AINLINE static auto zero() -> impl_vec {
+        return 0;
+    }
+    PCX_AINLINE static auto load(const f64* src) -> impl_vec {
+        return *src;
+    }
+    PCX_AINLINE static void store(f64* dest, impl_vec vec) {
+        *dest = vec;
+    }
+    PCX_AINLINE static auto add(impl_vec lhs, impl_vec rhs) -> impl_vec {
+        return lhs + rhs;
+    }
+    PCX_AINLINE static auto sub(impl_vec lhs, impl_vec rhs) -> impl_vec {
+        return lhs - rhs;
+    }
+    PCX_AINLINE static auto mul(impl_vec lhs, impl_vec rhs) -> impl_vec {
+        return lhs * rhs;
+    }
+    PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) -> impl_vec {
+        return lhs / rhs;
+    }
+    PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+        return a * b + c;
+    }
+    PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+        return -a * b + c;
+    }
+    PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+        return a * b - c;
+    }
+    PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+        return -a * b - c;
+    }
+
+    constexpr static struct {
+        static auto operator()(impl_vec v) -> impl_vec {
+            return v;
+        };
+    } upsample{};
+
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    struct split_interleave_t {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            return tupi::make_tuple(a, b);
+        }
+    };
+    template<uZ ChunkSize>
+        requires(ChunkSize <= width)
+    static constexpr auto split_interleave = split_interleave_t<ChunkSize>{};
+
+    template<uZ To, uZ From>
+        requires(To <= width && From <= width)
+    struct repack_t;
+    template<uZ P>
+    struct repack_t<P, P> {
+        PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
+            return tupi::make_tuple(a, b);
+        };
+    };
+    template<uZ To, uZ From>
+        requires(To <= width && From <= width)
+    static constexpr auto repack = repack_t<To, From>{};
+};
+template<>
 struct vec_traits<f64, 2> {
     using impl_vec            = __m128d;
     static constexpr uZ width = 2;

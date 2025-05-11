@@ -12,7 +12,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(FULL_FFT_TEST OFF)
+    set(FULL_FFT_TEST ON)
     set(SPLIT_COMPILATION ON)
     if(${FULL_FFT_TEST})
         if(${SPLIT_COMPILATION})
@@ -23,9 +23,12 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
                 tests/fft/f32_w4.cpp
                 tests/fft/f32_w8.cpp
                 tests/fft/f32_w16.cpp
-                # tests/fft/f64_w2.cpp
-                # tests/fft/f64_w4.cpp
-                # tests/fft/f64_w8.cpp
+                tests/fft/par_f64_w2.cpp
+                tests/fft/par_f64_w4.cpp
+                tests/fft/par_f64_w8.cpp
+                tests/fft/f64_w2.cpp
+                tests/fft/f64_w4.cpp
+                tests/fft/f64_w8.cpp
                 tests/fft/fft_main.cpp
             )
         else()
@@ -35,13 +38,13 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
             target_compile_definitions(test_fft PRIVATE -DNO_SPLIT_COMPILE)
         endif()
         target_compile_definitions(test_fft PUBLIC FULL_FFT_TEST)
-        set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=8)
+        set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=3)
         set_property(TARGET test_fft PROPERTY JOB_POOL_COMPILE build_jobs)
     else()
         set(FFT_NODE_SIZE 8)
         target_sources(test_fft PUBLIC
-            tests/fft/par_f32_w16.cpp
-            tests/fft/f32_w16.cpp
+            tests/fft/par_f32_w4.cpp
+            tests/fft/f32_w4.cpp
             # tests/fft/f64_w8.cpp
             tests/fft/fft_main.cpp
         )
