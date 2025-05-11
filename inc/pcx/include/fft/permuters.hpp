@@ -293,7 +293,7 @@ struct br_permuter_nonseq_base : public br_permuter_base {
 template<uZ NodeSize>
 struct br_permuter : br_permuter_nonseq_base<NodeSize> {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
-    using impl_t                    = br_permuter_nonseq_base<NodeSize>;
+    using base_t                    = br_permuter_nonseq_base<NodeSize>;
 
     const u32* idx_ptr;
     u32        coh_swap_cnt;
@@ -308,7 +308,7 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
                  auto src_pck,
                  auto dst_data,
                  auto src_data) {
-        impl_t::perm_impl(width,
+        base_t::perm_impl(width,
                           batch_size,
                           reverse,
                           dst_pck,
@@ -331,7 +331,7 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
                           auto src_pck,
                           auto dst_data,
                           auto src_data) {
-        impl_t::perm_impl(width,
+        base_t::perm_impl(width,
                           batch_size,
                           reverse,
                           dst_pck,
@@ -351,7 +351,7 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
                        auto src_pck,
                        auto dst_data,
                        auto src_data) {
-        impl_t::perm_impl(width,
+        base_t::perm_impl(width,
                           batch_size,
                           reverse,
                           dst_pck,
@@ -449,6 +449,7 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
 };
 template<uZ NodeSize>
 struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
+    using base_t = br_permuter_nonseq_base<NodeSize>;
     const u32* idx_ptr;
     u32        swap_cnt;
 
@@ -459,17 +460,17 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
                  auto src_pck,
                  auto dst_data,
                  auto src_data) {
-        perm_impl(width,
-                  batch_size,
-                  reverse,
-                  dst_pck,
-                  src_pck,
-                  dst_data,
-                  src_data,
-                  idx_ptr,
-                  swap_cnt,
-                  uZ_ce<0>{},
-                  uZ_ce<4>{});
+        base_t::perm_impl(width,
+                          batch_size,
+                          reverse,
+                          dst_pck,
+                          src_pck,
+                          dst_data,
+                          src_data,
+                          idx_ptr,
+                          swap_cnt,
+                          uZ_ce<0>{},
+                          uZ_ce<4>{});
         return inplace_src;
     };
     auto small_permute(auto width,
@@ -479,17 +480,17 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
                        auto src_pck,
                        auto dst_data,
                        auto src_data) {
-        perm_impl(width,
-                  batch_size,
-                  reverse,
-                  dst_pck,
-                  src_pck,
-                  dst_data,
-                  src_data,
-                  idx_ptr,
-                  swap_cnt,
-                  uZ_ce<0>{},
-                  uZ_ce<4>{});
+        base_t::perm_impl(width,
+                          batch_size,
+                          reverse,
+                          dst_pck,
+                          src_pck,
+                          dst_data,
+                          src_data,
+                          idx_ptr,
+                          swap_cnt,
+                          uZ_ce<0>{},
+                          uZ_ce<4>{});
         return inplace_src;
     };
     auto coherent_permute(auto...) {
@@ -499,17 +500,15 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
     static constexpr auto n_swaps_shifted(uZ fft_size) {
         return fft_size;
     }
-    static void insert_shifted_indexes(auto& r, uZ fft_size) {
+    static auto insert_indexes(auto& r, uZ fft_size) {
         auto rbo = [=](auto i) {
-            uZ br = reverse_bit_order(i, log2i(fft_size));
+            auto br = reverse_bit_order(i, log2i(fft_size));
             return (br + fft_size / 2) % fft_size;
         };
-        for (uZ i: stdv::iota(0U, fft_size)) {
-            auto br1 = rbo(i);
-            auto br2 = rbo(br1);
-            auto br3 = rbo(br2);
-            auto br4 = rbo(br3);
-            assert(br4 != i);
+        for (u32 i: stdv::iota(0U, fft_size)) {
+            u32 br1 = rbo(i);
+            u32 br2 = rbo(br1);
+            u32 br3 = rbo(br2);
             if (i == std::min({i, br1, br2, br3})) {
                 r.push_back(i);
                 r.push_back(br1);
@@ -517,6 +516,7 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
                 r.push_back(br3);
             }
         }
+        return br_permuter_shifted{{}, nullptr, static_cast<u32>(fft_size / 2)};
     }
 };
 

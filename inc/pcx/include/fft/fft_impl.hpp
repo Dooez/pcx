@@ -1670,7 +1670,7 @@ struct transform {
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
                     auto o_src =
-                        auto(permuter).small_permuter(width, batch_size, reverse, src_pck, src_pck, dst, src);
+                        auto(permuter).small_permute(width, batch_size, reverse, src_pck, src_pck, dst, src);
                     using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform(dst_pck,
                                      src_pck,

@@ -148,7 +148,7 @@ bool par_test_proto(auto                 node_size,
                     auto                 width,
                     auto                 lowk,
                     auto                 local_tw,
-                    auto                 sort_type,
+                    auto                 perm_type,
                     const std_vec2d<fX>& signal,
                     std_vec2d<fX>&       s1,
                     const chk_t<fX>&     chk_fwd,
@@ -195,30 +195,45 @@ bool par_test_proto(auto                 node_size,
     constexpr auto pck_dst = cxpack<1, fX>{};
     constexpr auto pck_src = cxpack<1, fX>{};
 
+
     auto l_chk_fwd = std::vector<std::complex<fX>>{};
     auto l_chk_rev = std::vector<std::complex<fX>>{};
-    auto chk_fwd_  = chk_fwd(sort_type);
-    auto chk_rev_  = chk_rev(sort_type);
+    auto chk_fwd_  = chk_fwd(perm_type);
+    auto chk_rev_  = chk_rev(perm_type);
 
     auto permute_idxs = std::vector<u32>{};
-    auto coh_size     = 2048 / 16;
 
     auto permute = [=] {
-        if constexpr (sort_type == permute_t::bit_reversed) {
+        if constexpr (perm_type == permute_t::bit_reversed) {
             return detail_::identity_permuter_t{};
-        } else if constexpr (sort_type == permute_t::normal) {
+        } else if constexpr (perm_type == permute_t::normal) {
             return detail_::br_permuter<node_size>{};
-        } else if constexpr (sort_type == permute_t::shifted) {
+        } else if constexpr (perm_type == permute_t::shifted) {
             return detail_::br_permuter_shifted<node_size>{};
         }
     }();
     auto rev_sort = permute;
-    if constexpr (sort_type != permute_t::bit_reversed) {
+    if constexpr (perm_type != permute_t::bit_reversed) {
         using permuter_t = decltype(permute);
-        permute          = permuter_t::insert_indexes(permute_idxs, fft_size, coh_size);
+        if constexpr (perm_type == permute_t::normal) {
+            auto coh_size = 2048 / 16;
+            permute       = permuter_t::insert_indexes(permute_idxs, fft_size, coh_size);
+        } else {
+            permute = permuter_t::insert_indexes(permute_idxs, fft_size);
+        }
+        rev_sort         = permute;
         permute.idx_ptr  = permute_idxs.data();
         rev_sort.idx_ptr = &(*permute_idxs.end());
     }
+    constexpr auto perm_fmt = [=] {
+        if constexpr (perm_type == permute_t::bit_reversed) {
+            return "[BitRev]";
+        } else if constexpr (perm_type == permute_t::normal) {
+            return "[Normal]";
+        } else if constexpr (perm_type == permute_t::shifted) {
+            return "[Shiftd]";
+        }
+    }();
     if (local_check) {
         l_chk_fwd = chk_fwd_;
         l_chk_rev = chk_rev_;
@@ -256,6 +271,7 @@ bool par_test_proto(auto                 node_size,
 
     if (inplace && fwd) {
         std::print("[Inplace fwd    ]");
+        std::print(perm_fmt);
         fimpl::perform(pck_dst,
                        pck_src,
                        half_tw,
@@ -278,6 +294,7 @@ bool par_test_proto(auto                 node_size,
     if (inplace && rev) {
         s1 = signal;
         std::print("[Inplace rev    ]");
+        std::print(perm_fmt);
         fimpl::perform_rev(pck_dst,
                            pck_src,
                            half_tw,
@@ -299,6 +316,7 @@ bool par_test_proto(auto                 node_size,
     }
     if (external && fwd) {
         std::print("[Externl fwd    ]");
+        std::print(perm_fmt);
         fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, permute, data_size);
         if (!run_check(true))
             return false;
@@ -311,6 +329,7 @@ bool par_test_proto(auto                 node_size,
     }
     if (external && rev) {
         std::print("[Externl rev    ]");
+        std::print(perm_fmt);
         fimpl::perform_rev(pck_dst,
                            pck_src,
                            half_tw,
@@ -335,7 +354,7 @@ bool par_test_proto(auto                 node_size,
 }
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
-bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
+bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
                     const std::vector<std::complex<fX>>& signal,
                     const chk_t<fX>&                     chk_fwd,
                     const chk_t<fX>&                     chk_rev,
@@ -352,8 +371,8 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
     auto fft_size = signal.size();
     s1            = signal;
 
-    auto& chk_fwd_ = chk_fwd(sort_type);
-    auto& chk_rev_ = chk_rev(sort_type);
+    auto& chk_fwd_ = chk_fwd(perm_type);
+    auto& chk_rev_ = chk_rev(perm_type);
 
     using fimpl = pcx::detail_::transform<NodeSize, fX, Width>;
 
@@ -387,20 +406,28 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
 
     auto permuter = [=] {
         using enum permute_t;
-        if constexpr (sort_type == bit_reversed) {
+        if constexpr (perm_type == bit_reversed) {
             return detail_::identity_permuter;
-        } else if constexpr (sort_type == normal) {
+        } else if constexpr (perm_type == normal) {
             return detail_::br_permuter_sequential<Width, false>{};
-        } else if constexpr (sort_type == shifted) {
+        } else if constexpr (perm_type == shifted) {
             return detail_::br_permuter_sequential<Width, true>{};
         }
     }();
-    if constexpr (sort_type != permute_t::bit_reversed) {
+    if constexpr (perm_type != permute_t::bit_reversed) {
         using permuter_t = decltype(permuter);
         permuter         = permuter_t::insert_indexes(perm_idxs, fft_size);
         permuter.idx_ptr = perm_idxs.data();
     }
-
+    constexpr auto perm_fmt = [=] {
+        if constexpr (perm_type == permute_t::bit_reversed) {
+            return "[BitRev]";
+        } else if constexpr (perm_type == permute_t::normal) {
+            return "[Normal]";
+        } else if constexpr (perm_type == permute_t::shifted) {
+            return "[Shiftd]";
+        }
+    }();
     if (local_check) {
         l_chk_fwd = signal;
         l_chk_rev = signal;
@@ -427,6 +454,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
 
     if (inplace && fwd) {
         std::print("[inplace fwd    ]");
+        std::print(perm_fmt);
         s1 = signal;
         fimpl::perform(pck_dst,
                        pck_src,
@@ -442,6 +470,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
     }
     if (inplace && rev) {
         std::print("[inplace rev    ]");
+        std::print(perm_fmt);
         s1 = signal;
         fimpl::perform_rev(pck_dst,
                            pck_src,
@@ -459,6 +488,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
 
     if (ext && fwd) {
         std::print("[externl fwd    ]");
+        std::print(perm_fmt);
         // s1 = signal;
         stdr::fill(s1, -69.);
         fimpl::perform(pck_dst,
@@ -476,6 +506,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
     }
     if (ext && rev) {
         std::print("[externl rev    ]");
+        std::print(perm_fmt);
         // s1 = signal;
         stdr::fill(s1, -69.);
         fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw_rev, permuter);
@@ -521,6 +552,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
     }();
     if (fwd) {
         std::print("[inplace fwd coh]");
+        std::print(perm_fmt);
         s1            = signal;
         auto tw_coh_c = tw_coh_fwd;
         fimpl_coh::perform(pck_dst,
@@ -540,6 +572,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          sort_type,
     }
     if (rev) {
         std::print("[inplace rev coh]");
+        std::print(perm_fmt);
         s1            = signal;
         auto tw_coh_c = tw_coh_rev;
         auto(permuter).sequential_permute(pck_src, pck_src, s1_info, detail_::inplace_src);
@@ -572,16 +605,16 @@ bool par_run_tests(uZ_seq<NodeSize...>,
                    meta::val_seq<LowK...>,
                    meta::val_seq<LocalTw...>,
                    meta::val_seq<Perm...>,
-                   const std_vec2d<fX>&                 signal,
-                   std_vec2d<fX>&                       s1,
-                   const std::vector<std::complex<fX>>& chk_fwd,
-                   const std::vector<std::complex<fX>>& chk_rev,
-                   std::vector<fX>&                     twvec,
-                   bool                                 local_check,
-                   bool                                 fwd,
-                   bool                                 rev,
-                   bool                                 inplace,
-                   bool                                 external) {
+                   const std_vec2d<fX>& signal,
+                   std_vec2d<fX>&       s1,
+                   const chk_t<fX>&     chk_fwd,
+                   const chk_t<fX>&     chk_rev,
+                   std::vector<fX>&     twvec,
+                   bool                 local_check,
+                   bool                 fwd,
+                   bool                 rev,
+                   bool                 inplace,
+                   bool                 external) {
     auto lk_passed = [&](auto lowk) {
         auto ltw_passed = [&](auto local_tw) {
             auto perm_passed = [&](auto perm_type) {
