@@ -268,8 +268,8 @@ struct tw_data_t<T, true> {
         return {};
     };
 
-    uZ start_fft_size;
-    uZ start_k;
+    uZ start_fft_size = 1;
+    uZ start_k = 0;
 };
 
 template<typename T, floating_point fX>

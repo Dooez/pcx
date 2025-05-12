@@ -57,6 +57,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_executable(sort tests/fft/sort.cpp)
     add_executable(test_simd tests/test_simd.cpp)
     add_executable(test_tuples tests/test_tuples.cpp)
+    add_executable(test_fft_fin tests/fft/fft_if.cpp)
 
     target_link_libraries(asm_explorer PUBLIC pcx)
     set_target_properties(asm_explorer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
@@ -69,6 +70,10 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     target_link_libraries(test_fft PUBLIC pcx)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(test_fft PRIVATE -march=native -ftemplate-backtrace-limit=0)
+
+    target_link_libraries(test_fft_fin PUBLIC pcx)
+    set_target_properties(test_fft_fin PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
+    target_compile_options(test_fft_fin PRIVATE -march=native -ftemplate-backtrace-limit=0)
 
     target_link_libraries(test_simd PUBLIC pcx)
     set_target_properties(test_simd PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
