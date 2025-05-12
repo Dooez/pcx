@@ -36,13 +36,14 @@ class fft_plan {
 
 public:
     fft_plan(uZ fft_size)
-    : fft_size_(fft_size_) {
+    : fft_size_(fft_size) {
         if (fft_size > coherent_size) {
             constexpr auto width = simd::max_width<T>;
 
             using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, 0>;
             impl_t::insert_tw(tw_, fft_size, lowk, half_tw, sequential);
-            ileave_impl_ptr_ = &fft_plan::tform_inplace<width, 1, 1>;
+            // ileave_impl_ptr_ = &fft_plan::tform_inplace<width, 1, 1>;
+            ileave_impl_ptr_ = &fft_plan::tform_inplace_ileave<width>;
             return;
         }
         constexpr auto max_single_load = Opts.node_size * simd::max_width<T>;
@@ -52,13 +53,14 @@ public:
 
             auto align_node  = impl_t::get_align_node(fft_size);
             auto check_align = [&](auto p) {
-                constexpr auto l_node_size = detail_::powi(2, p);
-                if (l_node_size != align_node)
+                constexpr auto align_node_size = detail_::powi(2, p);
+                if (align_node_size != align_node)
                     return false;
-                constexpr auto align   = align_param<l_node_size>{};
+                constexpr auto align   = align_param<align_node_size>{};
                 auto           tw_data = detail_::tw_data_t<T, true>{};
                 impl_t::insert_tw(tw_, align, lowk, fft_size, tw_data, half_tw);
-                ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, l_node_size>;
+                // ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, l_node_size>;
+                ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace_ileave<width, align_node_size>;
                 return true;
             };
             [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -81,7 +83,8 @@ public:
                         constexpr auto align   = align_param<align_node_size>{};
                         auto           tw_data = detail_::tw_data_t<T, true>{};
                         impl_t::insert_tw(tw_, align, lowk, fft_size, tw_data, half_tw);
-                        ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, align_node_size>;
+                        // ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, align_node_size>;
+                        ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace_ileave<width, align_node_size>;
                         return true;
                     };
                     [&]<uZ... Ks>(uZ_seq<Ks...>) {
@@ -92,7 +95,8 @@ public:
                 if (fft_size == single_load) {
                     auto tw_data = detail_::tw_data_t<T, true>{};
                     impl_t::insert_single_load_tw(tw_, tw_data, lowk, half_tw);
-                    ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace<width, l_node_size, 1, 1>;
+                    // ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace<width, l_node_size, 1, 1>;
+                    ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace_ileave<width, l_node_size>;
                     return true;
                 }
                 return false;
@@ -100,6 +104,14 @@ public:
             (void)(check_small_tf(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<detail_::log2i(Opts.node_size) - 1>{});
     };
+
+    void fft(std::vector<std::complex<T>>& data) {
+        if (data.size() != fft_size_)
+            throw std::runtime_error("Data size not equal to fft size");
+
+        auto raw_ptr = reinterpret_cast<T*>(data.data());
+        (this->*ileave_impl_ptr_)(raw_ptr);
+    }
 
 private:
     using member_impl_t  = auto (fft_plan::*)(T*) -> void;
@@ -110,8 +122,11 @@ private:
     [[no_unique_address]] permute_idxs_t idxs_{};
     member_impl_t                        ileave_impl_ptr_;
 
+    template<uZ Width>
     void tform_inplace_ileave(T* dst);
+    template<uZ Width, uZ Align>
     void coherent_tform_inplace_ileave(T* dst);
+    template<uZ Width, uZ NodeSize>
     void single_load_tform_inplace_ileave(T* dst);
 
     template<uZ Width, uZ DstPck, uZ SrcPck>
