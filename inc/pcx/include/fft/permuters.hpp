@@ -166,6 +166,9 @@ inline constexpr struct identity_permuter_t : br_permuter_base {
     static constexpr auto empty() -> std::true_type {
         return {};
     }
+    static constexpr auto insert_indexes(auto&&...) -> identity_permuter_t {
+        return {};
+    }
 } identity_permuter;
 
 
