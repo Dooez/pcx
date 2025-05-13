@@ -133,6 +133,9 @@ struct vec_traits<f32, 2> {
     }
 
     constexpr static struct {
+        PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const {
+            return set1(vec);
+        }
         static auto operator()(impl_vec v) -> impl_vec {
             return v;
         };
@@ -228,6 +231,9 @@ struct vec_traits<f32, 4> {
     }
 
     static constexpr struct {
+        PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const {
+            return set1(vec);
+        }
         PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec vec) const {
             auto a = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(vec.data())));
             return _mm_unpacklo_ps(a, a);
@@ -381,7 +387,11 @@ struct vec_traits<f32, 8> {
 
     static constexpr struct up_stage0_t {
         static inline const auto idx4 = _mm256_setr_epi32(0, 0, 1, 1, 2, 2, 3, 3);
-        PCX_AINLINE auto         operator()(vec_traits<f32, 2>::impl_vec vec) const {
+
+        PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const {
+            return set1(vec);
+        }
+        PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec vec) const {
             auto a = _mm256_set1_ps(vec[0]);
             auto b = _mm_set1_ps(vec[1]);
             return tupi::make_tuple(a, b, uZ_ce<2>{});
@@ -616,6 +626,9 @@ struct vec_traits<f32, 16> {
         inline static const auto idx4 = _mm512_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3);
         inline static const auto idx8 = _mm512_setr_epi32(0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7);
 
+        PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const {
+            return set1(vec);
+        }
         PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec v) const -> impl_vec {
             auto v128 = _mm_castpd_ps(_mm_load_sd(reinterpret_cast<f64*>(v.data())));
             auto vs   = _mm512_zextps128_ps512(v128);

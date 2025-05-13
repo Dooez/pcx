@@ -819,13 +819,8 @@ struct sequential_subtransform {
                             return std::array{wnk_br<T>(fft_size, k + Is)...};
                         }
                     }(make_uZ_seq<adj_tw_count>{});
-
-                    if constexpr (adj_tw_count < 2) {
-                        return simd::cxbroadcast<1, 2>(tw.data());
-                    } else {
-                        auto twv = simd::cxload<1, adj_tw_count>(tw.data());
-                        return simd::repack<adj_tw_count>(twv);
-                    }
+                    auto twv = simd::cxload<1, adj_tw_count>(tw.data());
+                    return simd::repack<adj_tw_count>(twv);
                 };
             } else {
                 constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
@@ -837,11 +832,7 @@ struct sequential_subtransform {
 
                 return [=]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
                     constexpr uZ offset = (half_tw ? KGroup / 2 : KGroup) * adj_tw_count * 2;
-                    if constexpr (adj_tw_count < 2) {
-                        return simd::cxbroadcast<1, 2>(l_tw_ptr + offset);
-                    } else {
-                        return simd::cxload<adj_tw_count, adj_tw_count>(l_tw_ptr + offset);
-                    }
+                    return simd::cxload<adj_tw_count, adj_tw_count>(l_tw_ptr + offset);
                 };
             }
         };
@@ -871,7 +862,6 @@ struct sequential_subtransform {
             return tupi::make_tuple(simd::cxload<src_pck, width>(src_ptr + width * 2 * Is)...);
         }(make_uZ_seq<node_size>{});
         auto data = tupi::group_invoke(simd::repack<width>, data0);
-
         if constexpr (!reverse) {
             auto btfly_res_0 = btfly_node::forward(data, get_tw(), conj_tw);
 
@@ -883,17 +873,21 @@ struct sequential_subtransform {
 
             auto [lo, hi] = [=]<uZ NGroups = 2> PCX_LAINLINE    //
                 (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
-                    auto x = regroup_btfly<NGroups>(data_lo,
-                                                    data_hi,
-                                                    regroup_tw_fact(uZ_ce<NGroups>{}),
-                                                    half_tw,
-                                                    reverse,
-                                                    conj_tw);
-                    if constexpr (NGroups == width) {
-                        return x;
+                    if constexpr (width == 1) {
+                        return tupi::make_tuple(data_lo, data_hi);
                     } else {
-                        auto [lo, hi] = x;
-                        return f(lo, hi, uZ_ce<NGroups * 2>{});
+                        auto x = regroup_btfly<NGroups>(data_lo,
+                                                        data_hi,
+                                                        regroup_tw_fact(uZ_ce<NGroups>{}),
+                                                        half_tw,
+                                                        reverse,
+                                                        conj_tw);
+                        if constexpr (NGroups == width) {
+                            return x;
+                        } else {
+                            auto [lo, hi] = x;
+                            return f(lo, hi, uZ_ce<NGroups * 2>{});
+                        }
                     }
                 }(data_lo, data_hi);
             if constexpr (half_tw && node_size > 2) {
@@ -929,17 +923,21 @@ struct sequential_subtransform {
             }
             auto [lo_1, hi_1] = [=]<uZ NGroups = width> PCX_LAINLINE    //
                 (this auto f, auto data_lo, auto data_hi, uZ_ce<NGroups> = {}) {
-                    auto x = regroup_btfly<NGroups>(data_lo,
-                                                    data_hi,
-                                                    regroup_tw_fact(uZ_ce<NGroups>{}),
-                                                    half_tw,
-                                                    reverse,
-                                                    conj_tw);
-                    if constexpr (NGroups == 2) {
-                        return x;
+                    if constexpr (width == 1) {
+                        return tupi::make_tuple(data_lo, data_hi);
                     } else {
-                        auto [lo, hi] = x;
-                        return f(lo, hi, uZ_ce<NGroups / 2>{});
+                        auto x = regroup_btfly<NGroups>(data_lo,
+                                                        data_hi,
+                                                        regroup_tw_fact(uZ_ce<NGroups>{}),
+                                                        half_tw,
+                                                        reverse,
+                                                        conj_tw);
+                        if constexpr (NGroups == 2) {
+                            return x;
+                        } else {
+                            auto [lo, hi] = x;
+                            return f(lo, hi, uZ_ce<NGroups / 2>{});
+                        }
                     }
                 }(lo, hi);
 

@@ -39,6 +39,10 @@ class fft_plan {
 public:
     fft_plan(uZ fft_size)
     : fft_size_(fft_size) {
+        if (fft_size == 1) {
+            ileave_impl_ptr_ = &fft_plan::identity_tform;
+            return;
+        }
         if (fft_size > coherent_size) {
             using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, 0>;
             impl_t::insert_tw(tw_, fft_size, lowk, half_tw, sequential);
@@ -94,13 +98,13 @@ public:
                 return false;
             };
             return (check_narrow_tf(uZ_ce<Is>{}) || ...);
-        }(make_uZ_seq<detail_::log2i(width) - 1>{});
+        }(make_uZ_seq<detail_::log2i(width)>{});
         if (narrow)
             return;
         [&]<uZ... Is>(uZ_seq<Is...>) {
             auto check_small = [&](auto p) {
                 constexpr auto l_node_size = Opts.node_size / detail_::powi(2, p + 1);
-                constexpr auto l_width     = 2;
+                constexpr auto l_width     = 1;
 
                 uZ lns = l_node_size;
                 uZ w   = l_width;
@@ -116,7 +120,7 @@ public:
                 return false;
             };
             (void)(check_small(uZ_ce<Is>{}) || ...);
-        }(make_uZ_seq<detail_::log2i(Opts.node_size) - 2>{});
+        }(make_uZ_seq<detail_::log2i(Opts.node_size) - 1>{});
     };
 
     void fft(std::vector<std::complex<T>>& data) {
@@ -136,6 +140,7 @@ private:
     [[no_unique_address]] permute_idxs_t idxs_{};
     member_impl_t                        ileave_impl_ptr_;
 
+    void identity_tform(T* dst) {};
     template<uZ Width>
     void tform_inplace_ileave(T* dst);
     template<uZ Width, uZ Align>
