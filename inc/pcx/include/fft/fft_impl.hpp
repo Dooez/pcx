@@ -269,7 +269,7 @@ struct tw_data_t<T, true> {
     };
 
     uZ start_fft_size = 1;
-    uZ start_k = 0;
+    uZ start_k        = 0;
 };
 
 template<typename T, floating_point fX>
@@ -1004,7 +1004,7 @@ struct sequential_subtransform {
 
         [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, uZ_ce<NGroups> = {}) {
-                if constexpr (NGroups == Width) {
+                if constexpr (NGroups >= Width) {
                     insert_regroup_tw(regroup_tw_fact(uZ_ce<NGroups>{}), half_tw);
                 } else {
                     insert_regroup_tw(regroup_tw_fact(uZ_ce<NGroups>{}), half_tw);

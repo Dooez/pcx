@@ -31,12 +31,16 @@ template void fft_plan<f32>::coherent_tform_inplace_ileave<8, 4>(f32*);
 template void fft_plan<f32>::coherent_tform_inplace_ileave<8, 8>(f32*);
 
 template void fft_plan<f32>::single_load_tform_inplace_ileave<16, 8>(f32*);
-template void fft_plan<f32>::single_load_tform_inplace_ileave<16, 4>(f32*);
-template void fft_plan<f32>::single_load_tform_inplace_ileave<16, 2>(f32*);
 template void fft_plan<f32>::single_load_tform_inplace_ileave<8, 8>(f32*);
-template void fft_plan<f32>::single_load_tform_inplace_ileave<8, 4>(f32*);
-template void fft_plan<f32>::single_load_tform_inplace_ileave<8, 2>(f32*);
+template void fft_plan<f32>::single_load_tform_inplace_ileave<4, 8>(f32*);
+template void fft_plan<f32>::single_load_tform_inplace_ileave<2, 8>(f32*);
+// template void fft_plan<f32>::single_load_tform_inplace_ileave<1, 8>(f32*);
+
 template void fft_plan<f32>::single_load_tform_inplace_ileave<4, 4>(f32*);
 template void fft_plan<f32>::single_load_tform_inplace_ileave<4, 2>(f32*);
+template void fft_plan<f32>::single_load_tform_inplace_ileave<2, 4>(f32*);
+// template void fft_plan<f32>::single_load_tform_inplace_ileave<1, 4>(f32*);
+
 template void fft_plan<f32>::single_load_tform_inplace_ileave<2, 2>(f32*);
+// template void fft_plan<f32>::single_load_tform_inplace_ileave<1, 2>(f32*);
 }    // namespace pcx

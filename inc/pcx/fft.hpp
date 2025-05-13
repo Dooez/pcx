@@ -17,6 +17,7 @@ struct fft_options {
     uZ coherent_size = 0;
     uZ lane_size     = 0;
     uZ node_size     = 8;
+    uZ simd_width    = 0;
 };
 
 /**
@@ -30,6 +31,7 @@ class fft_plan {
     static constexpr auto sequential   = std::true_type{};
     static constexpr auto coherent_size =
         uZ_ce<Opts.coherent_size != 0 ? Opts.coherent_size : 8192 / sizeof(T)>{};
+    static constexpr auto width = uZ_ce<Opts.simd_width != 0 ? Opts.simd_width : simd::max_width<T>>{};
 
     template<uZ AlignNode>
     using align_param = detail_::align_param<AlignNode, true>;
@@ -38,18 +40,15 @@ public:
     fft_plan(uZ fft_size)
     : fft_size_(fft_size) {
         if (fft_size > coherent_size) {
-            constexpr auto width = simd::max_width<T>;
-
             using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, 0>;
             impl_t::insert_tw(tw_, fft_size, lowk, half_tw, sequential);
             // ileave_impl_ptr_ = &fft_plan::tform_inplace<width, 1, 1>;
             ileave_impl_ptr_ = &fft_plan::tform_inplace_ileave<width>;
             return;
         }
-        constexpr auto max_single_load = Opts.node_size * simd::max_width<T>;
+        constexpr auto max_single_load = Opts.node_size * width;
         if (fft_size > max_single_load) {
-            constexpr auto width = simd::max_width<T>;
-            using impl_t         = detail_::sequential_subtransform<Opts.node_size, T, width>;
+            using impl_t = detail_::sequential_subtransform<Opts.node_size, T, width>;
 
             auto align_node  = impl_t::get_align_node(fft_size);
             auto check_align = [&](auto p) {
@@ -59,7 +58,7 @@ public:
                 constexpr auto align   = align_param<align_node_size>{};
                 auto           tw_data = detail_::tw_data_t<T, true>{};
                 impl_t::insert_tw(tw_, align, lowk, fft_size, tw_data, half_tw);
-                // ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, l_node_size>;
+                // ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, align_node_size>;
                 ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace_ileave<width, align_node_size>;
                 return true;
             };
@@ -68,41 +67,56 @@ public:
             }(make_uZ_seq<detail_::log2i(Opts.node_size)>{});
             return;
         }
-        [&]<uZ... Is>(uZ_seq<Is...>) {
-            auto check_small_tf = [&](auto p) {
-                constexpr auto l_node_size = Opts.node_size / detail_::powi(2, p);
-                constexpr auto width       = simd::max_width<T> / detail_::powi(2, p);
-                constexpr auto single_load = uZ_ce<l_node_size * width>{};
-                using impl_t               = detail_::sequential_subtransform<Opts.node_size, T, width>;
-                if (fft_size > single_load) {
-                    auto align_node  = impl_t::get_align_node(fft_size);
-                    auto check_align = [&](auto p) {
-                        constexpr auto align_node_size = detail_::powi(2, p);
-                        if (align_node_size != align_node)
-                            return false;
-                        constexpr auto align   = align_param<align_node_size>{};
-                        auto           tw_data = detail_::tw_data_t<T, true>{};
-                        impl_t::insert_tw(tw_, align, lowk, fft_size, tw_data, half_tw);
-                        // ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, align_node_size>;
-                        ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace_ileave<width, align_node_size>;
-                        return true;
-                    };
-                    [&]<uZ... Ks>(uZ_seq<Ks...>) {
-                        (void)(check_align(uZ_ce<Ks>{}) || ...);
-                    }(make_uZ_seq<detail_::log2i(l_node_size)>{});
-                    return true;
-                }
+        if (fft_size == max_single_load) {
+            using impl_t = detail_::sequential_subtransform<Opts.node_size, T, width>;
+            auto tw_data = detail_::tw_data_t<T, true>{};
+            impl_t::insert_single_load_tw(tw_, tw_data, lowk, half_tw);
+            // ileave_impl_ptr_ = &fft_plan::coherent_tform_inplace<width, 1, 1, align_node_size>;
+            ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace_ileave<width, Opts.node_size>;
+            return;
+        };
+        auto narrow = [&]<uZ... Is>(uZ_seq<Is...>) {
+            auto check_narrow_tf = [&](auto p) {
+                constexpr auto l_node_size = Opts.node_size;
+                constexpr auto l_width     = width / detail_::powi(2, p + 1);
+                constexpr auto single_load = uZ_ce<l_node_size * l_width>{};
+
+                uZ lns       = l_node_size;
+                uZ w         = l_width;
+                using impl_t = detail_::sequential_subtransform<l_node_size, T, l_width>;
                 if (fft_size == single_load) {
                     auto tw_data = detail_::tw_data_t<T, true>{};
                     impl_t::insert_single_load_tw(tw_, tw_data, lowk, half_tw);
                     // ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace<width, l_node_size, 1, 1>;
-                    ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace_ileave<width, l_node_size>;
+                    ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
                     return true;
                 }
                 return false;
             };
-            (void)(check_small_tf(uZ_ce<Is>{}) || ...);
-        }(make_uZ_seq<detail_::log2i(Opts.node_size) - 1>{});
+            return (check_narrow_tf(uZ_ce<Is>{}) || ...);
+        }(make_uZ_seq<detail_::log2i(width) - 1>{});
+        if (narrow)
+            return;
+        [&]<uZ... Is>(uZ_seq<Is...>) {
+            auto check_small = [&](auto p) {
+                constexpr auto l_node_size = Opts.node_size / detail_::powi(2, p + 1);
+                constexpr auto l_width     = 2;
+
+                uZ lns = l_node_size;
+                uZ w   = l_width;
+
+                if (fft_size == l_node_size) {
+                    using impl_t = detail_::sequential_subtransform<l_node_size, T, l_width>;
+                    auto tw_data = detail_::tw_data_t<T, true>{};
+                    impl_t::insert_single_load_tw(tw_, tw_data, lowk, half_tw);
+                    // ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace<width, l_node_size, 1, 1>;
+                    ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
+                    return true;
+                }
+                return false;
+            };
+            (void)(check_small(uZ_ce<Is>{}) || ...);
+        }(make_uZ_seq<detail_::log2i(Opts.node_size) - 2>{});
     };
 
     void fft(std::vector<std::complex<T>>& data) {
