@@ -83,7 +83,9 @@ struct br_permute_t {
                                                                     auto          l_data,
                                                                     uZ_ce<Stride> stride,
                                                                     uZ_ce<Chunk>  chunk = {}) {
-            if constexpr (chunk == pack) {
+            if constexpr (width == 1) {
+                return l_data;
+            } else if constexpr (chunk == pack) {
                 return f(l_data, stride, uZ_ce<chunk * 2>{});
             } else if constexpr (stride == 2) {
                 return pass(stride, chunk, l_data);

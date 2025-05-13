@@ -125,7 +125,7 @@ public:
                     using impl_t = detail_::sequential_subtransform<l_node_size, T, l_width>;
                     impl_t::insert_single_load_tw(tw_, tw_data, lowk, half_tw);
                     auto check_perm = [&](auto p_width) {
-                        constexpr auto perm_width = width / detail_::powi(2, p_width);
+                        constexpr auto perm_width = l_width / detail_::powi(2, p_width);
                         if (fft_size < perm_width * perm_width)
                             return false;
                         using perm_t = permuter_t<perm_width>;
@@ -134,9 +134,10 @@ public:
                             &fft_plan::single_load_tform_inplace_ileave<l_width, perm_width, l_node_size>;
                         return true;
                     };
+                    constexpr uZ min_perm = detail_::powi(2, detail_::log2i(l_width * l_node_size) / 2);
                     [&]<uZ... Ks>(uZ_seq<Ks...>) {
                         (void)(check_perm(uZ_ce<Ks>{}) || ...);
-                    }(make_uZ_seq<detail_::log2i(l_width)>{});
+                    }(make_uZ_seq<detail_::log2i(l_width / min_perm)>{});
                     return true;
                 }
                 return false;
@@ -153,8 +154,10 @@ public:
                 if (fft_size == l_node_size) {
                     using impl_t = detail_::sequential_subtransform<l_node_size, T, l_width>;
                     impl_t::insert_single_load_tw(tw_, tw_data, lowk, half_tw);
-                    // ileave_impl_ptr_ = &fft_plan::single_load_tform_inplace<width, l_node_size, 1, 1>;
-                    ileave_inplace_ptr_ = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
+                    using perm_t = permuter_t<l_width>;
+                    permuter_    = perm_t::insert_indexes(idxs_, fft_size);
+                    ileave_inplace_ptr_ =
+                        &fft_plan::single_load_tform_inplace_ileave<l_width, l_width, l_node_size>;
                     return true;
                 }
                 return false;
@@ -212,9 +215,9 @@ private:
     void identity_tform(T* dst) {};
     template<uZ Width>
     void tform_inplace_ileave(T* dst);
-    template<uZ Width, uZ Align>
+    template<uZ Width, uZ PermWidth, uZ Align>
     void coherent_tform_inplace_ileave(T* dst);
-    template<uZ Width, uZ NodeSize>
+    template<uZ Width, uZ PermWidth, uZ NodeSize>
     void single_load_tform_inplace_ileave(T* dst);
 
     template<uZ Width, uZ DstPck, uZ SrcPck>
