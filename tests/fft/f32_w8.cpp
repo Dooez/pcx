@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "impl-test.hpp"
 namespace pcx::testing {
 using fX                  = f32;
 static constexpr uZ width = 8;

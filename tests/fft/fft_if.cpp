@@ -25,7 +25,7 @@ namespace stdv = std::views;
 namespace stdr = std::ranges;
 
 int main() {
-    size_t fft_size = 256;
+    size_t fft_size = 2;
 
     auto fft = pcx::fft_plan<float>(fft_size);
     auto dat = std::vector<std::complex<float>>(fft_size);

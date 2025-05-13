@@ -31,10 +31,12 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
                 tests/fft/f64_w4.cpp
                 tests/fft/f64_w8.cpp
                 tests/fft/fft_main.cpp
+                tests/fft/common.cpp
             )
         else()
             target_sources(test_fft PUBLIC
                 tests/fft/fft_main.cpp
+                tests/fft/common.cpp
             )
             target_compile_definitions(test_fft PRIVATE -DNO_SPLIT_COMPILE)
         endif()
@@ -44,11 +46,12 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     else()
         set(FFT_NODE_SIZE 8)
         target_sources(test_fft PUBLIC
-            # tests/fft/par_f32_w4.cpp
-            # tests/fft/f32_w4.cpp
-            tests/fft/par_f64_w2.cpp
-            tests/fft/f64_w2.cpp
+            tests/fft/par_f32_w16.cpp
+            tests/fft/f32_w16.cpp
+            tests/fft/par_f64_w8.cpp
+            tests/fft/f64_w8.cpp
             # tests/fft/f64_w8.cpp
+            tests/fft/common.cpp
             tests/fft/fft_main.cpp
         )
         target_compile_definitions(test_fft PRIVATE -DFFT_NODE_SIZE=${FFT_NODE_SIZE})
@@ -58,7 +61,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_executable(sort tests/fft/sort.cpp)
     add_executable(test_simd tests/test_simd.cpp)
     add_executable(test_tuples tests/test_tuples.cpp)
-    add_executable(test_fft_fin tests/fft/fft_if.cpp )
+    add_executable(test_fft_fin tests/fft/fft_if.cpp tests/fft/common.cpp)
+    add_executable(test_w1 tests/fft/fft_w1.cpp tests/fft/common.cpp)
     # set_source_files_properties(src/fft.cpp PROPERTIES COMPILE_FLAGS -O3)
 
     target_link_libraries(asm_explorer PUBLIC pcx)
@@ -72,6 +76,10 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     target_link_libraries(test_fft PUBLIC pcx)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(test_fft PRIVATE -march=native -ftemplate-backtrace-limit=0)
+
+    target_link_libraries(test_w1 PUBLIC pcx)
+    set_target_properties(test_w1 PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
+    target_compile_options(test_w1 PRIVATE -march=native -ftemplate-backtrace-limit=0)
 
     target_link_libraries(test_fft_fin PUBLIC pcx)
     set_target_properties(test_fft_fin PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)

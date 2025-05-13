@@ -92,4 +92,6 @@ AlignConsecutiveAssignments:
   AcrossEmptyLines: false
 BreakAfterAttributes: Leave
 IndentRequiresClause: true
-AttributeMacros: [PCX_LAINLINE]
+# AttributeMacros: [PCX_LAINLINE]
+# Macros:
+#   - PCX_LAINLINE=[[clang::always_inline]]
