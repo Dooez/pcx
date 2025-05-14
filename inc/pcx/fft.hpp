@@ -147,18 +147,6 @@ public:
             };
             (void)(check_small(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<detail_::log2i(Opts.node_size) - 1>{});
-
-        [&]<uZ... Ps>(uZ_seq<Ps...>) {
-            auto check_w = [&](auto p) {
-                constexpr auto l_width = width / detail_::powi(2, p + 1);
-                if (fft_size < l_width * l_width)
-                    return false;
-                using perm_t = permuter_t<l_width>;
-                permuter_    = perm_t::insert_indexes(idxs_, fft_size);
-                return true;
-            };
-            (void)(check_w(uZ_ce<Ps>{}) || ...);
-        }(make_uZ_seq<detail_::log2i(width) - 1>{});
     };
 
     void fft(std::vector<std::complex<T>>& data) {
@@ -296,7 +284,6 @@ private:
         }();
         auto tw_data = detail_::tw_data_t<T, false>{.tw_ptr = tw_.data()};
         impl_t::single_load(dst_pck, src_pck, lowk, half_tw, conj_tw, reverse, dst, dst, tw_data);
-
         auto dst_data = detail_::sequential_data_info<T>{.data_ptr = dst, .stride = Width};
         permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
     }
