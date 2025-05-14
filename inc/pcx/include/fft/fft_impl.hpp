@@ -248,8 +248,7 @@ struct btfly_node_dit {
     } const_tw_getter{};
 };
 
-inline constexpr auto inplace_stride = uZ_ce<0>{};
-inline constexpr auto not_lowk       = std::false_type{};
+inline constexpr auto not_lowk = std::false_type{};
 
 template<floating_point T, bool LocalTw>
 struct tw_data_t;

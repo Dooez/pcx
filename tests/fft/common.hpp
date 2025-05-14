@@ -118,5 +118,38 @@ bool par_check_correctness(std::complex<fX>                     val,
                            uZ                                   width,
                            uZ                                   node_size,
                            bool                                 local_tw);
+void bit_reverse(auto& r) {
+    auto size = r.size();
+    for (auto i: stdv::iota(0U, size)) {
+        auto br = detail_::reverse_bit_order(i, detail_::log2i(size));
+        if (br > i)
+            std::swap(r[i], r[br]);
+    }
+}
+void shifted_bit_reverse(auto& r) {
+    auto size = r.size();
+    if (size < 4)
+        return;
+    auto rbo_sh = [=](auto k) {
+        auto br = detail_::reverse_bit_order(k, detail_::log2i(size));
+        return (br + size / 2) % size;
+    };
+    for (uZ i: stdv::iota(0U, size)) {
+        uZ br0 = rbo_sh(i);
+        uZ br1 = rbo_sh(br0);
+        uZ br2 = rbo_sh(br1);
+        if (std::min({i, br0, br1, br2}) == i) {
+            auto vi = r[i];
+            auto v0 = r[br0];
+            auto v1 = r[br1];
+            auto v2 = r[br2];
+            r[i]    = v2;
+            r[br0]  = vi;
+            r[br1]  = v0;
+            r[br2]  = v1;
+        }
+    }
+}
+
 
 }    // namespace pcx::testing

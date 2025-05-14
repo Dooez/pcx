@@ -79,10 +79,10 @@ struct br_permute_t {
             auto nhi      = tupi::group_invoke(tupi::get_copy<1>, res);
             return combine_halves<Stride>(nlo, nhi);
         };
-        auto br_data = [pass]<uZ Stride, uZ Chunk = 1> PCX_LAINLINE(this auto     f,
-                                                                    auto          l_data,
-                                                                    uZ_ce<Stride> stride,
-                                                                    uZ_ce<Chunk>  chunk = {}) {
+        auto br_data = [=]<uZ Stride, uZ Chunk = 1> PCX_LAINLINE(this auto     f,
+                                                                 auto          l_data,
+                                                                 uZ_ce<Stride> stride,
+                                                                 uZ_ce<Chunk>  chunk = {}) {
             if constexpr (width == 1) {
                 return l_data;
             } else if constexpr (chunk == pack) {
@@ -95,7 +95,7 @@ struct br_permute_t {
             }
         }(data, width);
 
-        if constexpr (shifted) {
+        if constexpr (shifted && width > 1) {
             auto [lo, hi] = extract_halves<width>(br_data);
             return combine_halves<width>(hi, lo);
         } else {
