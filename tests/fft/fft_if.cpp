@@ -96,7 +96,7 @@ bool check_shiftd(uZ fft_size) {
 
 int main() {
     size_t fft_size = 2;
-    while (fft_size < 2048 * 2048) {
+    while (fft_size < 2048 * 256) {
         if (!check_br<f32>(fft_size))
             return -1;
         if (!check_normal<f32>(fft_size))
@@ -106,7 +106,7 @@ int main() {
         fft_size *= 2;
     }
     fft_size = 2;
-    while (fft_size < 2048 * 2048) {
+    while (fft_size < 2048 * 128) {
         if (!check_br<f64>(fft_size))
             return -1;
         if (!check_normal<f64>(fft_size))

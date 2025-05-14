@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 project(pcx VERSION 0.3.0 LANGUAGES CXX)
+
 add_library(pcx STATIC ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp)
 target_include_directories(pcx PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     )
-target_compile_options(pcx PRIVATE -march=native)
+target_compile_options(pcx PRIVATE -march=native -O3 )
 set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
-
 if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -63,7 +63,6 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_executable(test_tuples tests/test_tuples.cpp)
     add_executable(test_fft_fin tests/fft/fft_if.cpp tests/fft/common.cpp)
     add_executable(test_w1 tests/fft/fft_w1.cpp tests/fft/common.cpp)
-    # set_source_files_properties(src/fft.cpp PROPERTIES COMPILE_FLAGS -O3)
 
     target_link_libraries(asm_explorer PUBLIC pcx)
     set_target_properties(asm_explorer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
@@ -96,3 +95,4 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     ENABLE_TESTING()
     add_test(NAME test_fft COMMAND test_fft)
 endif()
+
