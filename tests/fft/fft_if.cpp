@@ -24,8 +24,15 @@ bool check_br(uZ fft_size) {
     auto data_c = data;
     fft.fft(data);
     pcx::testing::naive_fft(data_c, 16, 8);
-    std::print("[BitRvd]");
-    return pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true);
+    std::print("[BitRev][Fwd]");
+    if (!pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true))
+        return false;
+    pcx::testing::naive_reverse(data_c, 16, 8);
+    fft.ifft(data);
+    std::print("[BitRev][rev]");
+    if (!pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true))
+        return false;
+    return true;
 }
 
 bool check_normal(uZ fft_size) {
@@ -44,8 +51,16 @@ bool check_normal(uZ fft_size) {
     fft.fft(data);
     pcx::testing::naive_fft(data_c, 16, 8);
     pcx::testing::bit_reverse(data_c);
-    std::print("[Normal]");
-    return pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true);
+    std::print("[Normal][Fwd]");
+    if (!pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true))
+        return false;
+    pcx::testing::bit_reverse(data_c);
+    pcx::testing::naive_reverse(data_c, 16, 8);
+    fft.ifft(data);
+    std::print("[Normal][Rev]");
+    if (!pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true))
+        return false;
+    return true;
 }
 
 bool check_shiftd(uZ fft_size) {
@@ -64,12 +79,20 @@ bool check_shiftd(uZ fft_size) {
     fft.fft(data);
     pcx::testing::naive_fft(data_c, 16, 8);
     pcx::testing::shifted_bit_reverse(data_c);
-    std::print("[Shiftd]");
-    return pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true);
+    std::print("[Shiftd][Fwd]");
+    if (!pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true))
+        return false;
+    pcx::testing::shifted_bit_reverse(data_c);
+    pcx::testing::naive_reverse(data_c, 16, 8);
+    fft.ifft(data);
+    std::print("[Shiftd][Rev]");
+    if (!pcx::testing::check_correctness(data_c, data, 16, 8, true, true, true))
+        return false;
+    return true;
 }
 
 int main() {
-    size_t fft_size = 2;
+    size_t fft_size = 4;
     while (fft_size < 2048 * 2048) {
         if (!check_br(fft_size))
             return -1;

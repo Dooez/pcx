@@ -52,7 +52,7 @@ class fft_plan {
                                                              detail_::br_permuter_sequential<Width, true>>>;
 
 public:
-    fft_plan(uZ fft_size)
+    explicit fft_plan(uZ fft_size)
     : fft_size_(fft_size) {
         if (fft_size == 1) {
             ileave_inplace_ptr_ = &fft_plan::identity_tform;
@@ -62,8 +62,9 @@ public:
         if (fft_size > coherent_size) {
             using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, 0>;
             impl_t::insert_tw(tw_, fft_size, lowk, half_tw, sequential);
-            permuter_           = permuter_t<width>::insert_indexes(idxs_, fft_size);
-            ileave_inplace_ptr_ = &fft_plan::tform_inplace_ileave<width>;
+            permuter_             = permuter_t<width>::insert_indexes(idxs_, fft_size);
+            ileave_inplace_ptr_   = &fft_plan::tform_inplace_ileave<width>;
+            ileave_inplace_r_ptr_ = &fft_plan::rtform_inplace_ileave<width>;
             return;
         }
         constexpr auto max_single_load = Opts.node_size * width;
@@ -87,6 +88,8 @@ public:
                     permuter_ = permuter_t<perm_width>::insert_indexes(idxs_, fft_size);
                     ileave_inplace_ptr_ =
                         &fft_plan::coherent_tform_inplace_ileave<width, perm_width, align_node_size>;
+                    ileave_inplace_r_ptr_ =
+                        &fft_plan::coherent_rtform_inplace_ileave<width, perm_width, align_node_size>;
                     return true;
                 };
                 [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -106,6 +109,7 @@ public:
             constexpr auto perm_width = detail_::powi(2, detail_::log2i(max_single_load) / 2);
             permuter_                 = permuter_t<perm_width>::insert_indexes(idxs_, fft_size);
             ileave_inplace_ptr_       = &fft_plan::single_load_tform_inplace_ileave<width, Opts.node_size>;
+            ileave_inplace_r_ptr_     = &fft_plan::single_load_rtform_inplace_ileave<width, Opts.node_size>;
             return;
         };
         auto narrow = [&]<uZ... Is>(uZ_seq<Is...>) {
@@ -121,6 +125,8 @@ public:
                     using perm_t              = permuter_t<perm_width>;
                     permuter_                 = perm_t::insert_indexes(idxs_, fft_size);
                     ileave_inplace_ptr_ = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
+                    ileave_inplace_r_ptr_ =
+                        &fft_plan::single_load_rtform_inplace_ileave<l_width, l_node_size>;
                     return true;
                 }
                 return false;
@@ -141,6 +147,8 @@ public:
                     using perm_t              = permuter_t<perm_width>;
                     permuter_                 = perm_t::insert_indexes(idxs_, fft_size);
                     ileave_inplace_ptr_ = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
+                    ileave_inplace_r_ptr_ =
+                        &fft_plan::single_load_rtform_inplace_ileave<l_width, l_node_size>;
                     return true;
                 }
                 return false;
@@ -155,6 +163,13 @@ public:
 
         auto raw_ptr = reinterpret_cast<T*>(data.data());
         (this->*ileave_inplace_ptr_)(raw_ptr);
+    }
+    void ifft(std::vector<std::complex<T>>& data) {
+        if (data.size() != fft_size_)
+            throw std::runtime_error("Data size not equal to fft size");
+
+        auto raw_ptr = reinterpret_cast<T*>(data.data());
+        (this->*ileave_inplace_r_ptr_)(raw_ptr);
     }
 
 private:
@@ -181,6 +196,7 @@ private:
     [[no_unique_address]] permute_idxs_t idxs_{};
     [[no_unique_address]] permuter_var_t permuter_{};
     inplace_impl_t                       ileave_inplace_ptr_;
+    inplace_impl_t                       ileave_inplace_r_ptr_;
     externl_impl_t                       ileave_externl_ptr_;
 
     void identity_tform(T* dst) {};
@@ -190,17 +206,22 @@ private:
     void coherent_tform_inplace_ileave(T* dst);
     template<uZ Width, uZ NodeSize>
     void single_load_tform_inplace_ileave(T* dst);
+    template<uZ Width>
+    void rtform_inplace_ileave(T* dst);
+    template<uZ Width, uZ PermWidth, uZ Align>
+    void coherent_rtform_inplace_ileave(T* dst);
+    template<uZ Width, uZ NodeSize>
+    void single_load_rtform_inplace_ileave(T* dst);
 
     template<uZ Width, uZ DstPck, uZ SrcPck>
-    void tform_inplace(T* dst) {
+    void tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
         using impl_t             = detail_::transform<Opts.node_size, T, Width, Opts.coherent_size, 0>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
-        constexpr auto reverse   = std::false_type{};
-        constexpr auto conj_tw   = std::false_type{};
+        constexpr auto conj_tw   = std::bool_constant<reverse>{};
         constexpr auto PermWidth = Width;
 
-        auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = tw_.data()};
+        auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = reverse ? &*tw_.end() : tw_.data()};
         auto dst_data = detail_::sequential_data_info<T>{.data_ptr = dst, .stride = 1};
 
         auto permuter = [&] {
@@ -214,27 +235,38 @@ private:
                 return perm;
             }
         }();
-        impl_t::perform(dst_pck,
-                        src_pck,
-                        half_tw,
-                        lowk,
-                        dst_data,
-                        detail_::inplace_src,
-                        fft_size_,
-                        tw_data,
-                        permuter);
+        if constexpr (!reverse) {
+            impl_t::perform(dst_pck,
+                            src_pck,
+                            half_tw,
+                            lowk,
+                            dst_data,
+                            detail_::inplace_src,
+                            fft_size_,
+                            tw_data,
+                            permuter);
+        } else {
+            impl_t::perform_rev(dst_pck,
+                                src_pck,
+                                half_tw,
+                                lowk,
+                                dst_data,
+                                detail_::inplace_src,
+                                fft_size_,
+                                tw_data,
+                                permuter);
+        }
     }
 
     template<uZ Width, uZ PermWidth, uZ DstPck, uZ SrcPck, uZ Align>
-    void coherent_tform_inplace(T* dst) {
+    void coherent_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
         using impl_t           = detail_::sequential_subtransform<Opts.node_size, T, Width>;
         constexpr auto dst_pck = cxpack<DstPck, T>{};
         constexpr auto src_pck = cxpack<SrcPck, T>{};
         constexpr auto align   = detail_::align_param<Align, true>{};
-        constexpr auto reverse = std::false_type{};
-        constexpr auto conj_tw = std::false_type{};
+        constexpr auto conj_tw = std::bool_constant<reverse>{};
 
-        auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = tw_.data()};
+        auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = reverse ? &*tw_.end() : tw_.data()};
         auto dst_data = detail_::sequential_data_info<T>{.data_ptr = dst, .stride = Width};
 
         auto permuter = [&] {
@@ -248,6 +280,8 @@ private:
                 return perm;
             }
         }();
+        if constexpr (reverse)
+            permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
         impl_t::perform_impl(dst_pck,
                              src_pck,
                              align,
@@ -259,16 +293,16 @@ private:
                              dst_data,
                              detail_::inplace_src,
                              tw_data);
-        permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
+        if constexpr (!reverse)
+            permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
     }
 
     template<uZ Width, uZ NodeSize, uZ DstPck, uZ SrcPck>
-    void single_load_tform_inplace(T* dst) {
+    void single_load_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
         using impl_t             = detail_::sequential_subtransform<NodeSize, T, Width>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
-        constexpr auto reverse   = std::false_type{};
-        constexpr auto conj_tw   = std::false_type{};
+        constexpr auto conj_tw   = std::bool_constant<reverse>{};
         constexpr auto PermWidth = detail_::powi(2, detail_::log2i(Width * NodeSize) / 2);
 
         auto permuter = [&] {
@@ -282,12 +316,13 @@ private:
                 return perm;
             }
         }();
-        auto tw_data = detail_::tw_data_t<T, false>{.tw_ptr = tw_.data()};
-        impl_t::single_load(dst_pck, src_pck, lowk, half_tw, conj_tw, reverse, dst, dst, tw_data);
+        auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = reverse ? &*tw_.end() : tw_.data()};
         auto dst_data = detail_::sequential_data_info<T>{.data_ptr = dst, .stride = Width};
-        permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
+        if constexpr (reverse)
+            permuter.sequential_permute(src_pck, src_pck, dst_data, detail_::inplace_src);
+        impl_t::single_load(dst_pck, src_pck, lowk, half_tw, conj_tw, reverse, dst, dst, tw_data);
+        if constexpr (!reverse)
+            permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
     }
 };
-
-
 }    // namespace pcx
