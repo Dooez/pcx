@@ -1,13 +1,17 @@
 cmake_minimum_required(VERSION 3.16)
 project(pcx VERSION 0.3.0 LANGUAGES CXX)
 
-add_library(pcx STATIC ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp)
+add_library(pcx STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/par_fft.cpp
+)
 target_include_directories(pcx PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     )
 target_compile_options(pcx PRIVATE -march=native -O3 )
 set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
+
 if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
