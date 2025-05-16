@@ -25,7 +25,37 @@ bool test_par(const std_vec2d<fX>& signal,
               bool                 rev,
               bool                 inplace,
               bool                 external);
+template<typename fX>
+using parc_data = detail_::data_info<fX, true>;
+template<typename fX, uZ Width>
+bool test_parc(parc_data<const fX> signal,
+               parc_data<fX>       s1,
+               parc_data<const fX> chk_fwd,
+               parc_data<const fX> chk_rev,
+               std::vector<fX>&    twvec,
+               bool                local_check,
+               bool                fwd,
+               bool                rev,
+               bool                inplace,
+               bool                external);
 
+template<typename fX>
+bool parc_test_proto(auto                width,
+                     auto                lowk,
+                     auto                local_tw,
+                     auto                perm_type,
+                     parc_data<const fX> signal,
+                     parc_data<fX>       s1,
+                     const chk_t<fX>&    chk_fwd,
+                     const chk_t<fX>&    chk_rev,
+                     std::vector<fX>&    twvec,
+                     bool                local_check,
+                     bool                fwd,
+                     bool                rev,
+                     bool                inplace,
+                     bool                external) {
+
+};
 template<typename fX>
 bool par_test_proto(auto                 node_size,
                     auto                 width,

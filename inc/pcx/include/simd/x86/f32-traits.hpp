@@ -1,6 +1,7 @@
 #pragma once
 #include "pcx/include/tupi.hpp"
 
+#include <array>
 #include <immintrin.h>
 
 namespace pcx {
@@ -46,7 +47,7 @@ struct vec_traits<f32, 1> {
         return lhs / rhs;
     }
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return a * b + c; //TODO: make better, possibly gcc does not use actual fma.
+        return a * b + c;    //TODO: make better, possibly gcc does not use actual fma.
     }
     PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
         return -a * b + c;
