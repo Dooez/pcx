@@ -156,14 +156,14 @@ template void naive_fft(std::vector<std::complex<f64>>& data, uZ, uZ);
 template void naive_reverse(std::vector<std::complex<f32>>& data, uZ, uZ);
 template void naive_reverse(std::vector<std::complex<f64>>& data, uZ, uZ);
 
-template<typename fX>
-bool par_check_correctness(std::complex<fX>                     val,
-                           const std::vector<std::complex<fX>>& pcx,
-                           uZ                                   fft_size,
-                           uZ                                   fft_id,
-                           uZ                                   width,
-                           uZ                                   node_size,
-                           bool                                 local_tw) {
+template<typename fX, typename R>
+bool par_check_correctness(std::complex<fX> val,
+                           const R&         pcx,
+                           uZ               fft_size,
+                           uZ               fft_id,
+                           uZ               width,
+                           uZ               node_size,
+                           bool             local_tw) {
     for (auto [i, v]: stdv::enumerate(pcx)) {
         if (v == val)
             continue;
@@ -190,6 +190,10 @@ template bool
 par_check_correctness(std::complex<f32>, const std::vector<std::complex<f32>>&, uZ, uZ, uZ, uZ, bool);
 template bool
 par_check_correctness(std::complex<f64>, const std::vector<std::complex<f64>>&, uZ, uZ, uZ, uZ, bool);
+template bool
+par_check_correctness(std::complex<f32>, const std::span<std::complex<f32>>&, uZ, uZ, uZ, uZ, bool);
+template bool
+par_check_correctness(std::complex<f64>, const std::span<std::complex<f64>>&, uZ, uZ, uZ, uZ, bool);
 
 template<typename fX>
 bool check_correctness(const std::vector<std::complex<fX>>& naive,

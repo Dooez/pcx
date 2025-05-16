@@ -110,14 +110,15 @@ bool check_correctness(const std::vector<std::complex<fX>>& naive,
                        bool                                 local_tw,
                        bool                                 half_tw);
 
-template<typename fX>
-bool par_check_correctness(std::complex<fX>                     val,
-                           const std::vector<std::complex<fX>>& pcx,
-                           uZ                                   fft_size,
-                           uZ                                   fft_id,
-                           uZ                                   width,
-                           uZ                                   node_size,
-                           bool                                 local_tw);
+template<typename fX, typename R>
+bool par_check_correctness(std::complex<fX> val,
+                           const R&         pcx,
+                           uZ               fft_size,
+                           uZ               fft_id,
+                           uZ               width,
+                           uZ               node_size,
+                           bool             local_tw);
+
 void bit_reverse(auto& r) {
     auto size = r.size();
     for (auto i: stdv::iota(0U, size)) {

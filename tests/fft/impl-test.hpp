@@ -1,5 +1,8 @@
 #include "common.hpp"
 
+#include <cstring>
+#include <generator>
+
 namespace pcx::testing {
 template<typename T, uZ Width>
 bool test_fft(const std::vector<std::complex<T>>& signal,
@@ -40,12 +43,14 @@ bool test_parc(parc_data<const fX> signal,
                bool                external);
 
 template<typename fX>
-bool parc_test_proto(auto                width,
+bool parc_test_proto(auto                node_size,
+                     auto                width,
                      auto                lowk,
                      auto                local_tw,
                      auto                perm_type,
-                     parc_data<const fX> signal,
-                     parc_data<fX>       s1,
+                     parc_data<const fX> signal_data,
+                     parc_data<fX>       s1_data,
+                     uZ                  data_size,
                      const chk_t<fX>&    chk_fwd,
                      const chk_t<fX>&    chk_rev,
                      std::vector<fX>&    twvec,
@@ -54,7 +59,216 @@ bool parc_test_proto(auto                width,
                      bool                rev,
                      bool                inplace,
                      bool                external) {
+    constexpr auto half_tw    = std::true_type{};
+    constexpr auto sequential = std::false_type{};
+    constexpr auto pck_dst    = cxpack<1, fX>{};
+    constexpr auto pck_src    = cxpack<1, fX>{};
 
+    auto fft_size = chk_fwd(permute_t::bit_reversed).size();
+
+    using fimpl = pcx::detail_::transform<node_size, fX, width>;
+
+    auto reset_s1 = [&] {
+        for (auto i: stdv::iota(0U, fft_size)) {
+            auto* src = signal_data.get_batch_base(i);
+            auto* dst = s1_data.get_batch_base(i);
+            std::memcpy(dst, src, data_size * 2 * sizeof(fX));
+        }
+    };
+    auto tw = [&] {
+        using tw_t = detail_::tw_data_t<fX, local_tw>;
+        if constexpr (local_tw) {
+            return tw_t{1, 0};
+        } else {
+            twvec.resize(0);
+            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, sequential);
+            return tw_t{twvec.data()};
+        }
+    }();
+    auto tw_rev = [&] {
+        using tw_t = detail_::tw_data_t<fX, local_tw>;
+        if constexpr (local_tw) {
+            return tw_t{fft_size, 0};
+        } else {
+            return tw_t{&(*twvec.end())};
+        }
+    }();
+
+    auto l_chk_fwd = std::vector<std::complex<fX>>{};
+    auto l_chk_rev = std::vector<std::complex<fX>>{};
+    auto chk_fwd_  = chk_fwd(perm_type);
+    auto chk_rev_  = chk_rev(perm_type);
+
+    auto permute_idxs = std::vector<u32>{};
+
+    auto permute = [=] {
+        if constexpr (perm_type == permute_t::bit_reversed) {
+            return detail_::identity_permuter_t{};
+        } else if constexpr (perm_type == permute_t::normal) {
+            return detail_::br_permuter<node_size>{};
+        } else if constexpr (perm_type == permute_t::shifted) {
+            constexpr auto shifted_node = std::max({uZ(node_size), 4UZ});
+            return detail_::br_permuter_shifted<shifted_node>{};
+        }
+    }();
+    auto rev_permute = permute;
+    if constexpr (perm_type != permute_t::bit_reversed) {
+        using permuter_t = decltype(permute);
+        if constexpr (perm_type == permute_t::normal) {
+            constexpr auto coherent_size = 8194 / sizeof(fX);
+            constexpr auto lane_size     = uZ_ce<std::max(64 / sizeof(fX) / 2, uZ(width))>{};
+
+            auto coh_size = coherent_size / lane_size;
+            permute       = permuter_t::insert_indexes(permute_idxs, fft_size, coh_size);
+        } else {
+            permute = permuter_t::insert_indexes(permute_idxs, fft_size);
+        }
+        rev_permute         = permute;
+        permute.idx_ptr     = permute_idxs.data();
+        rev_permute.idx_ptr = &(*permute_idxs.end());
+    }
+    constexpr auto perm_fmt = [=] {
+        if constexpr (perm_type == permute_t::bit_reversed) {
+            return "[BitRev]";
+        } else if constexpr (perm_type == permute_t::normal) {
+            return "[Normal]";
+        } else if constexpr (perm_type == permute_t::shifted) {
+            return "[Shiftd]";
+        }
+    }();
+    if (local_check) {
+        l_chk_fwd = chk_fwd_;
+        l_chk_rev = chk_rev_;
+        naive_fft(l_chk_fwd, node_size, width);
+        naive_reverse(l_chk_rev, node_size, width);
+    }
+
+    auto run_check = [&](bool fwd) {
+        auto s1 = [&] -> std::generator<std::span<std::complex<fX>>> {
+            uZ i = 0;
+            while (true) {
+                auto ptr = reinterpret_cast<std::complex<fX>*>(s1_data.get_batch_base(i++));
+                co_yield std::span(ptr, data_size);
+            }
+        }();
+        if (local_check) {
+            if (fwd) {
+                for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, l_chk_fwd)) {
+                    if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                        return false;
+                }
+                return true;
+            }
+            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, l_chk_rev)) {
+                if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                    return false;
+            }
+            return true;
+        }
+        if (fwd) {
+            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, chk_fwd_)) {
+                if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                    return false;
+            }
+            return true;
+        }
+        for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, chk_rev_)) {
+            if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
+                return false;
+        }
+        return true;
+    };
+
+    if (inplace && fwd) {
+        reset_s1();
+        std::print("[Inplace][Fwd][Parc]");
+        std::print(perm_fmt);
+        fimpl::perform(pck_dst,
+                       pck_src,
+                       half_tw,
+                       lowk,
+                       s1_data,
+                       detail_::inplace_src,
+                       fft_size,
+                       tw,
+                       permute,
+                       data_size);
+        if (!run_check(true))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
+    if (inplace && rev) {
+        reset_s1();
+        std::print("[Inplace][Rev][Parc]");
+        std::print(perm_fmt);
+        fimpl::perform_rev(pck_dst,
+                           pck_src,
+                           half_tw,
+                           lowk,
+                           s1_data,
+                           detail_::inplace_src,
+                           fft_size,
+                           tw_rev,
+                           rev_permute,
+                           data_size);
+        if (!run_check(false))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
+    if (external && fwd) {
+        std::print("[Externl][Fwd][Parc]");
+        std::print(perm_fmt);
+        fimpl::perform(pck_dst,
+                       pck_src,
+                       half_tw,
+                       lowk,
+                       s1_data,
+                       signal_data,
+                       fft_size,
+                       tw,
+                       permute,
+                       data_size);
+        if (!run_check(true))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
+    if (external && rev) {
+        std::print("[Externl][Rev][Parc]");
+        std::print(perm_fmt);
+        fimpl::perform_rev(pck_dst,
+                           pck_src,
+                           half_tw,
+                           lowk,
+                           s1_data,
+                           signal_data,
+                           fft_size,
+                           tw_rev,
+                           rev_permute,
+                           data_size);
+        if (!run_check(false))
+            return false;
+        std::println("[Success] {}×{}, width {}, node size {}{}.",
+                     pcx::meta::types<fX>{},
+                     fft_size,
+                     width.value,
+                     node_size.value,
+                     local_tw ? ", local tw" : "");
+    }
 };
 template<typename fX>
 bool par_test_proto(auto                 node_size,
