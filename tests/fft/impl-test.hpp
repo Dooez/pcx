@@ -33,8 +33,9 @@ using parc_data = detail_::data_info<fX, true>;
 template<typename fX, uZ Width>
 bool test_parc(parc_data<const fX> signal,
                parc_data<fX>       s1,
-               parc_data<const fX> chk_fwd,
-               parc_data<const fX> chk_rev,
+               uZ                  data_size,
+               const chk_t<fX>&    chk_fwd,
+               const chk_t<fX>&    chk_rev,
                std::vector<fX>&    twvec,
                bool                local_check,
                bool                fwd,
@@ -68,6 +69,12 @@ bool parc_test_proto(auto                node_size,
 
     using fimpl = pcx::detail_::transform<node_size, fX, width>;
 
+    auto s1 = [&](uZ i = 0) -> std::generator<std::span<std::complex<fX>>> {
+        while (true) {
+            auto ptr = reinterpret_cast<std::complex<fX>*>(s1_data.get_batch_base(i++));
+            co_yield {ptr, data_size};
+        }
+    };
     auto reset_s1 = [&] {
         for (auto i: stdv::iota(0U, fft_size)) {
             auto* src = signal_data.get_batch_base(i);
@@ -144,35 +151,28 @@ bool parc_test_proto(auto                node_size,
     }
 
     auto run_check = [&](bool fwd) {
-        auto s1 = [&] -> std::generator<std::span<std::complex<fX>>> {
-            uZ i = 0;
-            while (true) {
-                auto ptr = reinterpret_cast<std::complex<fX>*>(s1_data.get_batch_base(i++));
-                co_yield std::span(ptr, data_size);
-            }
-        }();
         if (local_check) {
             if (fwd) {
-                for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, l_chk_fwd)) {
+                for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1(), l_chk_fwd)) {
                     if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
                         return false;
                 }
                 return true;
             }
-            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, l_chk_rev)) {
+            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1(), l_chk_rev)) {
                 if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
                     return false;
             }
             return true;
         }
         if (fwd) {
-            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, chk_fwd_)) {
+            for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1(), chk_fwd_)) {
                 if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
                     return false;
             }
             return true;
         }
-        for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1, chk_rev_)) {
+        for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), s1(), chk_rev_)) {
             if (!par_check_correctness(check_v, sv, fft_size, i, width, node_size, local_tw))
                 return false;
         }
@@ -269,6 +269,7 @@ bool parc_test_proto(auto                node_size,
                      node_size.value,
                      local_tw ? ", local tw" : "");
     }
+    return true;
 };
 template<typename fX>
 bool par_test_proto(auto                 node_size,
@@ -731,6 +732,50 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
     return true;
 }
 
+template<typename fX, uZ VecWidth, uZ... NodeSize, bool... LowK, bool... LocalTw, permute_t... Perm>
+bool parc_run_tests(uZ_seq<NodeSize...>,
+                    meta::val_seq<LowK...>,
+                    meta::val_seq<LocalTw...>,
+                    meta::val_seq<Perm...>,
+                    parc_data<const fX> signal,
+                    parc_data<fX>       s1,
+                    uZ                  data_size,
+                    const chk_t<fX>&    chk_fwd,
+                    const chk_t<fX>&    chk_rev,
+                    std::vector<fX>&    twvec,
+                    bool                local_check,
+                    bool                fwd,
+                    bool                rev,
+                    bool                inplace,
+                    bool                external) {
+    auto lk_passed = [&](auto lowk) {
+        auto ltw_passed = [&](auto local_tw) {
+            auto perm_passed = [&](auto perm_type) {
+                return ((data_size <= NodeSize
+                         || parc_test_proto(uZ_ce<NodeSize>{},
+                                            uZ_ce<VecWidth>{},
+                                            lowk,
+                                            local_tw,
+                                            perm_type,
+                                            signal,
+                                            s1,
+                                            data_size,
+                                            chk_fwd,
+                                            chk_rev,
+                                            twvec,
+                                            local_check,
+                                            fwd,
+                                            rev,
+                                            inplace,
+                                            external))
+                        && ...);
+            };
+            return (perm_passed(val_ce<Perm>{}) && ...);
+        };
+        return (ltw_passed(val_ce<LocalTw>{}) && ...);
+    };
+    return (lk_passed(val_ce<LowK>{}) && ...);
+}
 template<typename fX, uZ VecWidth, uZ... NodeSize, bool... LowK, bool... LocalTw, permute_t... Perm>
 bool par_run_tests(uZ_seq<NodeSize...>,
                    meta::val_seq<LowK...>,
