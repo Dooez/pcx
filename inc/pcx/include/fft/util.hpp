@@ -78,8 +78,12 @@ struct data_info : public data_info_base<T> {
         return new_info;
     }
     constexpr auto reset_stride() const -> data_info {
-        auto new_info   = *this;
-        new_info.stride = k_stride;
+        auto new_info = *this;
+        if constexpr (Contiguous) {
+            new_info.stride = k_stride;
+        } else {
+            new_info.stride = 1;
+        }
         return new_info;
     }
 

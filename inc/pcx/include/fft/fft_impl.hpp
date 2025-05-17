@@ -822,7 +822,8 @@ struct sequential_subtransform {
                     return simd::repack<adj_tw_count>(twv);
                 };
             } else {
-                constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
+                // constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
+                constexpr auto adj_tw_count = TwCount;
                 if constexpr (reverse)
                     tw_data.tw_ptr -= TwCount * 2 * node_size / 2 / (half_tw ? 2 : 1);
                 auto l_tw_ptr = tw_data.tw_ptr;

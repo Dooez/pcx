@@ -581,7 +581,6 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
 
     using dst_info_t = detail_::sequential_data_info<fX>;
     auto s1_info     = dst_info_t{{}, data_ptr};
-    // auto src_info    = detail_::data_info<const fX, true>{reinterpret_cast<const fX*>(data_ptr)};
     auto src_info = detail_::sequential_data_info<const fX>{{}, reinterpret_cast<const fX*>(signal.data())};
 
     if (inplace && fwd) {
