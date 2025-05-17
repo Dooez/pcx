@@ -1538,7 +1538,7 @@ struct transform {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
                 iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_permuter);
-                dst.stride = 1;
+                dst = dst.reset_stride();
                 l_permuter.permute(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
             } else {
                 if constexpr (width < batch_size)

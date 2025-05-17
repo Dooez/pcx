@@ -120,8 +120,10 @@ bool test_parc(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, uZ data_siz
     auto twvec = std::vector<fX>{};
     auto signal_data =
         pcx::detail_::data_info<const fX, true>{.data_ptr = reinterpret_cast<fX*>(signal_raw.data()),
+                                                .stride   = data_size,
                                                 .k_stride = data_size};
     auto s1_data = pcx::detail_::data_info<fX, true>{.data_ptr = reinterpret_cast<fX*>(s1_raw.data()),
+                                                     .stride   = data_size,
                                                      .k_stride = data_size};
     return (pcx::testing::test_parc<fX, Ws>(signal_data,
                                             s1_data,

@@ -77,6 +77,12 @@ struct data_info : public data_info_base<T> {
         new_info.stride /= n;
         return new_info;
     }
+    constexpr auto reset_stride() const -> data_info {
+        auto new_info   = *this;
+        new_info.stride = k_stride;
+        return new_info;
+    }
+
     constexpr auto offset_k(uZ n) const -> data_info {
         auto new_info = *this;
         if constexpr (Contiguous) {
@@ -127,6 +133,11 @@ struct sequential_data_info : public data_info_base<T> {
     constexpr auto div_stride(uZ n) const -> sequential_data_info {
         auto new_info = *this;
         new_info.stride /= n;
+        return new_info;
+    }
+    constexpr auto reset_stride() const -> sequential_data_info {
+        auto new_info   = *this;
+        new_info.stride = 1;
         return new_info;
     }
     constexpr auto offset_k(uZ n) const -> sequential_data_info {
