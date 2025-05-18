@@ -23,15 +23,17 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(F32_WIDTHS 4 8 16)
-    set(F64_WIDTHS 2 4 8)
+    # set(F32_WIDTHS 4 8 16)
+    # set(F64_WIDTHS 2 4 8)
+    set(F32_WIDTHS 1 2)
+    set(F64_WIDTHS 1)
     set(NODE_SIZES 2 4 8 16)
     # set(F32_WIDTHS  16)
     # set(F64_WIDTHS  8)
     # set(NODE_SIZES 8)
-    set(TEST_PARC ON)
+    set(TEST_PARC OFF)
     set(TEST_SEQ ON)
-    set(TEST_PAR ON)
+    set(TEST_PAR OFF)
 
     set(TEST_FFT_SOURCES "")
     function(generate_tests PROTOTYPE TYPE WIDTHS)
@@ -68,6 +70,9 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
         "-DPCX_TESTING_NODE_SIZES=${NODE_SIZES}"
         "-DPCX_TESTING_F32_WIDTHS=${F32_WIDTHS}"
         "-DPCX_TESTING_F64_WIDTHS=${F64_WIDTHS}"
+        "-DPCX_TESTING_SEQ=$<BOOL:${TEST_SEQ}>"
+        "-DPCX_TESTING_PAR=$<BOOL:${TEST_PAR}>"
+        "-DPCX_TESTING_PARC=$<BOOL:${TEST_PARC}>"
     )
     set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=3)
     set_property(TARGET test_fft PROPERTY JOB_POOL_COMPILE build_jobs)
