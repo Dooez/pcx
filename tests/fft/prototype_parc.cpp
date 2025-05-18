@@ -1,7 +1,7 @@
-#include "impl-test.hpp"
+#include "../../tests/fft/impl-test.hpp"
 namespace pcx::testing {
-using fX                  = f64;
-static constexpr uZ width = 2;
+using fX                  = ${FLOAT_TYPE};
+static constexpr uZ width = ${VECTOR_WIDTH};
 template<>
 bool test_parc<fX, width>(parc_data<const fX> signal,
                           parc_data<fX>       s1,

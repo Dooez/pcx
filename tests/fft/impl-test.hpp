@@ -181,7 +181,7 @@ bool parc_test_proto(auto                node_size,
 
     if (inplace && fwd) {
         reset_s1();
-        std::print("[Inplace][Fwd][Parc]");
+        std::print("[Inp][Fwd][Parc]");
         std::print(perm_fmt);
         fimpl::perform(pck_dst,
                        pck_src,
@@ -204,7 +204,7 @@ bool parc_test_proto(auto                node_size,
     }
     if (inplace && rev) {
         reset_s1();
-        std::print("[Inplace][Rev][Parc]");
+        std::print("[Inp][Rev][Parc]");
         std::print(perm_fmt);
         fimpl::perform_rev(pck_dst,
                            pck_src,
@@ -226,7 +226,7 @@ bool parc_test_proto(auto                node_size,
                      local_tw ? ", local tw" : "");
     }
     if (external && fwd) {
-        std::print("[Externl][Fwd][Parc]");
+        std::print("[Ext][Fwd][Parc]");
         std::print(perm_fmt);
         fimpl::perform(pck_dst,
                        pck_src,
@@ -248,7 +248,7 @@ bool parc_test_proto(auto                node_size,
                      local_tw ? ", local tw" : "");
     }
     if (external && rev) {
-        std::print("[Externl][Rev][Parc]");
+        std::print("[Ext][Rev][Parc]");
         std::print(perm_fmt);
         fimpl::perform_rev(pck_dst,
                            pck_src,
@@ -402,7 +402,7 @@ bool par_test_proto(auto                 node_size,
     };
 
     if (inplace && fwd) {
-        std::print("[Inplace][Fwd][Par ]");
+        std::print("[Inp][Fwd][Par ]");
         std::print(perm_fmt);
         fimpl::perform(pck_dst,
                        pck_src,
@@ -425,7 +425,7 @@ bool par_test_proto(auto                 node_size,
     }
     if (inplace && rev) {
         s1 = signal;
-        std::print("[Inplace][Rev][Par ]");
+        std::print("[Inp][Rev][Par ]");
         std::print(perm_fmt);
         fimpl::perform_rev(pck_dst,
                            pck_src,
@@ -447,7 +447,7 @@ bool par_test_proto(auto                 node_size,
                      local_tw ? ", local tw" : "");
     }
     if (external && fwd) {
-        std::print("[Externl][Fwd][Par ]");
+        std::print("[Ext][Fwd][Par ]");
         std::print(perm_fmt);
         fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, permute, data_size);
         if (!run_check(true))
@@ -460,7 +460,7 @@ bool par_test_proto(auto                 node_size,
                      local_tw ? ", local tw" : "");
     }
     if (external && rev) {
-        std::print("[Externl][Rev][Par ]");
+        std::print("[Ext][Rev][Par ]");
         std::print(perm_fmt);
         fimpl::perform_rev(pck_dst,
                            pck_src,
@@ -584,7 +584,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
     auto src_info = detail_::sequential_data_info<const fX>{{}, reinterpret_cast<const fX*>(signal.data())};
 
     if (inplace && fwd) {
-        std::print("[Inplace][Fwd][Seq ]");
+        std::print("[Inp][Fwd][Seq ]");
         std::print(perm_fmt);
         s1 = signal;
         fimpl::perform(pck_dst,
@@ -600,7 +600,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
             return false;
     }
     if (inplace && rev) {
-        std::print("[Inplace][Rev][Seq ]");
+        std::print("[Inp][Rev][Seq ]");
         std::print(perm_fmt);
         s1 = signal;
         fimpl::perform_rev(pck_dst,
@@ -618,7 +618,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
     }
 
     if (ext && fwd) {
-        std::print("[Externl][Fwd][Seq ]");
+        std::print("[Ext][Fwd][Seq ]");
         std::print(perm_fmt);
         // s1 = signal;
         stdr::fill(s1, -69.);
@@ -636,7 +636,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
             return false;
     }
     if (ext && rev) {
-        std::print("[Externl][Rev][Seq ]");
+        std::print("[Ext][Rev][Seq ]");
         std::print(perm_fmt);
         // s1 = signal;
         stdr::fill(s1, -69.);
@@ -682,7 +682,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
         }
     }();
     if (fwd) {
-        std::print("[Inplace][Fwd][Seqc]");
+        std::print("[Inp][Fwd][Seqc]");
         std::print(perm_fmt);
         s1            = signal;
         auto tw_coh_c = tw_coh_fwd;
@@ -702,7 +702,7 @@ bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
             return false;
     }
     if (rev) {
-        std::print("[Inplace][Rev][Seqc]");
+        std::print("[Inp][Rev][Seqc]");
         std::print(perm_fmt);
         s1            = signal;
         auto tw_coh_c = tw_coh_rev;

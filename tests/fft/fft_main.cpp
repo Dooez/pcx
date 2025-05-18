@@ -9,6 +9,10 @@ using pcx::f32;
 using pcx::f64;
 using pcx::uZ;
 
+inline constexpr auto f32_widths = pcx::uZ_seq<PCX_TESTING_F32_WIDTHS>{};
+inline constexpr auto f64_widths = pcx::uZ_seq<PCX_TESTING_F64_WIDTHS>{};
+
+
 template<typename fX>
 auto prepare_checks(pcx::testing::chk_t<fX>& chk_fwd, pcx::testing::chk_t<fX>& chk_rev) {
     constexpr uZ   width     = 16;
@@ -310,17 +314,17 @@ int main() {
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 2048 * 2) {
-        if (!test_parc(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
+        if (!test_parc(f32_widths, f32_tid, fft_size, 31, 13.001))
             return -1;
-        if (!test_par(pcx::testing::f32_widths, f32_tid, fft_size, 31, 13.001))
+        if (!test_par(f32_widths, f32_tid, fft_size, 31, 13.001))
             return -1;
-        if (!test_size(pcx::testing::f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+        if (!test_size(f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
-        if (!test_parc(pcx::testing::f64_widths, f64_tid, fft_size, 31, 13.001))
+        if (!test_parc(f64_widths, f64_tid, fft_size, 31, 13.001))
             return -1;
-        if (!test_par(pcx::testing::f64_widths, f64_tid, fft_size, 31, 13.001))
+        if (!test_par(f64_widths, f64_tid, fft_size, 31, 13.001))
             return -1;
-        if (!test_size(pcx::testing::f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
+        if (!test_size(f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
             return -1;
         fft_size *= 2;
     }

@@ -1,7 +1,7 @@
-#include "impl-test.hpp"
+#include "../../tests/fft/impl-test.hpp"
 namespace pcx::testing {
-using fX                  = f32;
-static constexpr uZ width = 16;
+using fX                  = ${FLOAT_TYPE};
+static constexpr uZ width = ${VECTOR_WIDTH};
 template<>
 bool test_fft<fX, width>(const std::vector<std::complex<fX>>& signal,
                          const chk_t<fX>&                     chk_fwd,
