@@ -126,7 +126,10 @@ struct vec_traits<f64, 2> {
     }
 
     constexpr static struct {
-        static auto operator()(impl_vec v) -> impl_vec {
+        PCX_AINLINE static auto operator()(vec_traits<f64, 1>::impl_vec x) -> impl_vec {
+            return set1(x);
+        }
+        PCX_AINLINE static auto operator()(impl_vec v) -> impl_vec {
             return v;
         };
     } upsample{};
@@ -223,6 +226,9 @@ struct vec_traits<f64, 4> {
     }
 
     static constexpr struct {
+        PCX_AINLINE static auto operator()(vec_traits<f64, 1>::impl_vec x) -> impl_vec {
+            return set1(x);
+        }
         PCX_AINLINE auto operator()(vec_traits<f64, 2>::impl_vec vec) const {
             auto a = _mm256_zextpd128_pd256(vec);
             return _mm256_permute4x64_pd(a, 0b01010000);
@@ -360,15 +366,18 @@ struct vec_traits<f64, 8> {
         inline static const auto idx2 = _mm512_setr_epi64(0, 0, 0, 0, 1, 1, 1, 1);
         inline static const auto idx4 = _mm512_setr_epi64(0, 0, 1, 1, 2, 2, 3, 3);
 
-        PCX_AINLINE auto operator()(vec_traits<f64, 4>::impl_vec vec) const {
-            auto ve = _mm512_zextpd256_pd512(vec);
-            return _mm512_permutexvar_pd(idx4, ve);
+        PCX_AINLINE static auto operator()(vec_traits<f64, 1>::impl_vec x) -> impl_vec {
+            return set1(x);
         }
-        PCX_AINLINE auto operator()(vec_traits<f64, 2>::impl_vec vec) const {
+        PCX_AINLINE static auto operator()(vec_traits<f64, 2>::impl_vec vec) -> impl_vec {
             auto ve = _mm512_zextpd128_pd512(vec);
             return _mm512_permutexvar_pd(idx2, ve);
         }
-        PCX_AINLINE auto operator()(impl_vec v) const -> impl_vec {
+        PCX_AINLINE static auto operator()(vec_traits<f64, 4>::impl_vec vec) -> impl_vec {
+            auto ve = _mm512_zextpd256_pd512(vec);
+            return _mm512_permutexvar_pd(idx4, ve);
+        }
+        PCX_AINLINE static auto operator()(impl_vec v) -> impl_vec {
             return v;
         }
     } upsample{};

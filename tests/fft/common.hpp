@@ -34,11 +34,11 @@ inline constexpr auto perm_types =
     meta::val_seq<permute_t::bit_reversed, permute_t::normal, permute_t::shifted>{};
 
 #else
-inline constexpr auto f32_widths = uZ_seq<16>{};
+inline constexpr auto f32_widths = uZ_seq<4>{};
 inline constexpr auto f64_widths = uZ_seq<8>{};
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
-inline constexpr auto node_sizes = uZ_seq<8>{};
+inline constexpr auto node_sizes = uZ_seq<2>{};
 inline constexpr auto perm_types = meta::val_seq<permute_t::normal>{};
 #endif
 inline constexpr auto local_tw = meta::val_seq<false>{};

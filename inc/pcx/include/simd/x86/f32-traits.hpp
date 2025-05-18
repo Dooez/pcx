@@ -390,7 +390,7 @@ struct vec_traits<f32, 8> {
         static inline const auto idx4 = _mm256_setr_epi32(0, 0, 1, 1, 2, 2, 3, 3);
 
         PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const {
-            return set1(vec);
+            return tupi::make_tuple(set1(vec));
         }
         PCX_AINLINE auto operator()(vec_traits<f32, 2>::impl_vec vec) const {
             auto a = _mm256_set1_ps(vec[0]);

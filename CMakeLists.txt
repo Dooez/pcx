@@ -8,9 +8,15 @@ add_library(pcx STATIC
 target_include_directories(pcx PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     )
-target_compile_options(pcx PRIVATE -march=native -O3 )
+target_compile_options(pcx PRIVATE -march=native)
 set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
+
+# add_library(pcx INTERFACE)
+# target_include_directories(pcx INTERFACE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/inc
+#     )
+
 
 if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
@@ -22,24 +28,30 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     if(${FULL_FFT_TEST})
         if(${SPLIT_COMPILATION})
             target_sources(test_fft PUBLIC
-                tests/fft/par_f32_w4.cpp
-                tests/fft/par_f32_w8.cpp
-                tests/fft/par_f32_w16.cpp
-                tests/fft/parc_f32_w4.cpp
-                tests/fft/parc_f32_w8.cpp
-                tests/fft/parc_f32_w16.cpp
                 tests/fft/f32_w4.cpp
                 tests/fft/f32_w8.cpp
                 tests/fft/f32_w16.cpp
-                tests/fft/par_f64_w2.cpp
-                tests/fft/par_f64_w4.cpp
-                tests/fft/par_f64_w8.cpp
-                tests/fft/parc_f64_w2.cpp
-                tests/fft/parc_f64_w4.cpp
-                tests/fft/parc_f64_w8.cpp
+
                 tests/fft/f64_w2.cpp
                 tests/fft/f64_w4.cpp
                 tests/fft/f64_w8.cpp
+
+                tests/fft/par_f32_w4.cpp
+                tests/fft/par_f32_w8.cpp
+                tests/fft/par_f32_w16.cpp
+
+                tests/fft/par_f64_w2.cpp
+                tests/fft/par_f64_w4.cpp
+                tests/fft/par_f64_w8.cpp
+
+                tests/fft/parc_f32_w4.cpp
+                tests/fft/parc_f32_w8.cpp
+                tests/fft/parc_f32_w16.cpp
+
+                tests/fft/parc_f64_w2.cpp
+                tests/fft/parc_f64_w4.cpp
+                tests/fft/parc_f64_w8.cpp
+
                 tests/fft/fft_main.cpp
                 tests/fft/common.cpp
             )
@@ -56,7 +68,9 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     else()
         set(FFT_NODE_SIZE 8)
         target_sources(test_fft PUBLIC
-            tests/fft/parc_f32_w16.cpp
+            # tests/fft/parc_f32_w4.cpp
+            # tests/fft/par_f32_w4.cpp
+            tests/fft/f32_w8.cpp
             # tests/fft/par_f32_w16.cpp
             # tests/fft/f32_w16.cpp
             # tests/fft/par_f64_w8.cpp
