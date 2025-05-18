@@ -1,21 +1,23 @@
 cmake_minimum_required(VERSION 3.25)
 project(pcx VERSION 0.3.0 LANGUAGES CXX)
 
-add_library(pcx STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/par_fft.cpp
-)
-target_include_directories(pcx PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    )
-target_compile_options(pcx PRIVATE -march=native)
-set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
-target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
-
-# add_library(pcx INTERFACE)
-# target_include_directories(pcx INTERFACE
+# add_library(pcx STATIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src/par_fft.cpp
+# )
+# target_include_directories(pcx PUBLIC
 #     ${CMAKE_CURRENT_SOURCE_DIR}/inc
 #     )
+# target_compile_options(pcx PRIVATE -march=native -O3)
+# target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
+
+add_library(pcx INTERFACE)
+target_include_directories(pcx INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc
+    )
+target_compile_definitions(pcx INTERFACE -DPCX_AVX512)
+
+set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 
 
 if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
@@ -23,17 +25,17 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    # set(F32_WIDTHS 4 8 16)
-    # set(F64_WIDTHS 2 4 8)
-    set(F32_WIDTHS 1 2)
-    set(F64_WIDTHS 1)
+    set(F32_WIDTHS 1 2 4 8 16)
+    set(F64_WIDTHS 1 2 4 8)
+    # set(F32_WIDTHS 1 2)
+    # set(F64_WIDTHS 1)
     set(NODE_SIZES 2 4 8 16)
     # set(F32_WIDTHS  16)
     # set(F64_WIDTHS  8)
     # set(NODE_SIZES 8)
-    set(TEST_PARC OFF)
+    set(TEST_PARC ON)
     set(TEST_SEQ ON)
-    set(TEST_PAR OFF)
+    set(TEST_PAR ON)
 
     set(TEST_FFT_SOURCES "")
     function(generate_tests PROTOTYPE TYPE WIDTHS)

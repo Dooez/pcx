@@ -211,7 +211,7 @@ bool test_seq(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) 
     prepare_checks(chk_fwd, chk_rev);
     auto s1 = std::vector<std::complex<fX>>(fft_size);
     auto s2 = std::vector<std::complex<fX>>(fft_size);
-    return (pcxt::test_fft<fX, Ws>(signal,    //
+    return (pcxt::test_seq<fX, Ws>(signal,    //
                                    chk_fwd,
                                    chk_rev,
                                    s1,

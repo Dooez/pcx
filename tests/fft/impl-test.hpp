@@ -5,7 +5,7 @@
 
 namespace pcx::testing {
 template<typename T, uZ Width>
-bool test_fft(const std::vector<std::complex<T>>& signal,
+bool test_seq(const std::vector<std::complex<T>>& signal,
               const chk_t<T>&                     chk_fwd,
               const chk_t<T>&                     chk_rev,
               std::vector<std::complex<T>>&       s1,
@@ -486,7 +486,7 @@ bool par_test_proto(auto                 node_size,
 }
 
 template<typename fX, uZ Width, uZ NodeSize, bool LowK, bool LocalTw, bool HalfTw>
-bool test_prototype(meta::ce_of<permute_t> auto          perm_type,
+bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
                     const std::vector<std::complex<fX>>& signal,
                     const chk_t<fX>&                     chk_fwd,
                     const chk_t<fX>&                     chk_rev,
@@ -825,7 +825,7 @@ template<typename fX,
          bool... local_tw,
          bool... half_tw,
          permute_t... Perm>
-bool run_tests(uZ_seq<NodeSize...>,
+bool seq_run_tests(uZ_seq<NodeSize...>,
                meta::val_seq<low_k...>,
                meta::val_seq<local_tw...>,
                meta::val_seq<half_tw...>,
@@ -845,7 +845,7 @@ bool run_tests(uZ_seq<NodeSize...>,
             auto htw_passed = [&]<bool HalfTw>(val_ce<HalfTw>) {
                 auto perm_passed = [&](auto perm_type) {
                     return ((signal.size() <= NodeSize * VecWidth
-                             || test_prototype<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(perm_type,
+                             || seq_test_proto<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(perm_type,
                                                                                               signal,
                                                                                               chk_fwd,
                                                                                               chk_rev,

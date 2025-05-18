@@ -46,18 +46,11 @@ struct vec_traits<f32, 1> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) -> impl_vec {
         return lhs / rhs;
     }
-    PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return a * b + c;    //TODO: make better, possibly gcc does not use actual fma.
-    }
-    PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return -a * b + c;
-    }
-    PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return a * b - c;
-    }
-    PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return -a * b - c;
-    }
+
+    PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
 
     constexpr static struct {
         static auto operator()(impl_vec v) -> impl_vec {
@@ -120,18 +113,11 @@ struct vec_traits<f32, 2> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) -> impl_vec {
         return {lhs[0] / rhs[0], lhs[1] / rhs[1]};
     }
-    PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return {a[0] * b[0] + c[0], a[1] * b[1] + c[1]};
-    }
-    PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return {-a[0] * b[0] + c[0], -a[1] * b[1] + c[1]};
-    }
-    PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return {a[0] * b[0] - c[0], a[1] * b[1] - c[1]};
-    }
-    PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
-        return {-a[0] * b[0] - c[0], -a[1] * b[1] - c[1]};
-    }
+
+    PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+    PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
 
     constexpr static struct {
         PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const -> impl_vec {
@@ -343,6 +329,79 @@ struct vec_traits<f32, 4>::repack_t<4, 1>
                   | repack_t<2, 1>{}    //
                   | tupi::apply         //
                   | repack_t<4, 2>{}) {};
+
+PCX_AINLINE auto vec_traits<f32, 1>::fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fmadd(x, y, z);
+    return res[0];
+}
+PCX_AINLINE auto vec_traits<f32, 1>::fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fnmadd(x, y, z);
+    return res[0];
+}
+PCX_AINLINE auto vec_traits<f32, 1>::fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fmsub(x, y, z);
+    return res[0];
+}
+PCX_AINLINE auto vec_traits<f32, 1>::fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fnmsub(x, y, z);
+    return res[0];
+}
+PCX_AINLINE auto vec_traits<f32, 2>::fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fmadd(x, y, z);
+    return {res[0], res[2]};
+}
+PCX_AINLINE auto vec_traits<f32, 2>::fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fnmadd(x, y, z);
+    return {res[0], res[2]};
+}
+PCX_AINLINE auto vec_traits<f32, 2>::fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fmsub(x, y, z);
+    return {res[0], res[2]};
+}
+PCX_AINLINE auto vec_traits<f32, 2>::fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
+    using proxy_traits = vec_traits<f32, 4>;
+
+    auto x   = proxy_traits::upsample(a);
+    auto y   = proxy_traits::upsample(b);
+    auto z   = proxy_traits::upsample(c);
+    auto res = proxy_traits::fnmsub(x, y, z);
+    return {res[0], res[2]};
+}
 
 template<>
 struct vec_traits<f32, 8> {

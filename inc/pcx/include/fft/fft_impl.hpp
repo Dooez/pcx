@@ -759,7 +759,7 @@ struct sequential_subtransform {
                 }();
 
                 auto k_start = lowk && !skip_lowk_single_load ? 1UZ : 0UZ;
-                auto k_range = stdv::iota(k_start, final_k_count * 2) | stdv::reverse;
+                auto k_range = stdv::iota(0U, final_k_count * 2) | stdv::drop(k_start) | stdv::reverse;
                 for (auto k: k_range) {
                     auto src = src_ptr + k * single_load_size * 2;
                     auto dst = dst_ptr + k * single_load_size * 2;
@@ -1001,7 +1001,9 @@ struct sequential_subtransform {
 
         [=]<uZ NGroups = 2> PCX_LAINLINE    //
             (this auto f, uZ_ce<NGroups> = {}) {
-                if constexpr (NGroups >= Width) {
+                if constexpr (width == 1) {
+                    return;
+                } else if constexpr (NGroups >= Width) {
                     insert_regroup_tw(regroup_tw_fact(uZ_ce<NGroups>{}), half_tw);
                 } else {
                     insert_regroup_tw(regroup_tw_fact(uZ_ce<NGroups>{}), half_tw);
