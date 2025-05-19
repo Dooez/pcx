@@ -1,6 +1,7 @@
 #include "common.hpp"
 #include "pcx/fft.hpp"
 
+#include <generator>
 #include <print>
 namespace stdv = std::views;
 namespace stdr = std::ranges;
@@ -8,6 +9,43 @@ namespace stdr = std::ranges;
 using pcx::f32;
 using pcx::f64;
 using pcx::uZ;
+namespace pcxt = pcx::testing;
+
+template<typename fX>
+bool check_parc_br(uZ fft_size, uZ data_size, f64 freq_n) {
+    constexpr auto ops = pcx::fft_options{.pt = pcx::fft_permutation::bit_reversed};
+    auto           fft = pcx::par_fft_plan<fX, ops>(fft_size);
+
+    auto signal_raw = std::vector<std::complex<fX>>(fft_size * data_size);
+    auto s1_raw     = signal_raw;
+
+    auto signal = [&](uZ i = 0) -> std::generator<std::span<std::complex<fX>>> {
+        while (true)
+            co_yield {signal_raw.data() + data_size * (i++), data_size};
+    };
+    auto check = std::vector<std::complex<fX>>(fft_size);
+    for (auto [i, v, vcf]: stdv::zip(stdv::iota(0U), signal(), check)) {
+        auto cx = std::exp(std::complex<fX>(0, 1)                 //
+                           * static_cast<fX>(2)                   //
+                           * static_cast<fX>(std::numbers::pi)    //
+                           * static_cast<fX>(i)                   //
+                           * static_cast<fX>(freq_n)              //
+                           / static_cast<fX>(fft_size));
+
+        vcf = cx;
+        stdr::fill(v, cx);
+    }
+
+    pcxt::naive_fft(check, 8, 8);
+    fft.fft_raw(signal_raw.data(), data_size, data_size);
+
+    for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal(), check)) {
+        if (!pcxt::par_check_correctness(check_v, sv, fft_size, i, ops.simd_width, ops.node_size, false))
+            return false;
+    }
+    return true;
+}
+
 
 template<typename fX>
 bool check_br(uZ fft_size) {
