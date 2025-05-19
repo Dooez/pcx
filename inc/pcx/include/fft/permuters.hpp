@@ -552,28 +552,45 @@ struct br_permuter_sequential : public br_permuter_base {
                         (dst_data.get_batch_base(0) + idx * width * 2 + Is * subsize * 2)...);
                 }(make_uZ_seq<width>{});
             };
-            bool swap = true;
-            while (true) {
+            if constexpr (Shifted && width == 1) {
                 for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
-                    auto dst0       = next_ptr_tup();
-                    auto data0      = tupi::group_invoke(simd::cxload<src_pck, width>, dst0);
-                    auto data_perm0 = simd::br_permute(data0, shifted);
-                    if (!swap) {
-                        tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
-                    } else {
-                        auto dst1       = next_ptr_tup();
-                        auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, dst1);
-                        auto data_perm1 = simd::br_permute(data1, shifted);
-                        tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
-                        tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
+                    auto dst0  = next_ptr_tup();
+                    auto dst1  = next_ptr_tup();
+                    auto dst2  = next_ptr_tup();
+                    auto dst3  = next_ptr_tup();
+                    auto data0 = tupi::group_invoke(simd::cxload<src_pck, width>, dst0);
+                    auto data1 = tupi::group_invoke(simd::cxload<src_pck, width>, dst1);
+                    auto data2 = tupi::group_invoke(simd::cxload<src_pck, width>, dst2);
+                    auto data3 = tupi::group_invoke(simd::cxload<src_pck, width>, dst3);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data0);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst2, data1);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst3, data2);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data3);
+                }
+            } else {
+                bool swap = true;
+                while (true) {
+                    for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                        auto dst0       = next_ptr_tup();
+                        auto data0      = tupi::group_invoke(simd::cxload<src_pck, width>, dst0);
+                        auto data_perm0 = simd::br_permute(data0, shifted);
+                        if (!swap) {
+                            tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
+                        } else {
+                            auto dst1       = next_ptr_tup();
+                            auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, dst1);
+                            auto data_perm1 = simd::br_permute(data1, shifted);
+                            tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
+                            tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
+                        }
                     }
+                    if (swap) {
+                        swap     = false;
+                        lane_cnt = nonswap_cnt;
+                        continue;
+                    }
+                    break;
                 }
-                if (swap) {
-                    swap     = false;
-                    lane_cnt = nonswap_cnt;
-                    continue;
-                }
-                break;
             }
         } else {
             auto next_ptr_tup = [&] PCX_LAINLINE {
@@ -587,28 +604,51 @@ struct br_permuter_sequential : public br_permuter_base {
                     return tupi::make_tuple(mktup(dst_data), mktup(src_data));
                 }(make_uZ_seq<width>{});
             };
-            bool swap = true;
-            while (true) {
+            if constexpr (Shifted && width == 1) {
+                for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                    auto [dst0, src0] = next_ptr_tup();
+                    auto [dst1, src1] = next_ptr_tup();
+                    auto [dst2, src2] = next_ptr_tup();
+                    auto [dst3, src3] = next_ptr_tup();
+                    auto data0        = tupi::group_invoke(simd::cxload<src_pck, width>, src0);
+                    auto data1        = tupi::group_invoke(simd::cxload<src_pck, width>, src1);
+                    auto data2        = tupi::group_invoke(simd::cxload<src_pck, width>, src2);
+                    auto data3        = tupi::group_invoke(simd::cxload<src_pck, width>, src3);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data0);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst2, data1);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst3, data2);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data3);
+                }
+                lane_cnt = nonswap_cnt;
                 for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
                     auto [dst0, src0] = next_ptr_tup();
                     auto data0        = tupi::group_invoke(simd::cxload<src_pck, width>, src0);
-                    auto data_perm0   = simd::br_permute(data0, shifted);
-                    if (!swap) {
-                        tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
-                    } else {
-                        auto [dst1, src1] = next_ptr_tup();
-                        tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
-                        auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, src1);
-                        auto data_perm1 = simd::br_permute(data1, shifted);
-                        tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
+                    tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data0);
+                }
+            } else {
+                bool swap = true;
+                while (true) {
+                    for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                        auto [dst0, src0] = next_ptr_tup();
+                        auto data0        = tupi::group_invoke(simd::cxload<src_pck, width>, src0);
+                        auto data_perm0   = simd::br_permute(data0, shifted);
+                        if (!swap) {
+                            tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm0);
+                        } else {
+                            auto [dst1, src1] = next_ptr_tup();
+                            tupi::group_invoke(simd::cxstore<dst_pck>, dst1, data_perm0);
+                            auto data1      = tupi::group_invoke(simd::cxload<src_pck, width>, src1);
+                            auto data_perm1 = simd::br_permute(data1, shifted);
+                            tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data_perm1);
+                        }
                     }
+                    if (swap) {
+                        swap     = false;
+                        lane_cnt = nonswap_cnt;
+                        continue;
+                    }
+                    break;
                 }
-                if (swap) {
-                    swap     = false;
-                    lane_cnt = nonswap_cnt;
-                    continue;
-                }
-                break;
             }
         }
         return inplace_src;
@@ -616,20 +656,45 @@ struct br_permuter_sequential : public br_permuter_base {
     static auto insert_indexes(auto& r, uZ fft_size) -> br_permuter_sequential {
         u32 n = fft_size / width / width;
         u32 swap_cnt{};
-        for (auto i: stdv::iota(0U, n)) {
-            auto bri = reverse_bit_order(i, log2i(n));
-            if (bri > i) {
-                r.push_back(i);
-                r.push_back(bri);
-                ++swap_cnt;
+        if constexpr (Shifted && width == 1) {
+            if (fft_size == 2) {
+                r.push_back(0);
+                r.push_back(1);
+                return br_permuter_sequential{{}, nullptr, 0, 2};
             }
+            auto rbo = [=](auto i) {
+                auto br = reverse_bit_order(i, log2i(fft_size));
+                return (br + fft_size / 2) % fft_size;
+            };
+            for (u32 i: stdv::iota(0U, fft_size)) {
+                u32 br1 = rbo(i);
+                u32 br2 = rbo(br1);
+                u32 br3 = rbo(br2);
+                if (i == std::min({i, br1, br2, br3})) {
+                    r.push_back(i);
+                    r.push_back(br1);
+                    r.push_back(br2);
+                    r.push_back(br3);
+                    ++swap_cnt;
+                }
+            }
+            return br_permuter_sequential{{}, nullptr, swap_cnt, n - 4 * swap_cnt};
+        } else {
+            for (auto i: stdv::iota(0U, n)) {
+                auto bri = reverse_bit_order(i, log2i(n));
+                if (bri > i) {
+                    r.push_back(i);
+                    r.push_back(bri);
+                    ++swap_cnt;
+                }
+            }
+            for (auto i: stdv::iota(0U, n)) {
+                auto bri = reverse_bit_order(i, log2i(n));
+                if (bri == i)
+                    r.push_back(i);
+            }
+            return br_permuter_sequential{{}, nullptr, swap_cnt, n - 2 * swap_cnt};
         }
-        for (auto i: stdv::iota(0U, n)) {
-            auto bri = reverse_bit_order(i, log2i(n));
-            if (bri == i)
-                r.push_back(i);
-        }
-        return br_permuter_sequential{{}, nullptr, swap_cnt, n - 2 * swap_cnt};
     }
 };
 }    // namespace pcx::detail_

@@ -26,9 +26,10 @@ public:
 inline constexpr auto half_tw    = meta::val_seq<true>{};
 inline constexpr auto low_k      = meta::val_seq<true>{};
 inline constexpr auto node_sizes = uZ_seq<PCX_TESTING_NODE_SIZES>{};
-inline constexpr auto perm_types =
-    meta::val_seq<permute_t::bit_reversed, permute_t::normal, permute_t::shifted>{};
-// inline constexpr auto perm_types = meta::val_seq<permute_t::bit_reversed>{};
+inline constexpr auto perm_types = meta::val_seq<permute_t::bit_reversed,    //
+                                                 permute_t::normal,
+                                                 permute_t::shifted>{};
+// inline constexpr auto perm_types = meta::val_seq<permute_t::shifted>{};
 
 inline constexpr auto local_tw = meta::val_seq<false>{};
 
