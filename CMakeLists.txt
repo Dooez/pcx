@@ -83,6 +83,9 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_executable(test_simd tests/test_simd.cpp)
     add_executable(test_tuples tests/test_tuples.cpp)
     add_executable(test_fft_fin tests/fft/fft_if.cpp tests/fft/common.cpp)
+    target_compile_definitions(test_fft_fin PUBLIC
+        "-DPCX_TESTING_NODE_SIZES=${NODE_SIZES}"
+    )
 
     target_link_libraries(asm_explorer PUBLIC pcx)
     set_target_properties(asm_explorer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)

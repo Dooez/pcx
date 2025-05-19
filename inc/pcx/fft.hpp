@@ -50,16 +50,46 @@ class par_fft_plan {
 
 public:
     explicit par_fft_plan(uZ fft_size)
-    : fft_size_(fft_size) {
+    : fft_size_(fft_size)
+    , permuter_(permuter_t::insert_indexes(idxs_, fft_size)) {
         using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
         auto tw_data = detail_::tw_data_t<T, true>{};
         impl_t::insert_tw(tw_, fft_size, lowk, half_tw, not_sequential);
-        permuter_ = permuter_t::insert_indexes(idxs_, fft_size);
     };
 
-    template<typename R>
-        requires stdr::sized_range<R>    //
-                 && stdr::contiguous_range<stdr::range_value_t<R>>
+    [[nodiscard]] auto fft_size() const -> uZ {
+        return fft_size_;
+    }
+
+    void fft_raw(std::complex<T>* data_ptr, uZ stride, uZ data_size) {
+        using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
+        constexpr auto dst_pck = cxpack<1, T>{};
+        constexpr auto src_pck = cxpack<1, T>{};
+        constexpr auto lowk    = std::true_type{};
+        constexpr auto half_tw = std::true_type{};
+
+        auto data_info = pcx::detail_::data_info<T, true>{.data_ptr = reinterpret_cast<T*>(data_ptr),
+                                                          .stride   = stride,
+                                                          .k_stride = stride};
+        auto tw        = pcx::detail_::tw_data_t<T, false>{tw_.data()};
+        auto permuter  = permuter_;
+        if constexpr (!bit_reversed) {
+            permuter.idx_ptr = idxs_.data();
+        }
+        impl_t::perform(dst_pck,
+                        src_pck,
+                        half_tw,
+                        lowk,
+                        data_info,
+                        detail_::inplace_src,
+                        fft_size_,
+                        tw,
+                        permuter,
+                        data_size);
+    };
+
+    template<stdr::random_access_range R>
+        requires stdr::contiguous_range<stdr::range_value_t<R>>
                  && std::same_as<std::complex<T>,    //
                                  stdr::range_value_t<stdr::range_value_t<R>>>
     void fft(R& data) {
@@ -68,8 +98,6 @@ public:
         using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
         constexpr auto dst_pck = cxpack<1, T>{};
         constexpr auto src_pck = cxpack<1, T>{};
-        // constexpr auto conj_tw = std::false_type{};
-        // constexpr auto reverse = std::false_type{};
 
         auto data_size = stdr::size(data[0]);
         for (auto [i, slice]: stdv::enumerate(data) | stdv::drop(1)) {
@@ -90,7 +118,7 @@ public:
                         permuter_,
                         data_size);
     }
-    template<stdr::sized_range R>
+    template<stdr::random_access_range R>
         requires stdr::contiguous_range<stdr::range_value_t<R>>
                  && std::same_as<std::complex<T>,    //
                                  stdr::range_value_t<stdr::range_value_t<R>>>
