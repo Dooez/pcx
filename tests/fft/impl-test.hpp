@@ -4,7 +4,7 @@
 #include <generator>
 
 namespace pcx::testing {
-template<typename T, uZ Width>
+template<typename T, uZ Width, uZ NodeSize>
 bool test_seq(const std::vector<std::complex<T>>& signal,
               const chk_t<T>&                     chk_fwd,
               const chk_t<T>&                     chk_rev,
@@ -17,7 +17,7 @@ bool test_seq(const std::vector<std::complex<T>>& signal,
               bool                                external);
 template<typename fX>
 using std_vec2d = std::vector<std::vector<std::complex<fX>>>;
-template<typename fX, uZ Width>
+template<typename fX, uZ Width, uZ NodeSize>
 bool test_par(const std_vec2d<fX>& signal,
               std_vec2d<fX>&       s1,
               const chk_t<fX>&     chk_fwd,
@@ -30,7 +30,7 @@ bool test_par(const std_vec2d<fX>& signal,
               bool                 external);
 template<typename fX>
 using parc_data = detail_::data_info<fX, true>;
-template<typename fX, uZ Width>
+template<typename fX, uZ Width, uZ NodeSize>
 bool test_parc(parc_data<const fX> signal,
                parc_data<fX>       s1,
                uZ                  data_size,
@@ -731,9 +731,8 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
     return true;
 }
 
-template<typename fX, uZ VecWidth, uZ... NodeSize, bool... LowK, bool... LocalTw, permute_t... Perm>
-bool parc_run_tests(uZ_seq<NodeSize...>,
-                    meta::val_seq<LowK...>,
+template<typename fX, uZ VecWidth, uZ NodeSize, bool... LowK, bool... LocalTw, permute_t... Perm>
+bool parc_run_tests(meta::val_seq<LowK...>,
                     meta::val_seq<LocalTw...>,
                     meta::val_seq<Perm...>,
                     parc_data<const fX> signal,
@@ -750,24 +749,23 @@ bool parc_run_tests(uZ_seq<NodeSize...>,
     auto lk_passed = [&](auto lowk) {
         auto ltw_passed = [&](auto local_tw) {
             auto perm_passed = [&](auto perm_type) {
-                return ((data_size <= NodeSize
-                         || parc_test_proto(uZ_ce<NodeSize>{},
-                                            uZ_ce<VecWidth>{},
-                                            lowk,
-                                            local_tw,
-                                            perm_type,
-                                            signal,
-                                            s1,
-                                            data_size,
-                                            chk_fwd,
-                                            chk_rev,
-                                            twvec,
-                                            local_check,
-                                            fwd,
-                                            rev,
-                                            inplace,
-                                            external))
-                        && ...);
+                return data_size <= NodeSize
+                       || parc_test_proto(uZ_ce<NodeSize>{},
+                                          uZ_ce<VecWidth>{},
+                                          lowk,
+                                          local_tw,
+                                          perm_type,
+                                          signal,
+                                          s1,
+                                          data_size,
+                                          chk_fwd,
+                                          chk_rev,
+                                          twvec,
+                                          local_check,
+                                          fwd,
+                                          rev,
+                                          inplace,
+                                          external);
             };
             return (perm_passed(val_ce<Perm>{}) && ...);
         };
@@ -775,9 +773,8 @@ bool parc_run_tests(uZ_seq<NodeSize...>,
     };
     return (lk_passed(val_ce<LowK>{}) && ...);
 }
-template<typename fX, uZ VecWidth, uZ... NodeSize, bool... LowK, bool... LocalTw, permute_t... Perm>
-bool par_run_tests(uZ_seq<NodeSize...>,
-                   meta::val_seq<LowK...>,
+template<typename fX, uZ VecWidth, uZ NodeSize, bool... LowK, bool... LocalTw, permute_t... Perm>
+bool par_run_tests(meta::val_seq<LowK...>,
                    meta::val_seq<LocalTw...>,
                    meta::val_seq<Perm...>,
                    const std_vec2d<fX>& signal,
@@ -793,23 +790,22 @@ bool par_run_tests(uZ_seq<NodeSize...>,
     auto lk_passed = [&](auto lowk) {
         auto ltw_passed = [&](auto local_tw) {
             auto perm_passed = [&](auto perm_type) {
-                return ((signal.size() <= NodeSize
-                         || par_test_proto(uZ_ce<NodeSize>{},
-                                           uZ_ce<VecWidth>{},
-                                           lowk,
-                                           local_tw,
-                                           perm_type,
-                                           signal,
-                                           s1,
-                                           chk_fwd,
-                                           chk_rev,
-                                           twvec,
-                                           local_check,
-                                           fwd,
-                                           rev,
-                                           inplace,
-                                           external))
-                        && ...);
+                return signal.size() <= NodeSize
+                       || par_test_proto(uZ_ce<NodeSize>{},
+                                         uZ_ce<VecWidth>{},
+                                         lowk,
+                                         local_tw,
+                                         perm_type,
+                                         signal,
+                                         s1,
+                                         chk_fwd,
+                                         chk_rev,
+                                         twvec,
+                                         local_check,
+                                         fwd,
+                                         rev,
+                                         inplace,
+                                         external);
             };
             return (perm_passed(val_ce<Perm>{}) && ...);
         };
@@ -820,43 +816,41 @@ bool par_run_tests(uZ_seq<NodeSize...>,
 
 template<typename fX,
          uZ VecWidth,
-         uZ... NodeSize,
+         uZ NodeSize,
          bool... low_k,
          bool... local_tw,
          bool... half_tw,
          permute_t... Perm>
-bool seq_run_tests(uZ_seq<NodeSize...>,
-               meta::val_seq<low_k...>,
-               meta::val_seq<local_tw...>,
-               meta::val_seq<half_tw...>,
-               meta::val_seq<Perm...>,
-               const std::vector<std::complex<fX>>& signal,
-               const chk_t<fX>&                     chk_fwd,
-               const chk_t<fX>&                     chk_rev,
-               std::vector<std::complex<fX>>&       s1,
-               std::vector<fX>&                     twvec,
-               bool                                 local_check,
-               bool                                 fwd,
-               bool                                 rev,
-               bool                                 inplace,
-               bool                                 ext) {
+bool seq_run_tests(meta::val_seq<low_k...>,
+                   meta::val_seq<local_tw...>,
+                   meta::val_seq<half_tw...>,
+                   meta::val_seq<Perm...>,
+                   const std::vector<std::complex<fX>>& signal,
+                   const chk_t<fX>&                     chk_fwd,
+                   const chk_t<fX>&                     chk_rev,
+                   std::vector<std::complex<fX>>&       s1,
+                   std::vector<fX>&                     twvec,
+                   bool                                 local_check,
+                   bool                                 fwd,
+                   bool                                 rev,
+                   bool                                 inplace,
+                   bool                                 ext) {
     auto lk_passed = [&]<bool LowK>(val_ce<LowK>) {
         auto ltw_passed = [&]<bool LocalTw>(val_ce<LocalTw>) {
             auto htw_passed = [&]<bool HalfTw>(val_ce<HalfTw>) {
                 auto perm_passed = [&](auto perm_type) {
-                    return ((signal.size() <= NodeSize * VecWidth
-                             || seq_test_proto<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(perm_type,
-                                                                                              signal,
-                                                                                              chk_fwd,
-                                                                                              chk_rev,
-                                                                                              s1,
-                                                                                              twvec,
-                                                                                              local_check,
-                                                                                              fwd,
-                                                                                              rev,
-                                                                                              inplace,
-                                                                                              ext))
-                            && ...);
+                    return signal.size() <= NodeSize * VecWidth
+                           || seq_test_proto<fX, VecWidth, NodeSize, LowK, LocalTw, HalfTw>(perm_type,
+                                                                                            signal,
+                                                                                            chk_fwd,
+                                                                                            chk_rev,
+                                                                                            s1,
+                                                                                            twvec,
+                                                                                            local_check,
+                                                                                            fwd,
+                                                                                            rev,
+                                                                                            inplace,
+                                                                                            ext);
                 };
                 return (perm_passed(val_ce<Perm>{}) && ...);
             };
