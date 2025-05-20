@@ -14,6 +14,7 @@ inline constexpr auto f64_widths   = pcx::uZ_seq<PCX_TESTING_F64_WIDTHS>{};
 static constexpr auto do_test_seq  = std::bool_constant<PCX_TESTING_SEQ>{};
 static constexpr auto do_test_par  = std::bool_constant<PCX_TESTING_PAR>{};
 static constexpr auto do_test_parc = std::bool_constant<PCX_TESTING_PARC>{};
+inline constexpr auto node_sizes   = pcx::uZ_seq<PCX_TESTING_NODE_SIZES>{};
 
 namespace pcxt = pcx::testing;
 /**
@@ -92,8 +93,13 @@ void prepare_checks(pcxt::chk_t<fX>& chk_fwd, pcxt::chk_t<fX>& chk_rev) {
     }
 }
 
-template<uZ... Ws, typename fX>
-bool test_parc(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, uZ data_size, f64 freq_n) {
+template<uZ... Ws, uZ... NodeSize, typename fX>
+bool test_parc(pcx::uZ_seq<Ws...>,
+               pcx::uZ_seq<NodeSize...>,
+               pcx::meta::t_id<fX>,
+               uZ  fft_size,
+               uZ  data_size,
+               f64 freq_n) {
     bool local_check = false;
     bool fwd         = true;
     bool rev         = true;
@@ -133,21 +139,29 @@ bool test_parc(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, uZ data_siz
     auto s1_data = pcx::detail_::data_info<fX, true>{.data_ptr = reinterpret_cast<fX*>(s1_raw.data()),
                                                      .stride   = data_size,
                                                      .k_stride = data_size};
-    return (pcxt::test_parc<fX, Ws>(signal_data,
-                                    s1_data,
-                                    data_size,
-                                    chk_fwd,
-                                    chk_rev,
-                                    twvec,
-                                    local_check,
-                                    fwd,
-                                    rev,
-                                    inplace,
-                                    external)
+    return ([&](auto width) {
+        return (pcxt::test_parc<fX, width, NodeSize>(signal_data,
+                                                     s1_data,
+                                                     data_size,
+                                                     chk_fwd,
+                                                     chk_rev,
+                                                     twvec,
+                                                     local_check,
+                                                     fwd,
+                                                     rev,
+                                                     inplace,
+                                                     external)
+                && ...);
+    }(pcx::uZ_ce<Ws>{})
             && ...);
 }
-template<uZ... Ws, typename fX>
-bool test_par(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, uZ data_size, f64 freq_n) {
+template<uZ... Ws, uZ... NodeSize, typename fX>
+bool test_par(pcx::uZ_seq<Ws...>,
+              pcx::uZ_seq<NodeSize...>,
+              pcx::meta::t_id<fX>,
+              uZ  fft_size,
+              uZ  data_size,
+              f64 freq_n) {
     bool local_check = false;
     bool fwd         = true;
     bool rev         = true;
@@ -174,20 +188,23 @@ bool test_par(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, uZ data_size
     prepare_checks(chk_fwd, chk_rev);
     auto s1    = signal;
     auto twvec = std::vector<fX>{};
-    return (pcxt::test_par<fX, Ws>(signal,    //
-                                   s1,
-                                   chk_fwd,
-                                   chk_rev,
-                                   twvec,
-                                   local_check,
-                                   fwd,
-                                   rev,
-                                   inplace,
-                                   external)
+    return ([&](auto width) {
+        return (pcxt::test_par<fX, width, NodeSize>(signal,    //
+                                                    s1,
+                                                    chk_fwd,
+                                                    chk_rev,
+                                                    twvec,
+                                                    local_check,
+                                                    fwd,
+                                                    rev,
+                                                    inplace,
+                                                    external)
+                && ...);
+    }(pcx::uZ_ce<Ws>{})
             && ...);
 }
-template<uZ... Ws, typename fX>
-bool test_seq(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) {
+template<uZ... Ws, uZ... NodeSize, typename fX>
+bool test_seq(pcx::uZ_seq<Ws...>, pcx::uZ_seq<NodeSize...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) {
     bool local_check = false;
     bool fwd         = true;
     bool rev         = true;
@@ -211,16 +228,19 @@ bool test_seq(pcx::uZ_seq<Ws...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) 
     prepare_checks(chk_fwd, chk_rev);
     auto s1 = std::vector<std::complex<fX>>(fft_size);
     auto s2 = std::vector<std::complex<fX>>(fft_size);
-    return (pcxt::test_seq<fX, Ws>(signal,    //
-                                   chk_fwd,
-                                   chk_rev,
-                                   s1,
-                                   tw,
-                                   local_check,
-                                   fwd,
-                                   rev,
-                                   inplace,
-                                   external)
+    return ([&](auto width) {
+        return (pcxt::test_seq<fX, width, NodeSize>(signal,    //
+                                                    chk_fwd,
+                                                    chk_rev,
+                                                    s1,
+                                                    tw,
+                                                    local_check,
+                                                    fwd,
+                                                    rev,
+                                                    inplace,
+                                                    external)
+                && ...);
+    }(pcx::uZ_ce<Ws>{})
             && ...);
 }
 
@@ -237,21 +257,21 @@ int main() {
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
     while (fft_size <= 2048 * 2048 * 2) {
         if constexpr (do_test_parc) {
-            if (!test_parc(f32_widths, f32_tid, fft_size, 31, 13.001))
+            if (!test_parc(f32_widths, node_sizes, f32_tid, fft_size, 31, 13.001))
                 return -1;
-            if (!test_parc(f64_widths, f64_tid, fft_size, 31, 13.001))
+            if (!test_parc(f64_widths, node_sizes, f64_tid, fft_size, 31, 13.001))
                 return -1;
         }
         if constexpr (do_test_par) {
-            if (!test_par(f32_widths, f32_tid, fft_size, 31, 13.001))
+            if (!test_par(f32_widths, node_sizes, f32_tid, fft_size, 31, 13.001))
                 return -1;
-            if (!test_par(f64_widths, f64_tid, fft_size, 31, 13.001))
+            if (!test_par(f64_widths, node_sizes, f64_tid, fft_size, 31, 13.001))
                 return -1;
         }
         if constexpr (do_test_seq) {
-            if (!test_seq(f32_widths, f32_tid, fft_size, fft_size / 2 * 13.0001))
+            if (!test_seq(f32_widths, node_sizes, f32_tid, fft_size, fft_size / 2 * 13.0001))
                 return -1;
-            if (!test_seq(f64_widths, f64_tid, fft_size, fft_size / 2 * 13.0001))
+            if (!test_seq(f64_widths, node_sizes, f64_tid, fft_size, fft_size / 2 * 13.0001))
                 return -1;
         }
         fft_size *= 2;
