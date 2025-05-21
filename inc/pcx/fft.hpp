@@ -52,9 +52,18 @@ public:
     explicit par_fft_plan(uZ fft_size)
     : fft_size_(fft_size)
     , permuter_(permuter_t::insert_indexes(idxs_, fft_size)) {
-        using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
         auto tw_data = detail_::tw_data_t<T, true>{};
-        impl_t::insert_tw(tw_, fft_size, lowk, half_tw, not_sequential);
+        if (fft_size > coherent_size){
+            inplace_ptr_ = &inplace<Opts.node_size, 1, 1, false>;
+            inplace_r_ptr_ = &inplace<Opts.node_size, 1, 1, true>;
+            external_ptr_ = &external<Opts.node_size, 1, 1, false>;
+            external_r_ptr_ = &external<Opts.node_size, 1, 1, true>;
+        };
+        auto check_size = [&]{
+            using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
+            auto tw_data = detail_::tw_data_t<T, true>{};
+        };
+        // impl_t::insert_tw(tw_, fft_size, lowk, half_tw, not_sequential);
     };
 
     [[nodiscard]] auto fft_size() const -> uZ {
@@ -68,6 +77,8 @@ public:
         constexpr auto lowk    = std::true_type{};
         constexpr auto half_tw = std::true_type{};
 
+        if(fft_size_ > coherent_size)
+        {
         auto data_info = pcx::detail_::data_info<T, true>{.data_ptr = reinterpret_cast<T*>(data_ptr),
                                                           .stride   = stride,
                                                           .k_stride = stride};
@@ -86,6 +97,15 @@ public:
                         tw,
                         permuter,
                         data_size);
+        }
+        if(fft_size_ > Opts.node_size){
+
+        }
+        auto check_small_node = [&](auto l_node){
+            if (fft_size_ == l_node){
+
+            }
+        };
     };
 
     template<stdr::random_access_range R>
@@ -152,10 +172,31 @@ public:
     }
 
 private:
+    using inplace_impl_t  = auto (par_fft_plan::*)(T*) -> void;
+    using external_impl_t  = auto (par_fft_plan::*)(T*, const T*) -> void;
     uZ                                   fft_size_;
     tw_t                                 tw_{};
     [[no_unique_address]] permute_idxs_t idxs_{};
     [[no_unique_address]] permuter_t     permuter_{};
+    uZ align{};
+    inplace_impl_t inplace_ptr_;
+    inplace_impl_t inplace_r_ptr_;
+    external_impl_t external_ptr_;
+    external_impl_t external_r_ptr_;
+
+
+    template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
+    void inplace(T* dst);
+    template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
+    void external(T* dst, const T* src);
+    template<uZ NodeSize, uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
+    void inplace_coh(T* dst);
+    template<uZ NodeSize, uZ Align,  uZ DstPck, uZ SrcPck, bool Reverse>
+    void external_coh(T* dst, const T* src);
+    template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
+    void inplace_single_node(T* dst);
+    template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
+    void external_single_node(T* dst, const T* src);
 };
 /**
  * @brief FFT plan for performing fft over sequential data.

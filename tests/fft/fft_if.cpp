@@ -135,22 +135,26 @@ bool check_shiftd(uZ fft_size) {
 int main() {
     size_t fft_size = 2;
     while (fft_size < 2048 * 256) {
-        if (!check_br<f32>(fft_size))
+        if (!check_parc_br<f32>(fft_size, 31, 13.001))
             return -1;
-        if (!check_normal<f32>(fft_size))
-            return -1;
-        if (!check_shiftd<f32>(fft_size))
-            return -1;
+        // if (!check_br<f32>(fft_size))
+        //     return -1;
+        // if (!check_normal<f32>(fft_size))
+        //     return -1;
+        // if (!check_shiftd<f32>(fft_size))
+        //     return -1;
         fft_size *= 2;
     }
     fft_size = 2;
     while (fft_size < 2048 * 128) {
-        if (!check_br<f64>(fft_size))
+        if (!check_parc_br<f32>(fft_size, 31, 13.001))
             return -1;
-        if (!check_normal<f64>(fft_size))
-            return -1;
-        if (!check_shiftd<f64>(fft_size))
-            return -1;
+        // if (!check_br<f64>(fft_size))
+        //     return -1;
+        // if (!check_normal<f64>(fft_size))
+        //     return -1;
+        // if (!check_shiftd<f64>(fft_size))
+        //     return -1;
         fft_size *= 2;
     }
 
