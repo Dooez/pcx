@@ -49,58 +49,41 @@ class par_fft_plan {
     using permute_idxs_t = std::conditional_t<bit_reversed, decltype([] {}), std::vector<u32>>;
 
 public:
-    explicit par_fft_plan(uZ fft_size)
-    : fft_size_(fft_size)
-    , permuter_(permuter_t::insert_indexes(idxs_, fft_size)) {
-        auto tw_data = detail_::tw_data_t<T, true>{};
-        if (fft_size > coherent_size) {
-            inplace_ptr_    = &inplace<Opts.node_size, 1, 1, false>;
-            inplace_r_ptr_  = &inplace<Opts.node_size, 1, 1, true>;
-            external_ptr_   = &external<Opts.node_size, 1, 1, false>;
-            external_r_ptr_ = &external<Opts.node_size, 1, 1, true>;
-        };
-        auto check_size = [&] {
-            using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
-            auto tw_data = detail_::tw_data_t<T, true>{};
-        };
-        // impl_t::insert_tw(tw_, fft_size, lowk, half_tw, not_sequential);
-    };
+    explicit par_fft_plan(uZ fft_size);
 
     [[nodiscard]] auto fft_size() const -> uZ {
         return fft_size_;
     }
 
     void fft_raw(std::complex<T>* data_ptr, uZ stride, uZ data_size) {
-        using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
-        constexpr auto dst_pck = cxpack<1, T>{};
-        constexpr auto src_pck = cxpack<1, T>{};
-        constexpr auto lowk    = std::true_type{};
-        constexpr auto half_tw = std::true_type{};
-
-        if (fft_size_ > coherent_size) {
-            auto data_info = pcx::detail_::data_info<T, true>{.data_ptr = reinterpret_cast<T*>(data_ptr),
-                                                              .stride   = stride,
-                                                              .k_stride = stride};
-            auto tw        = pcx::detail_::tw_data_t<T, false>{tw_.data()};
-            auto permuter  = permuter_;
-            if constexpr (!bit_reversed) {
-                permuter.idx_ptr = idxs_.data();
-            }
-            impl_t::perform(dst_pck,
-                            src_pck,
-                            half_tw,
-                            lowk,
-                            data_info,
-                            detail_::inplace_src,
-                            fft_size_,
-                            tw,
-                            permuter,
-                            data_size);
-        }
-        if (fft_size_ > Opts.node_size) {}
-        auto check_small_node = [&](auto l_node) {
-            if (fft_size_ == l_node) {}
-        };
+        // using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
+        // constexpr auto dst_pck = cxpack<1, T>{};
+        // constexpr auto src_pck = cxpack<1, T>{};
+        //
+        // if (fft_size_ > coherent_size) {
+        //     auto data_info = pcx::detail_::data_info<T, true>{.data_ptr = reinterpret_cast<T*>(data_ptr),
+        //                                                       .stride   = stride,
+        //                                                       .k_stride = stride};
+        //     auto tw        = pcx::detail_::tw_data_t<T, false>{tw_.data()};
+        //     auto permuter  = permuter_;
+        //     if constexpr (!bit_reversed) {
+        //         permuter.idx_ptr = idxs_.data();
+        //     }
+        //     impl_t::perform(dst_pck,
+        //                     src_pck,
+        //                     half_tw,
+        //                     lowk,
+        //                     data_info,
+        //                     detail_::inplace_src,
+        //                     fft_size_,
+        //                     tw,
+        //                     permuter,
+        //                     data_size);
+        // }
+        // if (fft_size_ > Opts.node_size) {}
+        // auto check_small_node = [&](auto l_node) {
+        //     if (fft_size_ == l_node) {}
+        // };
     };
 
     template<stdr::random_access_range R>
@@ -143,15 +126,13 @@ public:
         using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
         constexpr auto dst_pck = cxpack<1, T>{};
         constexpr auto src_pck = cxpack<1, T>{};
-        // constexpr auto conj_tw = std::true_type{};
-        // constexpr auto reverse = std::true_type{};
 
         auto data_size = stdr::size(data[0]);
         for (auto [i, slice]: stdv::enumerate(data) | stdv::drop(1)) {
             if (stdr::size(slice) != data_size)
                 throw std::runtime_error("Subrange sizes not equal");
         }
-        auto dst_data = detail_::data_info<T, false, R>{.data_ptr = &data};
+        auto dst_data = detail_::data_info<T, false, R>{.data_ptr = &data[0]};
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = &*tw_.end()};
 
         impl_t::perform_rev(dst_pck,
@@ -167,8 +148,8 @@ public:
     }
 
 private:
-    using inplace_impl_t  = auto (par_fft_plan::*)(T*) -> void;
-    using external_impl_t = auto (par_fft_plan::*)(T*, const T*) -> void;
+    using inplace_impl_t  = auto (par_fft_plan::*)(T*, uZ, uZ) -> void;
+    using external_impl_t = auto (par_fft_plan::*)(T*, uZ, const T*, uZ, uZ) -> void;
     uZ                                   fft_size_;
     tw_t                                 tw_{};
     [[no_unique_address]] permute_idxs_t idxs_{};
@@ -180,18 +161,27 @@ private:
     external_impl_t                      external_r_ptr_;
 
 
+    template<uZ DstPck, uZ SrcPck, bool Reverse>
+    void inplace(T* dst, uZ stride, uZ data_size);
+    template<uZ DstPck, uZ SrcPck, bool Reverse>
+    void external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
+    template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
+    void inplace_coh(T* dst, uZ stride, uZ data_size);
+    template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
+    void external_coh(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
     template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-    void inplace(T* dst);
+    void inplace_single_node(T* dst, uZ stride, uZ data_size);
     template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-    void external(T* dst, const T* src);
-    template<uZ NodeSize, uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
-    void inplace_coh(T* dst);
-    template<uZ NodeSize, uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
-    void external_coh(T* dst, const T* src);
-    template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-    void inplace_single_node(T* dst);
-    template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-    void external_single_node(T* dst, const T* src);
+    void external_single_node(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
+
+    template<uZ DstPck, uZ SrcPck, bool Reverse>
+    PCX_AINLINE void impl(detail_::data_info_for<T> auto       dst_data,
+                          detail_::data_info_for<const T> auto src_data,
+                          uZ                                   data_size);
+    template<bool SingleNode, uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
+    PCX_AINLINE void coh_impl(detail_::data_info_for<T> auto       dst_data,
+                              detail_::data_info_for<const T> auto src_data,
+                              uZ                                   data_size);
 };
 /**
  * @brief FFT plan for performing fft over sequential data.
