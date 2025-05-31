@@ -577,13 +577,8 @@ struct subtransform {
                                          auto src_pck,
                                          auto src) {
             using fft_iter_t = fft_iteration_t<T, width>;
-            // constexpr auto iter_reverse = std::bool_constant<reverse && !lowk>{};
-            using ll_tw_data_t =
-                std::conditional_t<lowk && !local_tw, tw_data_t<T, local_tw>, tw_data_t<T, local_tw>&>;
-            ll_tw_data_t ll_tw_data = l_tw_data;
-            if constexpr (!local_tw && lowk && reverse)
-                ll_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
-            auto l_k_cnt = k_count;
+            // if constexpr (!local_tw && lowk && reverse)
+            //     l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
             fft_iter_t::fft_iteration(node_size,
                                       dst_pck,
                                       src_pck,
@@ -595,16 +590,15 @@ struct subtransform {
                                       dst_data,
                                       src,
                                       k_count,
-                                      ll_tw_data);
-            // k_count = reverse ? k_count / node_size : k_count * node_size;
+                                      l_tw_data);
         };
 
         if constexpr (!reverse) {
-            k_count = 1;
+            k_count     = 1;
+            auto tw_bak = l_tw_data;
             if constexpr (align.size_pre() != 1) {
                 fft_iter(align.size_pre(), w_pck, src_pck, src_data);
-                if constexpr (lowk && !local_tw)
-                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_pre() : 0);
+                tw_bak = l_tw_data;
             } else if constexpr (src_pck != w_pck || !inplace) {
                 fft_iter(node_size, w_pck, src_pck, src_data);
             }
@@ -619,34 +613,35 @@ struct subtransform {
                 }
             }();
 
-            while (k_count <= fk)
+            while (k_count <= fk) {
+                if constexpr (lowk)
+                    l_tw_data = tw_bak;
                 fft_iter(node_size, w_pck, w_pck, inplace_src);
+            }
 
             if constexpr (align.size_post() != 1) {
                 fft_iter(align.size_post(), w_pck, src_pck, src_data);
-                if constexpr (lowk && !local_tw)
-                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? align.size_post() : 0);
-            } else {
-                if constexpr (dst_pck != w_pck)
-                    fft_iter(node_size, dst_pck, w_pck, inplace_src);
-                if constexpr (lowk && !local_tw) {
-                    if (k_count > align.size_pre())
-                        l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
-                }
+            } else if constexpr (dst_pck != w_pck) {
+                if constexpr (lowk)
+                    l_tw_data = tw_bak;
+                fft_iter(node_size, dst_pck, w_pck, inplace_src);
             }
         } else {
             k_count = final_k_count * 2;
             if constexpr (align.size_post() != 1) {
-                if constexpr (lowk && !local_tw)
-                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_post() : 0);
+                // if constexpr (lowk && !local_tw)
+                //     l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_post() : 0);
                 fft_iter(align.size_post(), w_pck, src_pck, src_data);
             } else {
-                if (k_count > align.size_pre()) {
-                    if constexpr (lowk && !local_tw)
-                        l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
-                }
-                if constexpr (src_pck != w_pck || !inplace)
+                // if (k_count > align.size_pre()) {
+                //     if constexpr (lowk && !local_tw)
+                //         l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
+                // }
+                if constexpr (src_pck != w_pck || !inplace) {
                     fft_iter(node_size, w_pck, src_pck, src_data);
+                } else if constexpr (lowk) {
+                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
+                }
             }
             constexpr auto fk = [&] {
                 if constexpr (align.size_pre() > 1) {
@@ -658,14 +653,20 @@ struct subtransform {
                 }
             }();
 
-            while (k_count > fk)
+            while (k_count > fk) {
+                if constexpr (lowk) {
+                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
+                }
                 fft_iter(node_size, w_pck, w_pck, inplace_src);
+            }
 
             if constexpr (align.size_pre() != 1) {
-                if constexpr (lowk && !local_tw)
-                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
+                // if constexpr (lowk && !local_tw)
+                //     l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
                 fft_iter(align.size_pre(), dst_pck, w_pck, inplace_src);
             } else if constexpr (dst_pck != w_pck) {
+                if constexpr (lowk)
+                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
                 fft_iter(node_size, dst_pck, w_pck, inplace_src);
             }
         }
