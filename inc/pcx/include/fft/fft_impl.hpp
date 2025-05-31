@@ -39,10 +39,40 @@ static auto make_tw_node(uZ fft_size, uZ k) {
     return tw_node;
 }
 
+template<floating_point T, bool LocalTw>
+struct tw_data_t;
+template<floating_point T>
+struct tw_data_t<T, false> {
+    static constexpr auto is_local() -> std::false_type {
+        return {};
+    };
+
+    const T* tw_ptr;
+};
+
+template<floating_point T>
+struct tw_data_t<T, true> {
+    static constexpr auto is_local() -> std::true_type {
+        return {};
+    };
+
+    uZ start_fft_size = 1;
+    uZ start_k        = 0;
+};
+
+template<typename T, floating_point fX>
+struct is_tw_data_of : std::false_type {};
+template<floating_point fX, bool LocalTw>
+struct is_tw_data_of<tw_data_t<fX, LocalTw>, fX> : std::true_type {};
+template<typename T, typename fX>
+concept tw_data_for = is_tw_data_of<T, fX>::value;
+
+
 template<uZ NodeSize, typename T, uZ Width>
     requires(NodeSize >= 2)
 struct btfly_node_dit {
-    static constexpr auto width = uZ_ce<Width>{};
+    static constexpr auto width     = uZ_ce<Width>{};
+    static constexpr auto node_size = uZ_ce<NodeSize>{};
 
     using cx_vec = simd::cx_vec<T, false, false, Width>;
 
@@ -246,37 +276,52 @@ struct btfly_node_dit {
             }(std::make_index_sequence<Size / 2>{});
         };
     } const_tw_getter{};
+
+    static auto make_tw_node(uZ fft_size, uZ k) {
+        constexpr auto n_tw = node_size / 2;
+
+        auto tw_node = std::array<std::complex<T>, n_tw>{};
+        uZ   i_tw    = 0;
+        for (uZ l: stdv::iota(0U, log2i(node_size))) {
+            for (uZ i: stdv::iota(0U, powi(2, l))) {
+                if (i % 2 == 1)
+                    continue;
+                auto tw          = pcx::detail_::wnk_br<T>(fft_size, k + i);
+                tw_node.at(i_tw) = tw;
+                ++i_tw;
+            }
+            k *= 2;
+            fft_size *= 2;
+        }
+        return tw_node;
+    }
+
+    static auto next_tw(meta::ce_of<bool> auto reverse, tw_data_for<T> auto& tw_data) -> tw_t {
+        const auto   local = tw_data.is_local();
+        constexpr uZ n_tw  = node_size / 2;
+        if constexpr (local) {
+            return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                if constexpr (reverse)
+                    --tw_data.start_k;
+                auto tws = make_tw_node(tw_data.start_fft_size * 2, tw_data.start_k);
+                if constexpr (!reverse)
+                    ++tw_data.start_k;
+                return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + Is)...);
+            }(make_uZ_seq<n_tw>{});
+        } else {
+            return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+                if constexpr (reverse)
+                    tw_data.tw_ptr -= n_tw * 2;
+                auto tws = tupi::make_tuple(simd::cxbroadcast<1, width>(tw_data.tw_ptr + Is * 2)...);
+                if constexpr (!reverse)
+                    tw_data.tw_ptr += n_tw * 2;
+                return tws;
+            }(make_uZ_seq<n_tw>{});
+        }
+    };
 };
 
 inline constexpr auto not_lowk = std::false_type{};
-
-template<floating_point T, bool LocalTw>
-struct tw_data_t;
-template<floating_point T>
-struct tw_data_t<T, false> {
-    static constexpr auto is_local() -> std::false_type {
-        return {};
-    };
-
-    const T* tw_ptr;
-};
-
-template<floating_point T>
-struct tw_data_t<T, true> {
-    static constexpr auto is_local() -> std::true_type {
-        return {};
-    };
-
-    uZ start_fft_size = 1;
-    uZ start_k        = 0;
-};
-
-template<typename T, floating_point fX>
-struct is_tw_data_of : std::false_type {};
-template<floating_point fX, bool LocalTw>
-struct is_tw_data_of<tw_data_t<fX, LocalTw>, fX> : std::true_type {};
-template<typename T, typename fX>
-concept tw_data_for = is_tw_data_of<T, fX>::value;
 
 template<uZ AlignNodeSize, bool PreAlign>
     requires power_of_two<AlignNodeSize>
@@ -327,10 +372,11 @@ struct fft_iteration_t {
             .conj_tw   = conj_tw,
         }>{};
 
-        const auto inplace    = src_data.empty();
-        const auto local      = tw_data.is_local();
-        using l_tw_data_t     = std::conditional_t<lowk && !local, tw_data_t<T, local>, tw_data_t<T, local>&>;
-        l_tw_data_t l_tw_data = tw_data;
+        const auto inplace = src_data.empty();
+        const auto local   = tw_data.is_local();
+        // using l_tw_data_t  = std::conditional_t<lowk && !local, tw_data_t<T, local>, tw_data_t<T, local>&>;
+        // l_tw_data_t l_tw_data = tw_data;
+        auto l_tw_data = tw_data;
 
         if constexpr (reverse) {
             k_count /= node_size;
@@ -369,38 +415,46 @@ struct fft_iteration_t {
             }
         };
 
-        auto make_tw_tup = [&] {
-            constexpr uZ n_tw = node_size / 2;
-            if constexpr (local) {
-                return [&] PCX_LAINLINE(uZ k) {
-                    return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                        auto tws = make_tw_node<T, node_size>(l_tw_data.start_fft_size * 2,    //
-                                                              l_tw_data.start_k + k);
-                        return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + Is)...);
-                    }(make_uZ_seq<n_tw>{});
-                };
-            } else if constexpr (reverse && !lowk) {
-                return [&] PCX_LAINLINE(uZ) {
-                    return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                        l_tw_data.tw_ptr -= n_tw * 2;
-                        auto l_tw_ptr = l_tw_data.tw_ptr;
-                        return tupi::make_tuple(simd::cxbroadcast<1, width>(l_tw_ptr + Is * 2)...);
-                    }(make_uZ_seq<n_tw>{});
-                };
+        // auto make_tw_tup = [&] {
+        //     constexpr uZ n_tw = node_size / 2;
+        //     if constexpr (local) {
+        //         return [&] PCX_LAINLINE(uZ k) {
+        //             return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+        //                 auto tws = make_tw_node<T, node_size>(l_tw_data.start_fft_size * 2,    //
+        //                                                       l_tw_data.start_k + k);
+        //                 return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + Is)...);
+        //             }(make_uZ_seq<n_tw>{});
+        //         };
+        //     } else if constexpr (reverse && !lowk) {
+        //         return [&] PCX_LAINLINE(uZ) {
+        //             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+        //                 l_tw_data.tw_ptr -= n_tw * 2;
+        //                 auto l_tw_ptr = l_tw_data.tw_ptr;
+        //                 return tupi::make_tuple(simd::cxbroadcast<1, width>(l_tw_ptr + Is * 2)...);
+        //             }(make_uZ_seq<n_tw>{});
+        //         };
+        //     } else {
+        //         return [&] PCX_LAINLINE(uZ) {
+        //             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
+        //                 auto l_tw_ptr = l_tw_data.tw_ptr;
+        //                 l_tw_data.tw_ptr += n_tw * 2;
+        //                 return tupi::make_tuple(simd::cxbroadcast<1, width>(l_tw_ptr + Is * 2)...);
+        //             }(make_uZ_seq<n_tw>{});
+        //         };
+        //     }
+        // }();
+
+        auto k_range = [=] {
+            if constexpr (reverse) {
+                return stdv::iota(lowk ? 1U : 0U, k_count) | stdv::reverse;
             } else {
-                return [&] PCX_LAINLINE(uZ) {
-                    return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                        auto l_tw_ptr = l_tw_data.tw_ptr;
-                        l_tw_data.tw_ptr += n_tw * 2;
-                        return tupi::make_tuple(simd::cxbroadcast<1, width>(l_tw_ptr + Is * 2)...);
-                    }(make_uZ_seq<n_tw>{});
-                };
+                return stdv::iota(lowk ? 1U : 0U, k_count);
             }
         }();
-
-        if constexpr (lowk) {
+        if constexpr (lowk && !reverse) {
             if constexpr (!skip_lowk_tw)
-                make_tw_tup(0);
+                btfly_node::next_tw(reverse, l_tw_data);
+            // make_tw_tup(0);
             for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, 0, r * width);
@@ -413,15 +467,10 @@ struct fft_iteration_t {
                 }
             }
         }
-        auto k_range = [=] {
-            if constexpr (reverse && !lowk) {
-                return stdv::iota(0U, k_count) | stdv::reverse;
-            } else {
-                return stdv::iota(lowk ? 1U : 0U, k_count);
-            }
-        }();
         for (auto k_group: k_range) {
-            auto tw = make_tw_tup(k_group);
+            bool rev = reverse;
+            auto tw  = btfly_node::next_tw(reverse, l_tw_data);
+            // auto tw = make_tw_tup(k_group);
             for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, k_group, r * width);
@@ -434,13 +483,30 @@ struct fft_iteration_t {
                 }
             }
         }
+        if constexpr (lowk && reverse) {
+            if constexpr (!skip_lowk_tw)
+                btfly_node::next_tw(reverse, l_tw_data);
+            for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
+                for (auto r: stdv::iota(0U, batch_size / width)) {
+                    auto dest = make_dst_tup(i_batch, 0, r * width);
+                    if constexpr (inplace) {
+                        btfly_node::perform(settings, dest);
+                    } else {
+                        auto src = make_src_tup(i_batch, 0, r * width);
+                        btfly_node::perform(settings, dest, src);
+                    }
+                }
+            }
+        }
         if constexpr (!reverse) {
             k_count *= node_size;
             if constexpr (local) {
+                l_tw_data = tw_data;
                 l_tw_data.start_fft_size *= node_size;
                 l_tw_data.start_k *= node_size;
             }
         }
+        tw_data = l_tw_data;
     }
     static void insert_iteration_tw(meta::ce_of<uZ> auto       node_size,
                                     twiddle_range_for<T> auto& r,
@@ -511,6 +577,13 @@ struct subtransform {
                                          auto src_pck,
                                          auto src) {
             using fft_iter_t = fft_iteration_t<T, width>;
+            // constexpr auto iter_reverse = std::bool_constant<reverse && !lowk>{};
+            using ll_tw_data_t =
+                std::conditional_t<lowk && !local_tw, tw_data_t<T, local_tw>, tw_data_t<T, local_tw>&>;
+            ll_tw_data_t ll_tw_data = l_tw_data;
+            if constexpr (!local_tw && lowk && reverse)
+                ll_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
+            auto l_k_cnt = k_count;
             fft_iter_t::fft_iteration(node_size,
                                       dst_pck,
                                       src_pck,
@@ -522,7 +595,8 @@ struct subtransform {
                                       dst_data,
                                       src,
                                       k_count,
-                                      l_tw_data);
+                                      ll_tw_data);
+            // k_count = reverse ? k_count / node_size : k_count * node_size;
         };
 
         if constexpr (!reverse) {
@@ -2029,3 +2103,4 @@ struct transform {
     };
 };
 }    // namespace pcx::detail_
+//
