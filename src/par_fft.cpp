@@ -12,8 +12,9 @@ template<floating_point T, fft_options Opts>
 par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
 : fft_size_(fft_size)
 , permuter_(permuter_t::insert_indexes(idxs_, fft_size)) {
-    if (fft_size > coherent_size) {
-        // tw
+    if (fft_size > coherent_size / lane_size) {
+        using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
+        impl_t::insert_tw(tw_, fft_size, true, half_tw, not_sequential);
 
         inplace_ptr_    = &par_fft_plan::inplace<1, 1, false>;
         inplace_r_ptr_  = &par_fft_plan::inplace<1, 1, true>;
@@ -21,15 +22,17 @@ par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
         external_r_ptr_ = &par_fft_plan::external<1, 1, true>;
         return;
     }
+    auto tw_data = detail_::tw_data_t<T, true>{};
+    auto k_cnt   = fft_size / 2;
     if (fft_size > Opts.node_size) {
-        using impl_t    = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
+        using impl_t    = detail_::subtransform<Opts.node_size, T, width>;
         auto align_node = impl_t::get_align_node(fft_size);
         auto test_align = [&]<uZ I>(uZ_ce<I>) {
             constexpr auto l_align_node = detail_::powi(2, I);
             if (l_align_node != align_node)
                 return false;
-            // tw;
-
+            constexpr auto align = detail_::align_param<l_align_node, true>{};
+            impl_t::insert_tw(tw_, align, lowk, k_cnt, tw_data);
             inplace_ptr_    = &par_fft_plan::inplace_coh<l_align_node, 1, 1, false>;
             inplace_r_ptr_  = &par_fft_plan::inplace_coh<l_align_node, 1, 1, true>;
             external_ptr_   = &par_fft_plan::external_coh<l_align_node, 1, 1, false>;
@@ -45,8 +48,8 @@ par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
         constexpr auto l_node_size = detail_::powi(2, I + 1);
         if (fft_size != l_node_size)
             return false;
-
-        // tw;
+        using impl_t = detail_::subtransform<Opts.node_size, T, width>;
+        impl_t::template insert_iteration_tw<l_node_size>(tw_, tw_data, k_cnt, lowk);
         inplace_ptr_    = &par_fft_plan::inplace_single_node<l_node_size, 1, 1, false>;
         inplace_r_ptr_  = &par_fft_plan::inplace_single_node<l_node_size, 1, 1, true>;
         external_ptr_   = &par_fft_plan::external_single_node<l_node_size, 1, 1, false>;
@@ -145,10 +148,10 @@ PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto 
         auto fft_size = fft_size_;
         if constexpr (!SingleNode) {
             return [=] PCX_LAINLINE(auto width, auto batch_size, auto dst, auto src) {
-                using subtf_t  = detail_::subtransform<Opts.node_size, T, width>;
-                auto batch_cnt = fft_size;
-                auto k_count   = fft_size / 2;
-                auto l_tw      = tw;
+                using subtf_t      = detail_::subtransform<Opts.node_size, T, width>;
+                auto batch_cnt     = fft_size;
+                auto final_k_count = fft_size / 2;
+                auto l_tw          = tw;
                 subtf_t::perform(dst_pck,
                                  src_pck,
                                  align,
@@ -159,7 +162,7 @@ PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto 
                                  batch_size,
                                  dst,
                                  src,
-                                 k_count,
+                                 final_k_count,
                                  l_tw);
                 auto{permuter}
                     .small_permute(width, batch_size, reverse, dst_pck, dst_pck, dst, detail_::inplace_src);
@@ -168,7 +171,7 @@ PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto 
             return [=] PCX_LAINLINE(auto width, auto batch_size, auto dst, auto src) {
                 using subtf_t  = detail_::subtransform<Opts.node_size, T, width>;
                 auto batch_cnt = fft_size;
-                auto k_count   = fft_size / 2;
+                auto k_count   = 1UZ;
                 auto l_tw      = tw;
                 subtf_t::template fft_iteration<Align>(dst_pck,
                                                        src_pck,

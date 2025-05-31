@@ -310,6 +310,14 @@ struct subtransform {
 
     static constexpr bool skip_lowk_tw = true;
 
+    static constexpr auto get_align_node(uZ size) {
+        auto slog       = log2i(size);
+        auto a          = slog / log2i(node_size);
+        auto b          = a * log2i(node_size);
+        auto align_node = powi(2, slog - b);
+        return align_node;
+    };
+
     template<uZ NodeSizeL>
     PCX_AINLINE static void fft_iteration(cxpack_for<T> auto          dst_pck,
                                           cxpack_for<T> auto          src_pck,
@@ -322,8 +330,6 @@ struct subtransform {
                                           data_info_for<const T> auto src_data,
                                           uZ&                         k_count,
                                           tw_data_for<T> auto&        tw_data) {
-        uZ w                    = width;
-        uZ nsl                  = NodeSizeL;
         using btfly_node        = btfly_node_dit<NodeSizeL, T, width>;
         constexpr auto settings = val_ce<typename btfly_node::settings{
             .pack_dest = dst_pck,

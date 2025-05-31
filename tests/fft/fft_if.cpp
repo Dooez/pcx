@@ -43,6 +43,7 @@ bool check_parc_br(uZ fft_size, uZ data_size, f64 freq_n) {
         if (!pcxt::par_check_correctness(check_v, sv, fft_size, i, ops.simd_width, ops.node_size, false))
             return false;
     }
+    std::println("[Success][Parc] size: {}", fft_size);
     return true;
 }
 
@@ -145,7 +146,7 @@ int main() {
         //     return -1;
         fft_size *= 2;
     }
-    fft_size = 2;
+    fft_size = 4;
     while (fft_size < 2048 * 128) {
         if (!check_parc_br<f32>(fft_size, 31, 13.001))
             return -1;

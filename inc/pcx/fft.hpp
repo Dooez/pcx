@@ -56,34 +56,7 @@ public:
     }
 
     void fft_raw(std::complex<T>* data_ptr, uZ stride, uZ data_size) {
-        // using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
-        // constexpr auto dst_pck = cxpack<1, T>{};
-        // constexpr auto src_pck = cxpack<1, T>{};
-        //
-        // if (fft_size_ > coherent_size) {
-        //     auto data_info = pcx::detail_::data_info<T, true>{.data_ptr = reinterpret_cast<T*>(data_ptr),
-        //                                                       .stride   = stride,
-        //                                                       .k_stride = stride};
-        //     auto tw        = pcx::detail_::tw_data_t<T, false>{tw_.data()};
-        //     auto permuter  = permuter_;
-        //     if constexpr (!bit_reversed) {
-        //         permuter.idx_ptr = idxs_.data();
-        //     }
-        //     impl_t::perform(dst_pck,
-        //                     src_pck,
-        //                     half_tw,
-        //                     lowk,
-        //                     data_info,
-        //                     detail_::inplace_src,
-        //                     fft_size_,
-        //                     tw,
-        //                     permuter,
-        //                     data_size);
-        // }
-        // if (fft_size_ > Opts.node_size) {}
-        // auto check_small_node = [&](auto l_node) {
-        //     if (fft_size_ == l_node) {}
-        // };
+        (this->*inplace_ptr_)(reinterpret_cast<T*>(data_ptr), stride, data_size);
     };
 
     template<stdr::random_access_range R>
