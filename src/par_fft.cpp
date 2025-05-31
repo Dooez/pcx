@@ -48,8 +48,8 @@ par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
         constexpr auto l_node_size = detail_::powi(2, I + 1);
         if (fft_size != l_node_size)
             return false;
-        using impl_t = detail_::subtransform<Opts.node_size, T, width>;
-        impl_t::template insert_iteration_tw<l_node_size>(tw_, tw_data, k_cnt, lowk);
+        using impl_t = detail_::fft_iteration_t<T, width>;
+        impl_t::insert_iteration_tw(uZ_ce<l_node_size>{}, tw_, tw_data, k_cnt, lowk);
         inplace_ptr_    = &par_fft_plan::inplace_single_node<l_node_size, 1, 1, false>;
         inplace_r_ptr_  = &par_fft_plan::inplace_single_node<l_node_size, 1, 1, true>;
         external_ptr_   = &par_fft_plan::external_single_node<l_node_size, 1, 1, false>;
@@ -169,21 +169,22 @@ PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto 
             };
         } else {
             return [=] PCX_LAINLINE(auto width, auto batch_size, auto dst, auto src) {
-                using subtf_t  = detail_::subtransform<Opts.node_size, T, width>;
+                using subtf_t  = detail_::fft_iteration_t<T, width>;
                 auto batch_cnt = fft_size;
                 auto k_count   = 1UZ;
                 auto l_tw      = tw;
-                subtf_t::template fft_iteration<Align>(dst_pck,
-                                                       src_pck,
-                                                       lowk,
-                                                       reverse,
-                                                       conj_tw,
-                                                       batch_cnt,
-                                                       batch_size,
-                                                       dst,
-                                                       src,
-                                                       k_count,
-                                                       l_tw);
+                subtf_t::fft_iteration(uZ_ce<Align>{},
+                                       dst_pck,
+                                       src_pck,
+                                       lowk,
+                                       reverse,
+                                       conj_tw,
+                                       batch_cnt,
+                                       batch_size,
+                                       dst,
+                                       src,
+                                       k_count,
+                                       l_tw);
                 auto{permuter}
                     .small_permute(width, batch_size, reverse, dst_pck, dst_pck, dst, detail_::inplace_src);
             };
