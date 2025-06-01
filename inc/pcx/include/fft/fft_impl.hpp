@@ -324,6 +324,41 @@ struct btfly_node_dit {
             }(make_uZ_seq<n_tw>{});
         }
     };
+    static void advance_tw(meta::ce_of<bool> auto lowk,    //
+                           tw_data_for<T> auto&   tw,
+                           uZ                     k_count) {
+        const auto local_tw = tw.is_local();
+        if constexpr (!local_tw) {
+            if (lowk && skip_lowk_tw)
+                k_count -= node_size;
+            tw.tw_ptr += k_count;
+        } else {
+            assert(k_count <= tw.start_fft_size / 2);
+            auto new_k = tw.start_k += k_count;
+            while (new_k >= tw.start_fft_size / 2) {
+                tw.start_fft_size *= node_size;
+                tw.start_k = 0;
+            }
+        }
+    };
+    static void recede_tw(meta::ce_of<bool> auto lowk,    //
+                          tw_data_for<T> auto&   tw,
+                          uZ                     k_count) {
+        const auto local_tw = tw.is_local();
+        if constexpr (!local_tw) {
+            if (lowk && skip_lowk_tw)
+                k_count -= node_size;
+            tw.tw_ptr -= k_count;
+        } else {
+            assert(k_count <= tw.start_k);
+            if (k_count == tw.start_k) {
+                tw.start_k /= node_size;
+                tw.start_fft_size /= node_size;
+                return;
+            }
+            tw.start_k -= k_count;
+        }
+    };
 };
 
 inline constexpr auto not_lowk = std::false_type{};
@@ -377,11 +412,9 @@ struct fft_iteration_t {
             .conj_tw   = conj_tw,
         }>{};
 
-        const auto inplace = src_data.empty();
-        const auto local   = tw_data.is_local();
-        // using l_tw_data_t  = std::conditional_t<lowk && !local, tw_data_t<T, local>, tw_data_t<T, local>&>;
-        // l_tw_data_t l_tw_data = tw_data;
-        auto l_tw_data = tw_data;
+        const auto inplace   = src_data.empty();
+        const auto local     = tw_data.is_local();
+        auto       l_tw_data = tw_data;
 
         if constexpr (reverse) {
             k_count /= node_size;
@@ -502,6 +535,26 @@ struct fft_iteration_t {
         tw_data.start_fft_size *= node_size;
         tw_data.start_k *= node_size;
     };
+
+
+    /**
+     * @brief Advnaces the twiddle data by `k_count` as if after `fft_iteration` with `k_count`.
+     */
+    PCX_AINLINE static void advance_lowk_tw(meta::ce_of<uZ> auto node_size,
+                                            tw_data_for<T> auto& tw,
+                                            uZ                   k_count) {
+        using btfly_node = btfly_node_dit<node_size, T, width>;
+        btfly_node::advance_tw(val_ce<true>{}, tw, k_count);
+    }
+    /**
+     * @brief Recedes the twiddle data by `k_count` as if before `fft_iteration` with `k_count`.
+     */
+    PCX_AINLINE static void recede_lowk_tw(meta::ce_of<uZ> auto node_size,
+                                           tw_data_for<T> auto& tw,
+                                           uZ                   k_count) {
+        using btfly_node = btfly_node_dit<node_size, T, width>;
+        btfly_node::recede_tw(val_ce<true>{}, tw, k_count);
+    }
 };
 
 
@@ -595,6 +648,8 @@ struct subtransform {
                 fft_iter(node_size, dst_pck, w_pck, inplace_src);
             }
         } else {
+            using fft_iter_t = fft_iteration_t<T, width>;
+
             k_count = final_k_count * 2;
             if constexpr (align.size_post() != 1) {
                 fft_iter(align.size_post(), w_pck, src_pck, src_data);
@@ -602,7 +657,7 @@ struct subtransform {
                 if constexpr (src_pck != w_pck || !inplace) {
                     fft_iter(node_size, w_pck, src_pck, src_data);
                 } else if constexpr (lowk) {
-                    l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
+                    fft_iter_t::recede_lowk_tw(node_size, tw_data, k_count);
                 }
             }
             constexpr auto fk = [&] {
@@ -616,9 +671,8 @@ struct subtransform {
             }();
 
             while (k_count > fk) {
-                if constexpr (lowk) {
-                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
-                }
+                if constexpr (lowk)
+                    fft_iter_t::advance_lowk_tw(node_size, tw_data, k_count);
                 fft_iter(node_size, w_pck, w_pck, inplace_src);
             }
 
@@ -626,7 +680,7 @@ struct subtransform {
                 fft_iter(align.size_pre(), dst_pck, w_pck, inplace_src);
             } else if constexpr (dst_pck != w_pck) {
                 if constexpr (lowk)
-                    l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
+                    fft_iter_t::advance_lowk_tw(node_size, tw_data, k_count);
                 fft_iter(node_size, dst_pck, w_pck, inplace_src);
             }
         }
