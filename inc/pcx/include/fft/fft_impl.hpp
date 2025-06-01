@@ -87,38 +87,37 @@ struct btfly_node_dit {
     using data_t = tupi::broadcast_tuple_t<cx_vec, NodeSize>;
     using src_t  = tupi::broadcast_tuple_t<const T*, NodeSize>;
     using tw_t   = tupi::broadcast_tuple_t<cx_vec, NodeSize / 2>;
-    struct low_k_tw_t {};
 
-    template<bool ConjTw = false>
-    PCX_LAINLINE static auto forward(data_t data, low_k_tw_t = {}, val_ce<ConjTw> conj_tw = {}) {
-        return fwd_impl(data, const_tw_getter, conj_tw);
+    PCX_LAINLINE static auto forward(data_t                 data,    //
+                                     meta::ce_of<bool> auto lowk,
+                                     tw_t                   tw,
+                                     meta::ce_of<bool> auto conj_tw) {
+        if constexpr (lowk)
+            return fwd_impl(data, const_tw_getter, conj_tw);
+        else
+            return fwd_impl(data, make_tw_getter(tw), conj_tw);
     }
-    template<bool ConjTw = false>
-    PCX_LAINLINE static auto forward(data_t data, const tw_t& tw, val_ce<ConjTw> conj_tw = {}) {
-        return fwd_impl(data, make_tw_getter(tw), conj_tw);
-    }
-    template<bool ConjTw = false>
-    PCX_LAINLINE static auto reverse(data_t data, low_k_tw_t = {}, val_ce<ConjTw> conj_tw = {}) {
-        return rev_impl(data, const_tw_getter, conj_tw);
-    }
-    template<bool ConjTw = false>
-    PCX_LAINLINE static auto reverse(data_t data, const tw_t& tw, val_ce<ConjTw> conj_tw = {}) {
-        return rev_impl(data, make_tw_getter(tw), conj_tw);
+    PCX_LAINLINE static auto reverse(data_t                 data,    //
+                                     meta::ce_of<bool> auto lowk,
+                                     tw_t                   tw,
+                                     meta::ce_of<bool> auto conj_tw) {
+        if constexpr (lowk)
+            return rev_impl(data, const_tw_getter, conj_tw);
+        else
+            return rev_impl(data, make_tw_getter(tw), conj_tw);
     }
 
-    template<settings S, typename Tw = low_k_tw_t>
-        requires std::same_as<Tw, tw_t> || std::same_as<Tw, low_k_tw_t>
-    PCX_AINLINE static void perform(val_ce<S>, const dest_t& dest, const src_t& src, const Tw& tw = {}) {
-        auto data = tupi::group_invoke(simd::cxload<S.pack_src, Width> | simd::repack<Width>, src);
-        auto res =
-            S.reverse ? reverse(data, tw, val_ce<S.conj_tw>{}) : forward(data, tw, val_ce<S.conj_tw>{});
+    template<settings S>
+    PCX_AINLINE static void perform(val_ce<S>, meta::ce_of<bool> auto lowk, dest_t dest, src_t src, tw_t tw) {
+        auto data    = tupi::group_invoke(simd::cxload<S.pack_src, Width> | simd::repack<Width>, src);
+        auto res     = S.reverse ? reverse(data, lowk, tw, val_ce<S.conj_tw>{})
+                                 : forward(data, lowk, tw, val_ce<S.conj_tw>{});
         auto res_rep = tupi::group_invoke(simd::evaluate | simd::repack<S.pack_dest>, res);
         tupi::group_invoke(simd::cxstore<S.pack_dest>, dest, res_rep);
     }
-    template<settings S, typename Tw = low_k_tw_t>
-        requires std::same_as<Tw, tw_t> || std::same_as<Tw, low_k_tw_t>
-    PCX_AINLINE static void perform(val_ce<S> s, const dest_t& dest, const Tw& tw = {}) {
-        perform(s, dest, dest, tw);
+    template<settings S>
+    PCX_AINLINE static void perform(val_ce<S> s, meta::ce_of<bool> auto lowk, dest_t dest, tw_t tw) {
+        perform(s, lowk, dest, dest, tw);
     }
 
     PCX_AINLINE static auto fwd_impl(data_t data, auto get_tw, auto conj_tw) {
@@ -296,7 +295,11 @@ struct btfly_node_dit {
         return tw_node;
     }
 
-    static auto next_tw(meta::ce_of<bool> auto reverse, tw_data_for<T> auto& tw_data) -> tw_t {
+    static constexpr bool skip_lowk_tw = true;
+
+    static auto next_tw(meta::ce_of<bool> auto lowk,
+                        meta::ce_of<bool> auto reverse,
+                        tw_data_for<T> auto&   tw_data) -> tw_t {
         const auto   local = tw_data.is_local();
         constexpr uZ n_tw  = node_size / 2;
         if constexpr (local) {
@@ -309,6 +312,8 @@ struct btfly_node_dit {
                 return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + Is)...);
             }(make_uZ_seq<n_tw>{});
         } else {
+            if constexpr (lowk && skip_lowk_tw)
+                return {};
             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 if constexpr (reverse)
                     tw_data.tw_ptr -= n_tw * 2;
@@ -414,86 +419,51 @@ struct fft_iteration_t {
                 }(make_uZ_seq<node_size>{});
             }
         };
-
-        // auto make_tw_tup = [&] {
-        //     constexpr uZ n_tw = node_size / 2;
-        //     if constexpr (local) {
-        //         return [&] PCX_LAINLINE(uZ k) {
-        //             return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-        //                 auto tws = make_tw_node<T, node_size>(l_tw_data.start_fft_size * 2,    //
-        //                                                       l_tw_data.start_k + k);
-        //                 return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + Is)...);
-        //             }(make_uZ_seq<n_tw>{});
-        //         };
-        //     } else if constexpr (reverse && !lowk) {
-        //         return [&] PCX_LAINLINE(uZ) {
-        //             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-        //                 l_tw_data.tw_ptr -= n_tw * 2;
-        //                 auto l_tw_ptr = l_tw_data.tw_ptr;
-        //                 return tupi::make_tuple(simd::cxbroadcast<1, width>(l_tw_ptr + Is * 2)...);
-        //             }(make_uZ_seq<n_tw>{});
-        //         };
-        //     } else {
-        //         return [&] PCX_LAINLINE(uZ) {
-        //             return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-        //                 auto l_tw_ptr = l_tw_data.tw_ptr;
-        //                 l_tw_data.tw_ptr += n_tw * 2;
-        //                 return tupi::make_tuple(simd::cxbroadcast<1, width>(l_tw_ptr + Is * 2)...);
-        //             }(make_uZ_seq<n_tw>{});
-        //         };
-        //     }
-        // }();
-
         auto k_range = [=] {
-            if constexpr (reverse) {
+            if constexpr (reverse)
                 return stdv::iota(lowk ? 1U : 0U, k_count) | stdv::reverse;
-            } else {
+            else
                 return stdv::iota(lowk ? 1U : 0U, k_count);
-            }
         }();
         if constexpr (lowk && !reverse) {
-            if constexpr (!skip_lowk_tw)
-                btfly_node::next_tw(reverse, l_tw_data);
-            // make_tw_tup(0);
+            auto tw = btfly_node::next_tw(lowk, reverse, l_tw_data);
             for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, 0, r * width);
                     if constexpr (inplace) {
-                        btfly_node::perform(settings, dest);
+                        btfly_node::perform(settings, lowk, dest, tw);
                     } else {
                         auto src = make_src_tup(i_batch, 0, r * width);
-                        btfly_node::perform(settings, dest, src);
+                        btfly_node::perform(settings, lowk, dest, src, tw);
                     }
                 }
             }
         }
         for (auto k_group: k_range) {
             bool rev = reverse;
-            auto tw  = btfly_node::next_tw(reverse, l_tw_data);
-            // auto tw = make_tw_tup(k_group);
+            auto tw  = btfly_node::next_tw(not_lowk, reverse, l_tw_data);
             for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, k_group, r * width);
                     if constexpr (inplace) {
-                        btfly_node::perform(settings, dest, tw);
+                        btfly_node::perform(settings, not_lowk, dest, tw);
                     } else {
                         auto src = make_src_tup(i_batch, k_group, r * width);
-                        btfly_node::perform(settings, dest, src, tw);
+                        btfly_node::perform(settings, not_lowk, dest, src, tw);
                     }
                 }
             }
         }
         if constexpr (lowk && reverse) {
-            if constexpr (!skip_lowk_tw)
-                btfly_node::next_tw(reverse, l_tw_data);
+            auto tw = btfly_node::next_tw(lowk, reverse, l_tw_data);
             for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, 0, r * width);
                     if constexpr (inplace) {
-                        btfly_node::perform(settings, dest);
+                        btfly_node::perform(settings, lowk, dest, tw);
                     } else {
                         auto src = make_src_tup(i_batch, 0, r * width);
-                        btfly_node::perform(settings, dest, src);
+                        btfly_node::perform(settings, lowk, dest, src, tw);
                     }
                 }
             }
@@ -577,8 +547,6 @@ struct subtransform {
                                          auto src_pck,
                                          auto src) {
             using fft_iter_t = fft_iteration_t<T, width>;
-            // if constexpr (!local_tw && lowk && reverse)
-            //     l_tw_data.tw_ptr += k_count - (skip_lowk_tw ? node_size : 0);
             fft_iter_t::fft_iteration(node_size,
                                       dst_pck,
                                       src_pck,
@@ -629,14 +597,8 @@ struct subtransform {
         } else {
             k_count = final_k_count * 2;
             if constexpr (align.size_post() != 1) {
-                // if constexpr (lowk && !local_tw)
-                //     l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_post() : 0);
                 fft_iter(align.size_post(), w_pck, src_pck, src_data);
             } else {
-                // if (k_count > align.size_pre()) {
-                //     if constexpr (lowk && !local_tw)
-                //         l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? node_size : 0);
-                // }
                 if constexpr (src_pck != w_pck || !inplace) {
                     fft_iter(node_size, w_pck, src_pck, src_data);
                 } else if constexpr (lowk) {
@@ -661,8 +623,6 @@ struct subtransform {
             }
 
             if constexpr (align.size_pre() != 1) {
-                // if constexpr (lowk && !local_tw)
-                //     l_tw_data.tw_ptr -= k_count - (skip_lowk_tw ? align.size_pre() : 0);
                 fft_iter(align.size_pre(), dst_pck, w_pck, inplace_src);
             } else if constexpr (dst_pck != w_pck) {
                 if constexpr (lowk)
@@ -928,34 +888,16 @@ struct sequential_subtransform {
                 };
             }
         };
-        auto get_tw = [&] PCX_LAINLINE {
-            if constexpr (lowk) {
-                if constexpr (!LocalTw && !skip_lowk_tw)
-                    tw_data.tw_ptr += reverse ? -node_size : node_size;
-                return typename btfly_node::low_k_tw_t{};
-            } else if constexpr (LocalTw) {
-                return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                    auto tw = make_tw_node<T, node_size>(tw_data.start_fft_size * 2, tw_data.start_k);
-                    return tupi::make_tuple(simd::cxbroadcast<1, width>(tw.data() + Is)...);
-                }(make_uZ_seq<node_size / 2>{});
-            } else {
-                if constexpr (reverse)
-                    tw_data.tw_ptr -= node_size;
-                auto tw0 = [tw_data]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                    return tupi::make_tuple(simd::cxbroadcast<1, width>(tw_data.tw_ptr + 2 * Is)...);
-                }(make_uZ_seq<node_size / 2>{});
-                if constexpr (!reverse)
-                    tw_data.tw_ptr += node_size;
-                return tw0;
-            }
-        };
 
         auto data0 = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             return tupi::make_tuple(simd::cxload<src_pck, width>(src_ptr + width * 2 * Is)...);
         }(make_uZ_seq<node_size>{});
         auto data = tupi::group_invoke(simd::repack<width>, data0);
         if constexpr (!reverse) {
-            auto btfly_res_0 = btfly_node::forward(data, get_tw(), conj_tw);
+            auto btfly_res_0 = btfly_node::forward(data,    //
+                                                   lowk,
+                                                   btfly_node::next_tw(lowk, reverse, tw_data),
+                                                   conj_tw);
 
             auto [data_lo, data_hi] = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 auto lo = tupi::make_tuple(get<Is * 2>(btfly_res_0)...);
@@ -1035,7 +977,10 @@ struct sequential_subtransform {
 
             auto data1 = tupi::make_flat_tuple(tupi::group_invoke(tupi::make_tuple, lo_1, hi_1));
 
-            auto data0    = btfly_node::reverse(data1, get_tw(), conj_tw);
+            auto data0    = btfly_node::reverse(data1,    //
+                                             lowk,
+                                             btfly_node::next_tw(lowk, reverse, tw_data),
+                                             conj_tw);
             auto data_rep = tupi::group_invoke(simd::repack<dst_pck>, data0);
 
             [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
