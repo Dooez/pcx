@@ -276,26 +276,31 @@ struct btfly_node_dit {
         };
     } const_tw_getter{};
 
-    static auto make_tw_node(uZ fft_size, uZ k) {
-        constexpr auto n_tw = node_size / 2;
+    static constexpr bool skip_lowk_tw = true;
 
-        auto tw_node = std::array<std::complex<T>, n_tw>{};
-        uZ   i_tw    = 0;
-        for (uZ l: stdv::iota(0U, log2i(node_size))) {
-            for (uZ i: stdv::iota(0U, powi(2, l))) {
-                if (i % 2 == 1)
-                    continue;
-                auto tw          = pcx::detail_::wnk_br<T>(fft_size, k + i);
-                tw_node.at(i_tw) = tw;
-                ++i_tw;
+    static auto make_tw_node(meta::ce_of<bool> auto lowk, uZ fft_size, uZ k) {
+        if constexpr (lowk && skip_lowk_tw) {
+            return std::array<std::complex<T>, 0>{};
+        } else {
+            constexpr auto n_tw = node_size / 2;
+
+            auto tw_node = std::array<std::complex<T>, n_tw>{};
+            uZ   i_tw    = 0;
+            for (uZ l: stdv::iota(0U, log2i(node_size))) {
+                for (uZ i: stdv::iota(0U, powi(2, l))) {
+                    if (i % 2 == 1)
+                        continue;
+                    auto tw          = pcx::detail_::wnk_br<T>(fft_size, k + i);
+                    tw_node.at(i_tw) = tw;
+                    ++i_tw;
+                }
+                k *= 2;
+                fft_size *= 2;
             }
-            k *= 2;
-            fft_size *= 2;
+            return tw_node;
         }
-        return tw_node;
     }
 
-    static constexpr bool skip_lowk_tw = true;
 
     static auto next_tw(meta::ce_of<bool> auto lowk,
                         meta::ce_of<bool> auto reverse,
@@ -303,14 +308,14 @@ struct btfly_node_dit {
         const auto   local = tw_data.is_local();
         constexpr uZ n_tw  = node_size / 2;
         if constexpr (local) {
+            if constexpr (reverse)
+                --tw_data.start_k;
+            auto tws = make_tw_node(lowk, tw_data.start_fft_size * 2, tw_data.start_k);
+            if constexpr (!reverse)
+                ++tw_data.start_k;
             return [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
-                if constexpr (reverse)
-                    --tw_data.start_k;
-                auto tws = make_tw_node(tw_data.start_fft_size * 2, tw_data.start_k);
-                if constexpr (!reverse)
-                    ++tw_data.start_k;
                 return tupi::make_tuple(simd::cxbroadcast<1, width>(tws.data() + Is)...);
-            }(make_uZ_seq<n_tw>{});
+            }(make_uZ_seq<tws.size()>{});
         } else {
             if constexpr (lowk && skip_lowk_tw)
                 return {};
@@ -389,8 +394,7 @@ concept twiddle_range_for = stdr::contiguous_range<R>                     //
 
 template<typename T, uZ Width>
 struct fft_iteration_t {
-    static constexpr auto width        = uZ_ce<Width>{};
-    static constexpr bool skip_lowk_tw = true;
+    static constexpr auto width = uZ_ce<Width>{};
 
     PCX_AINLINE static void fft_iteration(meta::ce_of<uZ> auto        node_size,
                                           cxpack_for<T> auto          dst_pck,
@@ -458,7 +462,7 @@ struct fft_iteration_t {
             else
                 return stdv::iota(lowk ? 1U : 0U, k_count);
         }();
-        if constexpr (lowk && !reverse) {
+        auto lowk_loop = [&] {
             auto tw = btfly_node::next_tw(lowk, reverse, l_tw_data);
             for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
@@ -471,7 +475,9 @@ struct fft_iteration_t {
                     }
                 }
             }
-        }
+        };
+        if constexpr (lowk && !reverse)
+            lowk_loop();
         for (auto k_group: k_range) {
             bool rev = reverse;
             auto tw  = btfly_node::next_tw(not_lowk, reverse, l_tw_data);
@@ -487,20 +493,8 @@ struct fft_iteration_t {
                 }
             }
         }
-        if constexpr (lowk && reverse) {
-            auto tw = btfly_node::next_tw(lowk, reverse, l_tw_data);
-            for (auto i_batch: stdv::iota(0U, k_batch_count / node_size)) {
-                for (auto r: stdv::iota(0U, batch_size / width)) {
-                    auto dest = make_dst_tup(i_batch, 0, r * width);
-                    if constexpr (inplace) {
-                        btfly_node::perform(settings, lowk, dest, tw);
-                    } else {
-                        auto src = make_src_tup(i_batch, 0, r * width);
-                        btfly_node::perform(settings, lowk, dest, src, tw);
-                    }
-                }
-            }
-        }
+        if constexpr (lowk && reverse)
+            lowk_loop();
         if constexpr (!reverse) {
             k_count *= node_size;
             if constexpr (local) {
@@ -515,21 +509,25 @@ struct fft_iteration_t {
                                     twiddle_range_for<T> auto& r,
                                     auto&                      tw_data,
                                     uZ&                        k_count,
-                                    bool                       lowk) {
-        auto insert = [&](uZ k) {
+                                    meta::ce_of<bool> auto     lowk) {
+        using btfly_node = btfly_node_dit<node_size, T, width>;
+        auto insert      = [&](auto lowk, uZ k) {
             constexpr uZ n_tw = node_size / 2;
-            auto         tws  = make_tw_node<T, node_size>(tw_data.start_fft_size * 2, tw_data.start_k + k);
+
+            auto tws = btfly_node::make_tw_node(lowk,    //
+                                                tw_data.start_fft_size * 2,
+                                                tw_data.start_k + k);
             for (auto tw: tws) {
                 r.push_back(tw.real());
                 r.push_back(tw.imag());
             }
         };
 
-        if (lowk && !skip_lowk_tw)
-            insert(0);
+        if constexpr (lowk)
+            insert(lowk, 0);
         auto k_start = lowk ? 1U : 0U;
         for (auto k_group: stdv::iota(k_start, k_count)) {
-            insert(k_group);
+            insert(not_lowk, k_group);
         }
         k_count *= node_size;
         tw_data.start_fft_size *= node_size;
@@ -563,8 +561,6 @@ struct subtransform {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     static constexpr auto width     = uZ_ce<Width>{};
     static constexpr auto w_pck     = cxpack<Width, T>{};
-
-    static constexpr bool skip_lowk_tw = true;
 
     static constexpr auto get_align_node(uZ size) {
         auto slog       = log2i(size);
@@ -624,7 +620,7 @@ struct subtransform {
                 fft_iter(node_size, w_pck, src_pck, src_data);
             }
 
-            auto fk = [&] {
+            const auto fk = [&] {
                 if constexpr (align.size_post() > 1) {
                     return final_k_count / align.size_post();
                 } else if constexpr (dst_pck != w_pck) {
@@ -688,7 +684,7 @@ struct subtransform {
 
     static void insert_tw(twiddle_range_for<T> auto& r,
                           any_align auto             align,
-                          bool                       lowk,
+                          meta::ce_of<bool> auto     lowk,
                           uZ                         final_k_count,
                           tw_data_t<T, true>&        tw_data) {
         uZ k_count   = 1;
@@ -881,7 +877,7 @@ struct sequential_subtransform {
 
     static void insert_tw(twiddle_range_for<T> auto& r,
                           any_align auto             align,
-                          bool                       lowk,
+                          meta::ce_of<bool> auto     lowk,
                           uZ                         data_size,
                           tw_data_t<T, true>&        tw_data,
                           meta::ce_of<bool> auto     half_tw) {
@@ -2018,7 +2014,7 @@ struct transform {
 
     static void insert_tw(twiddle_range_for<T> auto& r,    //
                           uZ                         fft_size,
-                          bool                       lowk,
+                          meta::ce_of<bool> auto     lowk,
                           meta::ce_of<bool> auto     half_tw,
                           meta::ce_of<bool> auto     sequential) {
         const auto bucket_size  = coherent_size;
@@ -2063,7 +2059,10 @@ struct transform {
             constexpr auto align = align_param<align_node, true>{};
             for (uZ i_bg: stdv::iota(0U, bucket_group_count)) {
                 auto l_tw_data = tw_data_t<T, true>{bucket_group_count, i_bg};
-                subtf_t::insert_tw(r, align, lowk && i_bg == 0, k_count, l_tw_data);
+                if (i_bg == 0)
+                    subtf_t::insert_tw(r, align, lowk, k_count, l_tw_data);
+                else
+                    subtf_t::insert_tw(r, align, not_lowk, k_count, l_tw_data);
             }
         };
 
@@ -2096,7 +2095,10 @@ struct transform {
             constexpr auto seq_align = align_param<seq_subtf_t::get_align_node(bucket_size), true>{};
             for (uZ i_bg: stdv::iota(0U, bucket_count)) {
                 auto l_tw_data = tw_data_t<T, true>{bucket_count, i_bg};
-                seq_subtf_t::insert_tw(r, seq_align, lowk && i_bg == 0, bucket_size, l_tw_data, half_tw);
+                if (i_bg == 0)
+                    seq_subtf_t::insert_tw(r, seq_align, lowk, bucket_size, l_tw_data, half_tw);
+                else
+                    seq_subtf_t::insert_tw(r, seq_align, not_lowk, bucket_size, l_tw_data, half_tw);
             }
             return;
         }
