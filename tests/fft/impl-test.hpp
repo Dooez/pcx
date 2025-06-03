@@ -647,7 +647,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
 
     s1              = signal;
     using fimpl_coh = pcx::detail_::sequential_subtransform<NodeSize, fX, Width>;
-    auto coh_align  = fimpl_coh::get_align_node(fft_size);
+    auto coh_align  = fimpl_coh::get_align_node_seq(fft_size);
     auto tw_coh_fwd = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
@@ -660,12 +660,12 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
                     if (l_node_size != coh_align)
                         return false;
                     auto tw_data = detail_::tw_data_t<fX, true>{1, 0};
-                    fimpl_coh::insert_tw(twvec,
-                                         detail_::align_param<l_node_size, true>{},
-                                         lowk,
-                                         fft_size,
-                                         tw_data,
-                                         half_tw);
+                    fimpl_coh::insert_seq_tw(twvec,
+                                             detail_::align_param<l_node_size, true>{},
+                                             lowk,
+                                             fft_size,
+                                             tw_data,
+                                             half_tw);
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);

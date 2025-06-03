@@ -365,7 +365,7 @@ private:
         }();
         if constexpr (reverse)
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
-        impl_t::perform_impl(dst_pck,
+        impl_t::perform_seq(dst_pck,
                              src_pck,
                              align,
                              lowk,
@@ -479,7 +479,7 @@ private:
         }();
         if constexpr (reverse) {
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, src_data);
-            impl_t::perform_impl(dst_pck,
+            impl_t::perform_seq(dst_pck,
                                  src_pck,
                                  align,
                                  lowk,
@@ -491,7 +491,7 @@ private:
                                  detail_::inplace_src,
                                  tw_data);
         } else {
-            impl_t::perform_impl(dst_pck,
+            impl_t::perform_seq(dst_pck,
                                  src_pck,
                                  align,
                                  lowk,

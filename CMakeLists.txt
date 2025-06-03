@@ -8,16 +8,16 @@ add_library(pcx STATIC
 target_include_directories(pcx PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     )
-target_compile_options(pcx PRIVATE -march=native -O3)
+target_compile_options(pcx PRIVATE -march=native #[[ -O3 ]])
 target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
 
-# add_library(pcx INTERFACE)
-# target_include_directories(pcx INTERFACE
-#     ${CMAKE_CURRENT_SOURCE_DIR}/inc
-#     )
-# target_compile_definitions(pcx INTERFACE -DPCX_AVX512)
+add_library(pcx_ho INTERFACE)
+target_include_directories(pcx_ho INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc
+    )
+target_compile_definitions(pcx_ho INTERFACE -DPCX_AVX512)
 
-set_target_properties(pcx PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
+set_target_properties(pcx_ho PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 
 if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
@@ -26,12 +26,12 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_executable(test_fft)
     set(F32_WIDTHS 1 2 4 8 16)
     set(F64_WIDTHS 1 2 4 8)
-    # set(F32_WIDTHS 1 2)
-    # set(F64_WIDTHS 1)
     set(NODE_SIZES 16 8 4 2)
-    # set(F32_WIDTHS  16)
-    # set(F64_WIDTHS  8)
-    # set(NODE_SIZES 2)
+    # set(F32_WIDTHS 16)
+    # set(F64_WIDTHS 8)
+    # set(F32_WIDTHS 16)
+    # set(F64_WIDTHS )
+    # set(NODE_SIZES 16)
     set(TEST_PARC ON)
     set(TEST_PAR ON)
     set(TEST_SEQ ON)
@@ -78,7 +78,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
         "-DPCX_TESTING_PAR=$<BOOL:${TEST_PAR}>"
         "-DPCX_TESTING_PARC=$<BOOL:${TEST_PARC}>"
     )
-    set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=6)
+    set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=8)
     set_property(TARGET test_fft PROPERTY JOB_POOL_COMPILE build_jobs)
 
     add_executable(asm_explorer tests/fft/asm_explorer.cpp)
@@ -93,7 +93,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set_target_properties(asm_explorer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(asm_explorer PRIVATE -save-temps -march=native -ftemplate-backtrace-limit=0)
 
-    target_link_libraries(test_fft PUBLIC pcx)
+    target_link_libraries(test_fft PUBLIC pcx_ho)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(test_fft PRIVATE -march=native -ftemplate-backtrace-limit=0)
 

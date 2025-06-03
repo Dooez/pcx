@@ -108,7 +108,8 @@ struct btfly_node_dit {
     }
 
     template<settings S>
-    PCX_AINLINE static void perform(val_ce<S>, meta::ce_of<bool> auto lowk, dest_t dest, src_t src, tw_t tw) {
+    PCX_AINLINE static void
+    perform_bf(val_ce<S>, meta::ce_of<bool> auto lowk, dest_t dest, src_t src, tw_t tw) {
         auto data    = tupi::group_invoke(simd::cxload<S.pack_src, Width> | simd::repack<Width>, src);
         auto res     = S.reverse ? reverse(data, lowk, tw, val_ce<S.conj_tw>{})
                                  : forward(data, lowk, tw, val_ce<S.conj_tw>{});
@@ -116,8 +117,8 @@ struct btfly_node_dit {
         tupi::group_invoke(simd::cxstore<S.pack_dest>, dest, res_rep);
     }
     template<settings S>
-    PCX_AINLINE static void perform(val_ce<S> s, meta::ce_of<bool> auto lowk, dest_t dest, tw_t tw) {
-        perform(s, lowk, dest, dest, tw);
+    PCX_AINLINE static void perform_bf(val_ce<S> s, meta::ce_of<bool> auto lowk, dest_t dest, tw_t tw) {
+        perform_bf(s, lowk, dest, dest, tw);
     }
 
     PCX_AINLINE static auto fwd_impl(data_t data, auto get_tw, auto conj_tw) {
@@ -467,10 +468,10 @@ struct fft_iteration_t {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, 0, r * width);
                     if constexpr (inplace) {
-                        btfly_node::perform(settings, lowk, dest, tw);
+                        btfly_node::perform_bf(settings, lowk, dest, tw);
                     } else {
                         auto src = make_src_tup(i_batch, 0, r * width);
-                        btfly_node::perform(settings, lowk, dest, src, tw);
+                        btfly_node::perform_bf(settings, lowk, dest, src, tw);
                     }
                 }
             }
@@ -484,10 +485,10 @@ struct fft_iteration_t {
                 for (auto r: stdv::iota(0U, batch_size / width)) {
                     auto dest = make_dst_tup(i_batch, k_group, r * width);
                     if constexpr (inplace) {
-                        btfly_node::perform(settings, not_lowk, dest, tw);
+                        btfly_node::perform_bf(settings, not_lowk, dest, tw);
                     } else {
                         auto src = make_src_tup(i_batch, k_group, r * width);
-                        btfly_node::perform(settings, not_lowk, dest, src, tw);
+                        btfly_node::perform_bf(settings, not_lowk, dest, src, tw);
                     }
                 }
             }
@@ -563,25 +564,25 @@ struct subtransform {
 
     static constexpr auto reuse_lowk_tw = val_ce<true>{};
 
-    static constexpr auto get_align_node(uZ size) {
+    static constexpr auto get_align_node_subtf(uZ size) {
         auto slog       = log2i(size);
         auto a          = slog / log2i(node_size);
         auto b          = a * log2i(node_size);
         auto align_node = powi(2, slog - b);
         return align_node;
     };
-    PCX_AINLINE static void perform(cxpack_for<T> auto          dst_pck,
-                                    cxpack_for<T> auto          src_pck,
-                                    any_align auto              align,
-                                    meta::ce_of<bool> auto      lowk,
-                                    meta::ce_of<bool> auto      reverse,
-                                    meta::ce_of<bool> auto      conj_tw,
-                                    meta::maybe_ce_of<uZ> auto  batch_count,
-                                    meta::maybe_ce_of<uZ> auto  batch_size,
-                                    data_info_for<T> auto       dst_data,
-                                    data_info_for<const T> auto src_data,
-                                    uZ                          final_k_count,
-                                    tw_data_for<T> auto&        tw_data) {
+    PCX_AINLINE static void perfrom_subtf(cxpack_for<T> auto          dst_pck,
+                                          cxpack_for<T> auto          src_pck,
+                                          any_align auto              align,
+                                          meta::ce_of<bool> auto      lowk,
+                                          meta::ce_of<bool> auto      reverse,
+                                          meta::ce_of<bool> auto      conj_tw,
+                                          meta::maybe_ce_of<uZ> auto  batch_count,
+                                          meta::maybe_ce_of<uZ> auto  batch_size,
+                                          data_info_for<T> auto       dst_data,
+                                          data_info_for<const T> auto src_data,
+                                          uZ                          final_k_count,
+                                          tw_data_for<T> auto&        tw_data) {
         assert(dst_pck == w_pck       //
                || src_pck == w_pck    //
                || final_k_count >= node_size);
@@ -684,11 +685,11 @@ struct subtransform {
         }
     }
 
-    static void insert_tw(twiddle_range_for<T> auto& r,
-                          any_align auto             align,
-                          meta::ce_of<bool> auto     lowk,
-                          uZ                         final_k_count,
-                          tw_data_t<T, true>&        tw_data) {
+    static void insert_subtf_tw(twiddle_range_for<T> auto& r,
+                                any_align auto             align,
+                                meta::ce_of<bool> auto     lowk,
+                                uZ                         final_k_count,
+                                tw_data_t<T, true>&        tw_data) {
         uZ k_count   = 1;
         using iter_t = fft_iteration_t<T, Width>;
         if constexpr (align.size_pre() != 1)
@@ -720,13 +721,13 @@ struct sequential_subtransform {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     static constexpr auto w_pck     = cxpack<width, T>{};
 
-    static constexpr bool skip_lowk_tw          = true;
+    // static constexpr bool skip_lowk_tw          = true;
     static constexpr bool skip_lowk_single_load = false;
     // for debugging
     static constexpr auto skip_single_load = false;
     static constexpr auto skip_sub_width   = false;
 
-    static constexpr auto get_align_node(uZ data_size) {
+    static constexpr auto get_align_node_seq(uZ data_size) {
         constexpr auto single_load_size = node_size * width;
 
         auto lsize      = data_size / single_load_size;
@@ -755,34 +756,34 @@ struct sequential_subtransform {
                     return false;
 
                 constexpr auto align = align_param<l_node_size, true>{};
-                perform_impl(dst_pck,
-                             src_pck,
-                             align,
-                             lowk,
-                             half_tw,
-                             reverse,
-                             conj_tw,
-                             data_size,
-                             dst_data,
-                             src_data,
-                             tw);
+                perform_seq(dst_pck,
+                            src_pck,
+                            align,
+                            lowk,
+                            half_tw,
+                            reverse,
+                            conj_tw,
+                            data_size,
+                            dst_data,
+                            src_data,
+                            tw);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<log2i(NodeSize)>{});
     }
 
-    PCX_AINLINE static void perform_impl(cxpack_for<T> auto          dst_pck,
-                                         cxpack_for<T> auto          src_pck,
-                                         any_align auto              align,
-                                         meta::ce_of<bool> auto      lowk,
-                                         meta::ce_of<bool> auto      half_tw,
-                                         meta::ce_of<bool> auto      reverse,
-                                         meta::ce_of<bool> auto      conj_tw,
-                                         meta::maybe_ce_of<uZ> auto  data_size,
-                                         data_info_for<T> auto       dst_data,
-                                         data_info_for<const T> auto src_data,
-                                         tw_data_for<T> auto&        tw_data) {
+    PCX_AINLINE static void perform_seq(cxpack_for<T> auto          dst_pck,
+                                        cxpack_for<T> auto          src_pck,
+                                        any_align auto              align,
+                                        meta::ce_of<bool> auto      lowk,
+                                        meta::ce_of<bool> auto      half_tw,
+                                        meta::ce_of<bool> auto      reverse,
+                                        meta::ce_of<bool> auto      conj_tw,
+                                        meta::maybe_ce_of<uZ> auto  data_size,
+                                        data_info_for<T> auto       dst_data,
+                                        data_info_for<const T> auto src_data,
+                                        tw_data_for<T> auto&        tw_data) {
         static_assert(dst_data.contiguous());
         static_assert(src_data.empty() || src_data.contiguous());
 
@@ -791,7 +792,7 @@ struct sequential_subtransform {
         using tw_t = std::conditional_t<local_tw, tw_data_t<T, local_tw>, tw_data_t<T, local_tw>&>;
         tw_t tw    = tw_data;
 
-        using fnode        = subtransform<node_size, T, width>;
+        using subtf        = subtransform<node_size, T, width>;
         auto final_k_count = data_size / single_load_size / 2;
 
         auto multi_load = [&] PCX_LAINLINE(auto dst_pck, auto src_pck, auto src) {
@@ -803,18 +804,18 @@ struct sequential_subtransform {
                     return data_size / batch_size;
                 }
             }();
-            fnode::perform(dst_pck,
-                           src_pck,
-                           align,
-                           lowk,
-                           reverse,
-                           conj_tw,
-                           batch_cnt,
-                           batch_size,
-                           dst_data,
-                           src,
-                           final_k_count,
-                           tw);
+            subtf::perfrom_subtf(dst_pck,
+                                 src_pck,
+                                 align,
+                                 lowk,
+                                 reverse,
+                                 conj_tw,
+                                 batch_cnt,
+                                 batch_size,
+                                 dst_data,
+                                 src,
+                                 final_k_count,
+                                 tw);
         };
         auto l_single_load = [&] PCX_LAINLINE(auto dst_pck, auto src_pck, auto lowk, auto dst, auto src) {
             single_load(dst_pck, src_pck, lowk, half_tw, conj_tw, reverse, dst, src, tw);
@@ -877,23 +878,23 @@ struct sequential_subtransform {
         }
     };
 
-    static void insert_tw(twiddle_range_for<T> auto& r,
-                          any_align auto             align,
-                          meta::ce_of<bool> auto     lowk,
-                          uZ                         data_size,
-                          tw_data_t<T, true>&        tw_data,
-                          meta::ce_of<bool> auto     half_tw) {
+    static void insert_seq_tw(twiddle_range_for<T> auto& r,
+                              any_align auto             align,
+                              meta::ce_of<bool> auto     lowk,
+                              uZ                         data_size,
+                              tw_data_t<T, true>&        tw_data,
+                              meta::ce_of<bool> auto     half_tw) {
         constexpr auto single_load_size = node_size * width;
         auto           final_k_count    = data_size / single_load_size / 2;
         using fnode                     = subtransform<node_size, T, width>;
-        fnode::insert_tw(r, align, lowk, final_k_count, tw_data);
+        fnode::insert_subtf_tw(r, align, lowk, final_k_count, tw_data);
         if constexpr (skip_single_load)
             return;
         if (lowk && !skip_lowk_single_load)
             insert_single_load_tw(r, tw_data, lowk, half_tw);
         auto k_start = lowk && !skip_lowk_single_load ? 1UZ : 0UZ;
         for (auto k: stdv::iota(k_start, final_k_count * 2))
-            insert_single_load_tw(r, tw_data, false, half_tw);
+            insert_single_load_tw(r, tw_data, not_lowk, half_tw);
     }
 
     template<bool LocalTw>
@@ -1042,7 +1043,7 @@ struct sequential_subtransform {
     }
     static void insert_single_load_tw(twiddle_range_for<T> auto& r,
                                       tw_data_t<T, true>&        tw_data,
-                                      bool                       lowk,
+                                      meta::ce_of<bool> auto     lowk,
                                       meta::ce_of<bool> auto     half_tw) {
         auto insert = [&r](auto tws) {
             for (auto tw: tws) {
@@ -1050,11 +1051,10 @@ struct sequential_subtransform {
                 r.push_back(tw.imag());
             }
         };
-        if (!lowk || !skip_lowk_tw) {
-            auto tws = make_tw_node<T, NodeSize>(tw_data.start_fft_size * 2,    //
-                                                 tw_data.start_k);
-            insert(tws);
-        }
+        using btfly_node = btfly_node_dit<node_size, T, width>;
+        auto tws         = btfly_node::make_tw_node(lowk, tw_data.start_fft_size * 2, tw_data.start_k);
+        insert(tws);
+
         if constexpr (skip_sub_width) {
             ++tw_data.start_k;
             return;
@@ -1125,15 +1125,8 @@ struct sequential_subtransform {
         }
     } switch_1_2{};
 
+    // Permutation needed for half-twiddle case.
     static constexpr struct {
-        template<simd::any_cx_vec... Ts>
-            requires(sizeof...(Ts) > 1)
-        PCX_AINLINE static auto operator()(tupi::tuple<Ts...> vecs) {
-            return [&]<uZ... IPairs> PCX_LAINLINE(uZ_seq<IPairs...>) {
-                return tupi::tuple_cat(regroup<1, width>(tupi::get<IPairs * 2>(vecs),    //
-                                                         tupi::get<IPairs * 2 + 1>(vecs))...);
-            }(make_uZ_seq<sizeof...(Ts) / 2>{});
-        }
         template<simd::any_cx_vec... Ts>
             requires(sizeof...(Ts) > 1)
         PCX_AINLINE static auto operator()(tupi::tuple<Ts...> vecs, meta::ce_of<bool> auto reverse) {
@@ -1164,12 +1157,12 @@ struct sequential_subtransform {
                 return vec_traits::upsample(v.value);
           })    
         | tupi::apply                                                  
-        | [](auto re, auto im) { return simd::cx_vec<T, false, false, Width>{re, im}; };
+        | [](auto re, auto im) { return simd::cx_vec<T, false, false, width>{re, im}; };
 
 
     /**
      * @brief Regroups input simd vectors, similar to `simd::repack`, except
-     * that the real and imaginary part are processed independently.
+     * that the real and imaginary parts are processed independently.
      */
     template<uZ GroupTo, uZ GroupFrom>
     static constexpr auto regroup = 
@@ -1360,7 +1353,6 @@ struct sequential_subtransform {
 template<uZ NodeSize, typename T, uZ Width, uZ CohSize = 0, uZ LaneSize = 0>
 struct transform {
     using seq_subtf_t = sequential_subtransform<NodeSize, T, Width>;
-    // using subtf_t     = subtransform<NodeSize, T, Width>;
 
     /**
      * @brief Number of complex elements of type T that keep L1 cache coherency during subtransforms.
@@ -1382,13 +1374,6 @@ struct transform {
         }
         return p;
     }
-    static constexpr auto get_align_node(uZ size) {
-        auto slog       = log2i(size);
-        auto a          = slog / log2i(node_size);
-        auto b          = a * log2i(node_size);
-        auto align_node = powi(2, slog - b);
-        return align_node;
-    };
 
     /**
      * Subdivides the data into buckets. Default bucket size is `coherent_size`.
@@ -1428,7 +1413,7 @@ struct transform {
             if constexpr (sequential) {
                 dst_data        = dst_data.mul_stride(width);
                 src_data        = src_data.mul_stride(width);
-                auto align_node = seq_subtf_t::get_align_node(fft_size);
+                auto align_node = seq_subtf_t::get_align_node_seq(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
                     auto check_align = [&]<uZ I>(uZ_ce<I>) {
                         constexpr auto l_node_size = powi(2, I);
@@ -1455,22 +1440,22 @@ struct transform {
                 auto batch_cnt  = fft_size;
                 auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
                     using subtf_t = subtransform<node_size, T, width>;
-                    subtf_t::perform(dst_pck,
-                                     src_pck,
-                                     align,
-                                     lowk,
-                                     reverse,
-                                     conj_tw,
-                                     batch_cnt,
-                                     batch_size,
-                                     dst,
-                                     src,
-                                     fft_size / 2,
-                                     tw);
+                    subtf_t::perfrom_subtf(dst_pck,
+                                           src_pck,
+                                           align,
+                                           lowk,
+                                           reverse,
+                                           conj_tw,
+                                           batch_cnt,
+                                           batch_size,
+                                           dst,
+                                           src,
+                                           fft_size / 2,
+                                           tw);
                     auto(permuter)
                         .small_permute(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
                 };
-                auto align_node = get_align_node(fft_size);
+                auto align_node = subtransform<node_size, T, width>::get_align_node_subtf(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
                     auto check_align = [&]<uZ I>(uZ_ce<I>) {
                         constexpr auto l_node_size = powi(2, I);
@@ -1542,18 +1527,18 @@ struct transform {
                              auto  src,
                              auto  k_cnt,
                              auto& tw) {
-                subtf_t::perform(dst_pck,
-                                 src_pck,
-                                 align,
-                                 lowk,
-                                 reverse,
-                                 conj_tw,
-                                 batch_cnt,
-                                 batch_size,
-                                 dst,
-                                 src,
-                                 k_cnt,
-                                 tw);
+                subtf_t::perfrom_subtf(dst_pck,
+                                       src_pck,
+                                       align,
+                                       lowk,
+                                       reverse,
+                                       conj_tw,
+                                       batch_cnt,
+                                       batch_size,
+                                       dst,
+                                       src,
+                                       k_cnt,
+                                       tw);
             };
             auto l_permuter    = permuter;
             auto id_perm       = identity_permuter;
@@ -1605,7 +1590,7 @@ struct transform {
                 }
             };
 
-            auto pre_pass_align_node = get_align_node(rem_k_cnt * 2);
+            auto pre_pass_align_node = subtf_t::get_align_node_subtf(rem_k_cnt * 2);
             [&]<uZ... Is>(uZ_seq<Is...>) {
                 auto check_align = [&]<uZ I>(uZ_ce<I>) {
                     constexpr auto l_node_size = powi(2, I);
@@ -1619,17 +1604,18 @@ struct transform {
             }(make_uZ_seq<log2i(node_size)>{});
 
             auto           tw_data_bak     = tw_data;
-            constexpr auto pass_align_node = align_param<get_align_node(pass_k_cnt * 2), true>{};
+            constexpr auto pass_align_node = subtf_t::get_align_node_subtf(pass_k_cnt * 2);
+            constexpr auto pass_align      = align_param<pass_align_node, true>{};
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, id_perm);
+                iterate_buckets(w_pck, w_pck, pass_align, pass_k_cnt, inplace_src, id_perm);
             }
 
             if constexpr (!sequential) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(dst_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, l_permuter);
+                iterate_buckets(dst_pck, w_pck, pass_align, pass_k_cnt, inplace_src, l_permuter);
                 dst = dst.reset_stride();
                 l_permuter.permute(width, batch_size, reverse, dst_pck, dst_pck, dst, inplace_src);
             } else {
@@ -1645,7 +1631,7 @@ struct transform {
                 }
                 auto seq = [&] PCX_LAINLINE(auto lowk, auto offset) {
                     constexpr auto sequential_align_node =
-                        uZ_ce<seq_subtf_t::get_align_node(bucket_tfsize)>{};
+                        uZ_ce<seq_subtf_t::get_align_node_seq(bucket_tfsize)>{};
                     uZ x = sequential_align_node;
                     seq_subtf_t::perform(dst_pck,
                                          w_pck,
@@ -1733,7 +1719,7 @@ struct transform {
                 dst_data   = dst_data.mul_stride(width);
                 o_src      = o_src.mul_stride(width);
 
-                auto sequential_align_node = seq_subtf_t::get_align_node(fft_size);
+                auto sequential_align_node = seq_subtf_t::get_align_node_seq(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
                     auto check_align = [&]<uZ I>(uZ_ce<I>) {
                         constexpr auto l_node_size = powi(2, I);
@@ -1761,20 +1747,20 @@ struct transform {
                     auto o_src =
                         auto(permuter).small_permute(width, batch_size, reverse, src_pck, src_pck, dst, src);
                     using subtf_t = subtransform<node_size, T, width>;
-                    subtf_t::perform(dst_pck,
-                                     src_pck,
-                                     align,
-                                     lowk,
-                                     reverse,
-                                     conj_tw,
-                                     batch_cnt,
-                                     batch_size,
-                                     dst,
-                                     o_src,
-                                     fft_size / 2,
-                                     tw);
+                    subtf_t::perfrom_subtf(dst_pck,
+                                           src_pck,
+                                           align,
+                                           lowk,
+                                           reverse,
+                                           conj_tw,
+                                           batch_cnt,
+                                           batch_size,
+                                           dst,
+                                           o_src,
+                                           fft_size / 2,
+                                           tw);
                 };
-                auto align_node = get_align_node(fft_size);
+                auto align_node = subtransform<node_size, T, width>::get_align_node_subtf(fft_size);
                 [&]<uZ... Is>(uZ_seq<Is...>) {
                     auto check_align = [&]<uZ I>(uZ_ce<I>) {
                         constexpr auto l_node_size = powi(2, I);
@@ -1829,6 +1815,7 @@ struct transform {
 
         auto tform = [=](auto width, auto batch_size, auto dst, auto src, auto tw_data, auto permuter) {
             constexpr auto w_pck = cxpack<width, T>{};
+            using subtf_t        = subtransform<node_size, T, width>;
 
             uZ bucket_cnt       = 1;    // per bucket group
             uZ bucket_group_cnt = fft_size / bucket_tfsize;
@@ -1841,19 +1828,18 @@ struct transform {
                              auto  src,
                              auto  k_cnt,
                              auto& tw) {
-                using subtf_t = subtransform<node_size, T, width>;
-                subtf_t::perform(dst_pck,
-                                 src_pck,
-                                 align,
-                                 lowk,
-                                 reverse,
-                                 conj_tw,
-                                 batch_cnt,
-                                 batch_size,
-                                 dst,
-                                 src,
-                                 k_cnt,
-                                 tw);
+                subtf_t::perfrom_subtf(dst_pck,
+                                       src_pck,
+                                       align,
+                                       lowk,
+                                       reverse,
+                                       conj_tw,
+                                       batch_cnt,
+                                       batch_size,
+                                       dst,
+                                       src,
+                                       k_cnt,
+                                       tw);
             };
             auto tw_data_bak   = tw_data;
             auto coherent_perm = [=](auto& permuter, auto pck, auto dst, auto src) {
@@ -1910,16 +1896,17 @@ struct transform {
                 permuter = l_permuter;
             };
 
-            constexpr auto pass_align_node = align_param<get_align_node(pass_k_cnt * 2), true>{};
+            constexpr auto pass_align_node = subtf_t::get_align_node_subtf(pass_k_cnt * 2);
+            constexpr auto pass_align      = align_param<pass_align_node, true>{};
             if constexpr (!sequential)
-                iterate_buckets(w_pck, src_pck, pass_align_node, pass_k_cnt, src, permuter, true);
+                iterate_buckets(w_pck, src_pck, pass_align, pass_k_cnt, src, permuter, true);
             for (uZ pass: stdv::iota(0U, pass_cnt)) {
                 if constexpr (!local_tw)
                     tw_data = tw_data_bak;
-                iterate_buckets(w_pck, w_pck, pass_align_node, pass_k_cnt, inplace_src, identity_permuter);
+                iterate_buckets(w_pck, w_pck, pass_align, pass_k_cnt, inplace_src, identity_permuter);
             }
 
-            auto pre_pass_align_node = get_align_node(rem_k_cnt * 2);
+            auto pre_pass_align_node = subtf_t::get_align_node_subtf(rem_k_cnt * 2);
             [&]<uZ... Is>(uZ_seq<Is...>) {
                 auto check_align = [&]<uZ I>(uZ_ce<I>) {
                     constexpr auto l_node_size = powi(2, I);
@@ -1937,7 +1924,8 @@ struct transform {
             dst_data   = dst_data.mul_stride(width);
             o_src      = o_src.mul_stride(width);
             auto seq   = [&] PCX_LAINLINE(auto lowk, auto offset) {
-                constexpr auto sequential_align_node = uZ_ce<seq_subtf_t::get_align_node(bucket_tfsize)>{};
+                constexpr auto sequential_align_node =
+                    uZ_ce<seq_subtf_t::get_align_node_seq(bucket_tfsize)>{};
                 seq_subtf_t::perform(w_pck,
                                      src_pck,
                                      lowk,
@@ -2032,9 +2020,9 @@ struct transform {
             auto l_tw_data = tw_data_t<T, true>{1, 0};
             uZ   align_node{};
             if constexpr (sequential)
-                align_node = seq_subtf_t::get_align_node(fft_size);
+                align_node = seq_subtf_t::get_align_node_seq(fft_size);
             else
-                align_node = get_align_node(fft_size);
+                align_node = subtf_t::get_align_node_subtf(fft_size);
 
             [&]<uZ... Is>(uZ_seq<Is...>) {
                 auto check_align = [&]<uZ I>(uZ_ce<I>) {
@@ -2043,9 +2031,9 @@ struct transform {
                         return false;
                     constexpr auto align = align_param<l_node_size, true>{};
                     if constexpr (sequential)
-                        seq_subtf_t::insert_tw(r, align, lowk, fft_size, l_tw_data, half_tw);
+                        seq_subtf_t::insert_seq_tw(r, align, lowk, fft_size, l_tw_data, half_tw);
                     else
-                        subtf_t::insert_tw(r, align, lowk, fft_size / 2, l_tw_data);
+                        subtf_t::insert_subtf_tw(r, align, lowk, fft_size / 2, l_tw_data);
                     return true;
                 };
                 (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -2062,13 +2050,13 @@ struct transform {
             for (uZ i_bg: stdv::iota(0U, bucket_group_count)) {
                 auto l_tw_data = tw_data_t<T, true>{bucket_group_count, i_bg};
                 if (i_bg == 0)
-                    subtf_t::insert_tw(r, align, lowk, k_count, l_tw_data);
+                    subtf_t::insert_subtf_tw(r, align, lowk, k_count, l_tw_data);
                 else
-                    subtf_t::insert_tw(r, align, not_lowk, k_count, l_tw_data);
+                    subtf_t::insert_subtf_tw(r, align, not_lowk, k_count, l_tw_data);
             }
         };
 
-        auto pre_pass_align_node = get_align_node(pre_pass_k_count * 2);
+        auto pre_pass_align_node = subtf_t::get_align_node_subtf(pre_pass_k_count * 2);
         [&]<uZ... Is>(uZ_seq<Is...>) {
             auto check_align = [&]<uZ I>(uZ_ce<I>) {
                 constexpr auto l_node_size = powi(2, I);
@@ -2080,7 +2068,7 @@ struct transform {
             (void)(check_align(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<log2i(node_size)>{});
 
-        constexpr auto pass_align_node = get_align_node(pass_k_count * 2);
+        constexpr auto pass_align_node = subtf_t::get_align_node_subtf(pass_k_count * 2);
 
         pass_count = sequential ? pass_count : pass_count + 1;
         if (pass_count > 0) {
@@ -2094,13 +2082,13 @@ struct transform {
                 return;
             auto bucket_count = fft_size / bucket_size;
 
-            constexpr auto seq_align = align_param<seq_subtf_t::get_align_node(bucket_size), true>{};
+            constexpr auto seq_align = align_param<seq_subtf_t::get_align_node_seq(bucket_size), true>{};
             for (uZ i_bg: stdv::iota(0U, bucket_count)) {
                 auto l_tw_data = tw_data_t<T, true>{bucket_count, i_bg};
                 if (i_bg == 0)
-                    seq_subtf_t::insert_tw(r, seq_align, lowk, bucket_size, l_tw_data, half_tw);
+                    seq_subtf_t::insert_seq_tw(r, seq_align, lowk, bucket_size, l_tw_data, half_tw);
                 else
-                    seq_subtf_t::insert_tw(r, seq_align, not_lowk, bucket_size, l_tw_data, half_tw);
+                    seq_subtf_t::insert_seq_tw(r, seq_align, not_lowk, bucket_size, l_tw_data, half_tw);
             }
             return;
         }
