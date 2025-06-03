@@ -12,27 +12,37 @@ template<floating_point T, fft_options Opts>
 par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
 : fft_size_(fft_size)
 , permuter_(permuter_t::insert_indexes(idxs_, fft_size)) {
+    // constexpr auto lowk = val_ce<true>{};
     if (fft_size > coherent_size / lane_size) {
         using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
-        impl_t::insert_tw(tw_, fft_size, true, half_tw, not_sequential);
-
-        inplace_ptr_    = &par_fft_plan::inplace<1, 1, false>;
-        inplace_r_ptr_  = &par_fft_plan::inplace<1, 1, true>;
-        external_ptr_   = &par_fft_plan::external<1, 1, false>;
-        external_r_ptr_ = &par_fft_plan::external<1, 1, true>;
+        impl_t::insert_tw_tf(tw_, fft_size, lowk, half_tw, not_sequential);
+        auto align_node = impl_t::get_align_node_tf_par(fft_size);
+        auto test_align = [&]<uZ I>(uZ_ce<I>) {
+            constexpr auto l_align_node = detail_::powi(2, I);
+            if (l_align_node != align_node)
+                return false;
+            inplace_ptr_    = &par_fft_plan::inplace<1, 1, l_align_node, false>;
+            inplace_r_ptr_  = &par_fft_plan::inplace<1, 1, l_align_node, true>;
+            external_ptr_   = &par_fft_plan::external<1, 1, l_align_node, false>;
+            external_r_ptr_ = &par_fft_plan::external<1, 1, l_align_node, true>;
+            return true;
+        };
+        [&]<uZ... Is>(uZ_seq<Is...>) {
+            (void)(test_align(uZ_ce<Is>{}) || ...);
+        }(make_uZ_seq<detail_::log2i(Opts.node_size)>{});
         return;
     }
     auto tw_data = detail_::tw_data_t<T, true>{};
     auto k_cnt   = fft_size / 2;
     if (fft_size > Opts.node_size) {
         using impl_t    = detail_::subtransform<Opts.node_size, T, width>;
-        auto align_node = impl_t::get_align_node(fft_size);
+        auto align_node = impl_t::get_align_node_subtf(fft_size);
         auto test_align = [&]<uZ I>(uZ_ce<I>) {
             constexpr auto l_align_node = detail_::powi(2, I);
             if (l_align_node != align_node)
                 return false;
             constexpr auto align = detail_::align_param<l_align_node, true>{};
-            impl_t::insert_tw(tw_, align, lowk, k_cnt, tw_data);
+            impl_t::insert_tw_subtf(tw_, align, lowk, k_cnt, tw_data);
             inplace_ptr_    = &par_fft_plan::inplace_coh<l_align_node, 1, 1, false>;
             inplace_r_ptr_  = &par_fft_plan::inplace_coh<l_align_node, 1, 1, true>;
             external_ptr_   = &par_fft_plan::external_coh<l_align_node, 1, 1, false>;
@@ -49,7 +59,7 @@ par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
         if (fft_size != l_node_size)
             return false;
         using impl_t = detail_::fft_iteration_t<T, width>;
-        impl_t::insert_iteration_tw(uZ_ce<l_node_size>{}, tw_, tw_data, k_cnt, lowk);
+        impl_t::insert_tw_iteration(uZ_ce<l_node_size>{}, tw_, tw_data, k_cnt, lowk);
         inplace_ptr_    = &par_fft_plan::inplace_single_node<l_node_size, 1, 1, false>;
         inplace_r_ptr_  = &par_fft_plan::inplace_single_node<l_node_size, 1, 1, true>;
         external_ptr_   = &par_fft_plan::external_single_node<l_node_size, 1, 1, false>;
@@ -63,57 +73,60 @@ par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
 
 
 template<floating_point T, fft_options Opts>
-template<uZ DstPck, uZ SrcPck, bool Reverse>
+template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
 PCX_AINLINE void par_fft_plan<T, Opts>::impl(detail_::data_info_for<T> auto       dst_data,
                                              detail_::data_info_for<const T> auto src_data,
                                              uZ                                   data_size) {
     using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
     constexpr auto dst_pck = cxpack<DstPck, T>{};
     constexpr auto src_pck = cxpack<SrcPck, T>{};
+    constexpr auto align   = detail_::align_param<Align, true>{};
 
     auto tw       = detail_::tw_data_t<T, false>{Reverse ? &*tw_.end() : tw_.data()};
     auto permuter = permuter_;
     if constexpr (!bit_reversed)
         permuter.idx_ptr = idxs_.data();
     if constexpr (!Reverse) {
-        impl_t::perform(dst_pck,
-                        src_pck,
-                        half_tw,
-                        lowk,
-                        dst_data,
-                        src_data,
-                        fft_size_,
-                        tw,
-                        permuter,
-                        data_size);
+        impl_t::perform_tf(dst_pck,
+                           src_pck,
+                           half_tw,
+                           lowk,
+                           align,
+                           dst_data,
+                           src_data,
+                           fft_size_,
+                           tw,
+                           permuter,
+                           data_size);
     } else {
-        impl_t::perform_rev(dst_pck,
-                            src_pck,
-                            half_tw,
-                            lowk,
-                            dst_data,
-                            src_data,
-                            fft_size_,
-                            tw,
-                            permuter,
-                            data_size);
+        impl_t::perform_tf_rev(dst_pck,
+                               src_pck,
+                               half_tw,
+                               lowk,
+                               align,
+                               dst_data,
+                               src_data,
+                               fft_size_,
+                               tw,
+                               permuter,
+                               data_size);
     }
 }
 template<floating_point T, fft_options Opts>
-template<uZ DstPck, uZ SrcPck, bool Reverse>
+template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
 void par_fft_plan<T, Opts>::inplace(T* dst, uZ stride, uZ data_size) {
     auto dst_data = detail_::data_info<T, true>{.data_ptr = dst, .stride = stride, .k_stride = stride};
     auto src_data = detail_::inplace_src;
-    impl<DstPck, SrcPck, Reverse>(dst_data, src_data, data_size);
+    impl<DstPck, SrcPck, Align, Reverse>(dst_data, src_data, data_size);
 }
 template<floating_point T, fft_options Opts>
-template<uZ DstPck, uZ SrcPck, bool Reverse>
+template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
 void par_fft_plan<T, Opts>::external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) {
     auto dst_data =
         detail_::data_info<T, true>{.data_ptr = dst, .stride = dst_stride, .k_stride = dst_stride};
     auto src_data =
         detail_::data_info<const T, true>{.data_ptr = src, .stride = src_stride, .k_stride = src_stride};
-    impl<DstPck, SrcPck, Reverse>(dst_data, src_data, data_size);
+    impl<DstPck, SrcPck, Align, Reverse>(dst_data, src_data, data_size);
 }
 
 template<floating_point T, fft_options Opts>
@@ -152,18 +165,18 @@ PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto 
                 auto batch_cnt     = fft_size;
                 auto final_k_count = fft_size / 2;
                 auto l_tw          = tw;
-                subtf_t::perform(dst_pck,
-                                 src_pck,
-                                 align,
-                                 lowk,
-                                 reverse,
-                                 conj_tw,
-                                 batch_cnt,
-                                 batch_size,
-                                 dst,
-                                 src,
-                                 final_k_count,
-                                 l_tw);
+                subtf_t::perform_subtf(dst_pck,
+                                       src_pck,
+                                       align,
+                                       lowk,
+                                       reverse,
+                                       conj_tw,
+                                       batch_cnt,
+                                       batch_size,
+                                       dst,
+                                       src,
+                                       final_k_count,
+                                       l_tw);
                 auto{permuter}
                     .small_permute(width, batch_size, reverse, dst_pck, dst_pck, dst, detail_::inplace_src);
             };

@@ -78,16 +78,16 @@ public:
         auto dst_data = detail_::data_info<T, false, R>{.data_ptr = &data};
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = tw_.data()};
 
-        impl_t::perform(dst_pck,
-                        src_pck,
-                        half_tw,
-                        lowk,
-                        dst_data,
-                        detail_::inplace_src,
-                        fft_size_,
-                        tw_data,
-                        permuter_,
-                        data_size);
+        impl_t::perform_tf(dst_pck,
+                           src_pck,
+                           half_tw,
+                           lowk,
+                           dst_data,
+                           detail_::inplace_src,
+                           fft_size_,
+                           tw_data,
+                           permuter_,
+                           data_size);
     }
     template<stdr::random_access_range R>
         requires stdr::contiguous_range<stdr::range_value_t<R>>
@@ -108,16 +108,16 @@ public:
         auto dst_data = detail_::data_info<T, false, R>{.data_ptr = &data[0]};
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = &*tw_.end()};
 
-        impl_t::perform_rev(dst_pck,
-                            src_pck,
-                            half_tw,
-                            lowk,
-                            dst_data,
-                            detail_::inplace_src,
-                            fft_size_,
-                            tw_data,
-                            permuter_,
-                            data_size);
+        impl_t::perform_tf_rev(dst_pck,
+                               src_pck,
+                               half_tw,
+                               lowk,
+                               dst_data,
+                               detail_::inplace_src,
+                               fft_size_,
+                               tw_data,
+                               permuter_,
+                               data_size);
     }
 
 private:
@@ -134,9 +134,9 @@ private:
     external_impl_t                      external_r_ptr_;
 
 
-    template<uZ DstPck, uZ SrcPck, bool Reverse>
+    template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
     void inplace(T* dst, uZ stride, uZ data_size);
-    template<uZ DstPck, uZ SrcPck, bool Reverse>
+    template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
     void external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
     template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
     void inplace_coh(T* dst, uZ stride, uZ data_size);
@@ -147,7 +147,7 @@ private:
     template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
     void external_single_node(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
 
-    template<uZ DstPck, uZ SrcPck, bool Reverse>
+    template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
     PCX_AINLINE void impl(detail_::data_info_for<T> auto       dst_data,
                           detail_::data_info_for<const T> auto src_data,
                           uZ                                   data_size);
@@ -270,9 +270,9 @@ private:
 
     void identity_tform(T* dst) {};
 
-    template<uZ Width>
+    template<uZ Width, uZ Align>
     void tform_inplace_ileave(T* dst);
-    template<uZ Width>
+    template<uZ Width, uZ Align>
     void rtform_inplace_ileave(T* dst);
     template<uZ Width, uZ PermWidth, uZ Align>
     void coherent_tform_inplace_ileave(T* dst);
@@ -283,9 +283,9 @@ private:
     template<uZ Width, uZ NodeSize>
     void single_load_rtform_inplace_ileave(T* dst);
 
-    template<uZ Width>
+    template<uZ Width, uZ Align>
     void tform_external_ileave(T* dst, const T* src);
-    template<uZ Width>
+    template<uZ Width, uZ Align>
     void rtform_external_ileave(T* dst, const T* src);
     template<uZ Width, uZ PermWidth, uZ Align>
     void coherent_tform_external_ileave(T* dst, const T* src);
@@ -296,11 +296,12 @@ private:
     template<uZ Width, uZ NodeSize>
     void single_load_rtform_external_ileave(T* dst, const T* src);
 
-    template<uZ Width, uZ DstPck, uZ SrcPck>
+    template<uZ Width, uZ DstPck, uZ SrcPck, uZ Align>
     void tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
         using impl_t             = detail_::transform<Opts.node_size, T, Width, Opts.coherent_size, 0>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
+        constexpr auto align     = detail_::align_param<Align, true>{};
         constexpr auto conj_tw   = std::bool_constant<reverse>{};
         constexpr auto PermWidth = Width;
 
@@ -319,25 +320,27 @@ private:
             }
         }();
         if constexpr (!reverse) {
-            impl_t::perform(dst_pck,
-                            src_pck,
-                            half_tw,
-                            lowk,
-                            dst_data,
-                            detail_::inplace_src,
-                            fft_size_,
-                            tw_data,
-                            permuter);
+            impl_t::perform_tf(dst_pck,
+                               src_pck,
+                               half_tw,
+                               lowk,
+                               align,
+                               dst_data,
+                               detail_::inplace_src,
+                               fft_size_,
+                               tw_data,
+                               permuter);
         } else {
-            impl_t::perform_rev(dst_pck,
-                                src_pck,
-                                half_tw,
-                                lowk,
-                                dst_data,
-                                detail_::inplace_src,
-                                fft_size_,
-                                tw_data,
-                                permuter);
+            impl_t::perform_tf_rev(dst_pck,
+                                   src_pck,
+                                   half_tw,
+                                   lowk,
+                                   align,
+                                   dst_data,
+                                   detail_::inplace_src,
+                                   fft_size_,
+                                   tw_data,
+                                   permuter);
         }
     }
 
@@ -366,16 +369,16 @@ private:
         if constexpr (reverse)
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
         impl_t::perform_seq(dst_pck,
-                             src_pck,
-                             align,
-                             lowk,
-                             half_tw,
-                             reverse,
-                             conj_tw,
-                             fft_size_,
-                             dst_data,
-                             detail_::inplace_src,
-                             tw_data);
+                            src_pck,
+                            align,
+                            lowk,
+                            half_tw,
+                            reverse,
+                            conj_tw,
+                            fft_size_,
+                            dst_data,
+                            detail_::inplace_src,
+                            tw_data);
         if constexpr (!reverse)
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
     }
@@ -408,11 +411,12 @@ private:
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
     }
 
-    template<uZ Width, uZ DstPck, uZ SrcPck>
+    template<uZ Width, uZ DstPck, uZ SrcPck, uZ Align>
     void tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) {
         using impl_t             = detail_::transform<Opts.node_size, T, Width, Opts.coherent_size, 0>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
+        constexpr auto align     = detail_::align_param<Align, true>{};
         constexpr auto conj_tw   = std::bool_constant<reverse>{};
         constexpr auto PermWidth = Width;
 
@@ -432,25 +436,27 @@ private:
             }
         }();
         if constexpr (!reverse) {
-            impl_t::perform(dst_pck,
-                            src_pck,
-                            half_tw,
-                            lowk,
-                            dst_data,
-                            detail_::inplace_src,
-                            fft_size_,
-                            tw_data,
-                            permuter);
+            impl_t::perform_tf(dst_pck,
+                               src_pck,
+                               half_tw,
+                               lowk,
+                               align,
+                               dst_data,
+                               detail_::inplace_src,
+                               fft_size_,
+                               tw_data,
+                               permuter);
         } else {
-            impl_t::perform_rev(dst_pck,
-                                src_pck,
-                                half_tw,
-                                lowk,
-                                dst_data,
-                                detail_::inplace_src,
-                                fft_size_,
-                                tw_data,
-                                permuter);
+            impl_t::perform_tf_rev(dst_pck,
+                                   src_pck,
+                                   half_tw,
+                                   lowk,
+                                   align,
+                                   dst_data,
+                                   detail_::inplace_src,
+                                   fft_size_,
+                                   tw_data,
+                                   permuter);
         }
     }
 
@@ -480,28 +486,28 @@ private:
         if constexpr (reverse) {
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, src_data);
             impl_t::perform_seq(dst_pck,
-                                 src_pck,
-                                 align,
-                                 lowk,
-                                 half_tw,
-                                 reverse,
-                                 conj_tw,
-                                 fft_size_,
-                                 dst_data,
-                                 detail_::inplace_src,
-                                 tw_data);
+                                src_pck,
+                                align,
+                                lowk,
+                                half_tw,
+                                reverse,
+                                conj_tw,
+                                fft_size_,
+                                dst_data,
+                                detail_::inplace_src,
+                                tw_data);
         } else {
             impl_t::perform_seq(dst_pck,
-                                 src_pck,
-                                 align,
-                                 lowk,
-                                 half_tw,
-                                 reverse,
-                                 conj_tw,
-                                 fft_size_,
-                                 dst_data,
-                                 src_data,
-                                 tw_data);
+                                src_pck,
+                                align,
+                                lowk,
+                                half_tw,
+                                reverse,
+                                conj_tw,
+                                fft_size_,
+                                dst_data,
+                                src_data,
+                                tw_data);
             permuter.sequential_permute(dst_pck, dst_pck, dst_data, detail_::inplace_src);
         }
     }

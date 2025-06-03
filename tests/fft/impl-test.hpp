@@ -88,7 +88,7 @@ bool parc_test_proto(auto                node_size,
             return tw_t{1, 0};
         } else {
             twvec.resize(0);
-            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, sequential);
+            fimpl::insert_tw_tf(twvec, fft_size, lowk, half_tw, sequential);
             return tw_t{twvec.data()};
         }
     }();
@@ -307,7 +307,7 @@ bool par_test_proto(auto                 node_size,
             return tw_t{1, 0};
         } else {
             twvec.resize(0);
-            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, sequential);
+            fimpl::insert_tw_tf(twvec, fft_size, lowk, half_tw, sequential);
             return tw_t{twvec.data()};
         }
     }();
@@ -525,7 +525,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
             return tw_t{1, 0};
         } else {
             twvec.resize(0);
-            fimpl::insert_tw(twvec, fft_size, lowk, half_tw, std::true_type{});
+            fimpl::insert_tw_tf(twvec, fft_size, lowk, half_tw, std::true_type{});
             return tw_t{twvec.data()};
         }
     }();
@@ -677,7 +677,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
                     if (l_node_size != coh_align)
                         return false;
                     auto tw_data = detail_::tw_data_t<fX, true>{1, 0};
-                    fimpl_seq::insert_seq_tw(twvec,
+                    fimpl_seq::insert_tw_seq(twvec,
                                              detail_::align_param<l_node_size, true>{},
                                              lowk,
                                              fft_size,
