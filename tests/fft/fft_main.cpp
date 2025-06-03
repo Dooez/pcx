@@ -247,7 +247,7 @@ bool test_seq(pcx::uZ_seq<Ws...>, pcx::uZ_seq<NodeSize...>, pcx::meta::t_id<fX>,
 int main() {
     // uZ fft_size = 2048 * 256;
     // uZ fft_size = 32768;
-    uZ fft_size = 512;
+    uZ fft_size = 256;
     // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
@@ -255,7 +255,7 @@ int main() {
 
     constexpr auto f32_tid = pcx::meta::t_id<f32>{};
     constexpr auto f64_tid = pcx::meta::t_id<f64>{};
-    while (fft_size <= 2048 * 2048 * 2) {
+    while (fft_size <= 2048 * 2048 / 2) {
         if constexpr (do_test_parc) {
             if (!test_parc(f32_widths, node_sizes, f32_tid, fft_size, 31, 13.001))
                 return -1;

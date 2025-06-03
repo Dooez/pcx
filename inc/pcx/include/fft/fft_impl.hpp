@@ -654,7 +654,8 @@ struct subtransform {
                 if constexpr (src_pck != w_pck || !inplace) {
                     fft_iter(node_size, w_pck, src_pck, src_data);
                 } else if constexpr (lowk && reuse_lowk_tw) {
-                    fft_iter_t::recede_lowk_tw(node_size, tw_data, k_count);
+                    if (k_count > align.size_pre())
+                        fft_iter_t::recede_lowk_tw(node_size, tw_data, k_count);
                 }
             }
             constexpr auto fk = [&] {
