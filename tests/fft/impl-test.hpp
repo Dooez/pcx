@@ -183,16 +183,16 @@ bool parc_test_proto(auto                node_size,
         reset_s1();
         std::print("[Inp][Fwd][Parc]");
         std::print(perm_fmt);
-        fimpl::perform(pck_dst,
-                       pck_src,
-                       half_tw,
-                       lowk,
-                       s1_data,
-                       detail_::inplace_src,
-                       fft_size,
-                       tw,
-                       permute,
-                       data_size);
+        fimpl::perform_auto_size(pck_dst,
+                                 pck_src,
+                                 half_tw,
+                                 lowk,
+                                 s1_data,
+                                 detail_::inplace_src,
+                                 fft_size,
+                                 tw,
+                                 permute,
+                                 data_size);
         if (!run_check(true))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -206,16 +206,16 @@ bool parc_test_proto(auto                node_size,
         reset_s1();
         std::print("[Inp][Rev][Parc]");
         std::print(perm_fmt);
-        fimpl::perform_rev(pck_dst,
-                           pck_src,
-                           half_tw,
-                           lowk,
-                           s1_data,
-                           detail_::inplace_src,
-                           fft_size,
-                           tw_rev,
-                           rev_permute,
-                           data_size);
+        fimpl::perform_rev_auto_size(pck_dst,
+                                     pck_src,
+                                     half_tw,
+                                     lowk,
+                                     s1_data,
+                                     detail_::inplace_src,
+                                     fft_size,
+                                     tw_rev,
+                                     rev_permute,
+                                     data_size);
         if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -228,16 +228,16 @@ bool parc_test_proto(auto                node_size,
     if (external && fwd) {
         std::print("[Ext][Fwd][Parc]");
         std::print(perm_fmt);
-        fimpl::perform(pck_dst,
-                       pck_src,
-                       half_tw,
-                       lowk,
-                       s1_data,
-                       signal_data,
-                       fft_size,
-                       tw,
-                       permute,
-                       data_size);
+        fimpl::perform_auto_size(pck_dst,
+                                 pck_src,
+                                 half_tw,
+                                 lowk,
+                                 s1_data,
+                                 signal_data,
+                                 fft_size,
+                                 tw,
+                                 permute,
+                                 data_size);
         if (!run_check(true))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -250,16 +250,16 @@ bool parc_test_proto(auto                node_size,
     if (external && rev) {
         std::print("[Ext][Rev][Parc]");
         std::print(perm_fmt);
-        fimpl::perform_rev(pck_dst,
-                           pck_src,
-                           half_tw,
-                           lowk,
-                           s1_data,
-                           signal_data,
-                           fft_size,
-                           tw_rev,
-                           rev_permute,
-                           data_size);
+        fimpl::perform_rev_auto_size(pck_dst,
+                                     pck_src,
+                                     half_tw,
+                                     lowk,
+                                     s1_data,
+                                     signal_data,
+                                     fft_size,
+                                     tw_rev,
+                                     rev_permute,
+                                     data_size);
         if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -404,16 +404,16 @@ bool par_test_proto(auto                 node_size,
     if (inplace && fwd) {
         std::print("[Inp][Fwd][Par ]");
         std::print(perm_fmt);
-        fimpl::perform(pck_dst,
-                       pck_src,
-                       half_tw,
-                       lowk,
-                       s1_info,
-                       detail_::inplace_src,
-                       fft_size,
-                       tw,
-                       permute,
-                       data_size);
+        fimpl::perform_auto_size(pck_dst,
+                                 pck_src,
+                                 half_tw,
+                                 lowk,
+                                 s1_info,
+                                 detail_::inplace_src,
+                                 fft_size,
+                                 tw,
+                                 permute,
+                                 data_size);
         if (!run_check(true))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -427,16 +427,16 @@ bool par_test_proto(auto                 node_size,
         s1 = signal;
         std::print("[Inp][Rev][Par ]");
         std::print(perm_fmt);
-        fimpl::perform_rev(pck_dst,
-                           pck_src,
-                           half_tw,
-                           lowk,
-                           s1_info,
-                           detail_::inplace_src,
-                           fft_size,
-                           tw_rev,
-                           rev_permute,
-                           data_size);
+        fimpl::perform_rev_auto_size(pck_dst,
+                                     pck_src,
+                                     half_tw,
+                                     lowk,
+                                     s1_info,
+                                     detail_::inplace_src,
+                                     fft_size,
+                                     tw_rev,
+                                     rev_permute,
+                                     data_size);
         if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -449,7 +449,16 @@ bool par_test_proto(auto                 node_size,
     if (external && fwd) {
         std::print("[Ext][Fwd][Par ]");
         std::print(perm_fmt);
-        fimpl::perform(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw, permute, data_size);
+        fimpl::perform_auto_size(pck_dst,
+                                 pck_src,
+                                 half_tw,
+                                 lowk,
+                                 s1_info,
+                                 src_info,
+                                 fft_size,
+                                 tw,
+                                 permute,
+                                 data_size);
         if (!run_check(true))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -462,16 +471,16 @@ bool par_test_proto(auto                 node_size,
     if (external && rev) {
         std::print("[Ext][Rev][Par ]");
         std::print(perm_fmt);
-        fimpl::perform_rev(pck_dst,
-                           pck_src,
-                           half_tw,
-                           lowk,
-                           s1_info,
-                           src_info,
-                           fft_size,
-                           tw_rev,
-                           rev_permute,
-                           data_size);
+        fimpl::perform_rev_auto_size(pck_dst,
+                                     pck_src,
+                                     half_tw,
+                                     lowk,
+                                     s1_info,
+                                     src_info,
+                                     fft_size,
+                                     tw_rev,
+                                     rev_permute,
+                                     data_size);
         if (!run_check(false))
             return false;
         std::println("[Success] {}×{}, width {}, node size {}{}.",
@@ -587,15 +596,15 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
         std::print("[Inp][Fwd][Seq ]");
         std::print(perm_fmt);
         s1 = signal;
-        fimpl::perform(pck_dst,
-                       pck_src,
-                       half_tw,
-                       lowk,
-                       s1_info,
-                       detail_::inplace_src,
-                       fft_size,
-                       tw,
-                       permuter);
+        fimpl::perform_auto_size(pck_dst,
+                                 pck_src,
+                                 half_tw,
+                                 lowk,
+                                 s1_info,
+                                 detail_::inplace_src,
+                                 fft_size,
+                                 tw,
+                                 permuter);
         if (!run_check(true))
             return false;
     }
@@ -603,15 +612,15 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
         std::print("[Inp][Rev][Seq ]");
         std::print(perm_fmt);
         s1 = signal;
-        fimpl::perform_rev(pck_dst,
-                           pck_src,
-                           half_tw,
-                           lowk,
-                           s1_info,
-                           detail_::inplace_src,
-                           fft_size,
-                           tw_rev,
-                           permuter    //
+        fimpl::perform_rev_auto_size(pck_dst,
+                                     pck_src,
+                                     half_tw,
+                                     lowk,
+                                     s1_info,
+                                     detail_::inplace_src,
+                                     fft_size,
+                                     tw_rev,
+                                     permuter    //
         );
         if (!run_check(false))
             return false;
@@ -622,15 +631,15 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
         std::print(perm_fmt);
         // s1 = signal;
         stdr::fill(s1, -69.);
-        fimpl::perform(pck_dst,
-                       pck_src,
-                       half_tw,
-                       lowk,
-                       s1_info,
-                       src_info,
-                       fft_size,
-                       tw,
-                       permuter    //
+        fimpl::perform_auto_size(pck_dst,
+                                 pck_src,
+                                 half_tw,
+                                 lowk,
+                                 s1_info,
+                                 src_info,
+                                 fft_size,
+                                 tw,
+                                 permuter    //
         );
         if (!run_check(true))
             return false;
@@ -640,14 +649,22 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
         std::print(perm_fmt);
         // s1 = signal;
         stdr::fill(s1, -69.);
-        fimpl::perform_rev(pck_dst, pck_src, half_tw, lowk, s1_info, src_info, fft_size, tw_rev, permuter);
+        fimpl::perform_rev_auto_size(pck_dst,
+                                     pck_src,
+                                     half_tw,
+                                     lowk,
+                                     s1_info,
+                                     src_info,
+                                     fft_size,
+                                     tw_rev,
+                                     permuter);
         if (!run_check(false))
             return false;
     }
 
     s1              = signal;
-    using fimpl_coh = pcx::detail_::sequential_subtransform<NodeSize, fX, Width>;
-    auto coh_align  = fimpl_coh::get_align_node_seq(fft_size);
+    using fimpl_seq = pcx::detail_::sequential_subtransform<NodeSize, fX, Width>;
+    auto coh_align  = fimpl_seq::get_align_node_seq(fft_size);
     auto tw_coh_fwd = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
@@ -660,7 +677,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
                     if (l_node_size != coh_align)
                         return false;
                     auto tw_data = detail_::tw_data_t<fX, true>{1, 0};
-                    fimpl_coh::insert_seq_tw(twvec,
+                    fimpl_seq::insert_seq_tw(twvec,
                                              detail_::align_param<l_node_size, true>{},
                                              lowk,
                                              fft_size,
@@ -686,7 +703,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
         std::print(perm_fmt);
         s1            = signal;
         auto tw_coh_c = tw_coh_fwd;
-        fimpl_coh::perform(pck_dst,
+        fimpl_seq::perform(pck_dst,
                            pck_src,
                            lowk,
                            half_tw,
@@ -707,7 +724,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
         s1            = signal;
         auto tw_coh_c = tw_coh_rev;
         auto(permuter).sequential_permute(pck_src, pck_src, s1_info, detail_::inplace_src);
-        fimpl_coh::perform(pck_dst,
+        fimpl_seq::perform(pck_dst,
                            pck_src,
                            lowk,
                            half_tw,
