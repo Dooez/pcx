@@ -1,19 +1,84 @@
 cmake_minimum_required(VERSION 3.25)
-project(pcx VERSION 0.3.0 LANGUAGES CXX)
-
-add_library(pcx STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/par_fft.cpp
+project(pcx
+    VERSION 0.5.0
+    LANGUAGES CXX
 )
-target_include_directories(pcx PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    )
+add_library(pcx)
+add_library(pcx::pcx ALIAS pcx)
+# add_library(pcx_header_only)
+# add_library(pcx::pcx_header_only ALIAS pcx_header_only)
+
+string(COMPARE EQUAL
+    "${CMAKE_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    is_top_level)
+
+option(PCX_AVX512 "Compile with avx512 support" ON)
+
+if(NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
+    set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+endif()
+if(NOT DEFINED CMAKE_VISIBILITY_INLINES_HIDDEN )
+    set(CMAKE_VISIBILITY_INLINES_HIDDEN  ON)
+endif()
+
+
+# ---
+# Sources
+# ---
+set(public_headers
+    include/pcx/fft.hpp
+)
+set(sources
+    ${public_headers}
+    src/fft.cpp
+    src/par_fft.cpp
+)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${sources})
+
+# ---
+# target config
+# ---
+include(CMakePackageConfigHelpers)
+
+target_sources(pcx PRIVATE ${sources})
+target_include_directories(pcx
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+    # PRIVATE
+    #     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+set_target_properties(pcx PROPERTIES
+    PUBLIC_HEADER "${public_headers}"
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    VERSION ${PROJECT_VERSION}
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED True
+)
+target_compile_options(pcx PRIVATE -march=native #[[ -O3 ]])
+
+# ---
+# target config
+# ---
+
+
+
+
+# add_library(pcx STATIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src/par_fft.cpp
+# )
+# target_include_directories(pcx PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/include
+#     )
 target_compile_options(pcx PRIVATE -march=native #[[ -O3 ]])
 target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
 
 add_library(pcx_ho INTERFACE)
 target_include_directories(pcx_ho INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
 target_compile_definitions(pcx_ho INTERFACE -DPCX_AVX512)
 
