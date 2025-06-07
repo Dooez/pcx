@@ -13,6 +13,7 @@ string(COMPARE EQUAL
 
 option(PCX_AVX512 "Compile with avx512 support" ON)
 option(PCX_INSTALL "Generate target for installing mylib" ${is_top_level})
+option(PCX_BUILD_TESTS OFF)
 
 if(NOT DEFINED PCX_SIMD_BACKEND)
     set(PCX_SIMD_BACKEND "x86_instrinsics"
@@ -160,7 +161,7 @@ target_compile_definitions(pcx_ho INTERFACE -DPCX_AVX512)
 
 set_target_properties(pcx_ho PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
 
-if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
+if(${is_top_level} AND ${PCX_BUILD_TESTS})
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
