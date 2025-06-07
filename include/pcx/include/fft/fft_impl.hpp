@@ -1515,16 +1515,16 @@ struct transform {
                     return false;
                 constexpr auto align = align_param<l_node_size, true>{};
                 perform_tf(dst_pck,
-                        src_pck,
-                        half_tw,
-                        lowk,
-                        align,
-                        dst_data,
-                        src_data,
-                        fft_size,
-                        tw_data,
-                        permuter,
-                        data_size);
+                           src_pck,
+                           half_tw,
+                           lowk,
+                           align,
+                           dst_data,
+                           src_data,
+                           fft_size,
+                           tw_data,
+                           permuter,
+                           data_size);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -1657,16 +1657,16 @@ struct transform {
                     return false;
                 constexpr auto align = align_param<l_node_size, true>{};
                 perform_tf_rev(dst_pck,
-                            src_pck,
-                            half_tw,
-                            lowk,
-                            align,
-                            dst_data,
-                            src_data,
-                            fft_size,
-                            tw_data,
-                            permuter,
-                            data_size);
+                               src_pck,
+                               half_tw,
+                               lowk,
+                               align,
+                               dst_data,
+                               src_data,
+                               fft_size,
+                               tw_data,
+                               permuter,
+                               data_size);
                 return true;
             };
             (void)(check_align(uZ_ce<Is>{}) || ...);
@@ -1678,16 +1678,16 @@ struct transform {
      * A bucket is a set of `batches`, distributed with a constant stride. `Batch` is contiguous data with default size of `lane_size`.
      */
     PCX_AINLINE static void perform_tf(cxpack_for<T> auto          dst_pck,
-                                    cxpack_for<T> auto          src_pck,
-                                    meta::ce_of<bool> auto      half_tw,
-                                    meta::ce_of<bool> auto      lowk,
-                                    any_align auto              align,
-                                    data_info_for<T> auto       dst_data,
-                                    data_info_for<const T> auto src_data,
-                                    uZ                          fft_size,
-                                    tw_data_for<T> auto         tw_data,
-                                    auto                        permuter,
-                                    uZ                          data_size = 0) {
+                                       cxpack_for<T> auto          src_pck,
+                                       meta::ce_of<bool> auto      half_tw,
+                                       meta::ce_of<bool> auto      lowk,
+                                       any_align auto              align,
+                                       data_info_for<T> auto       dst_data,
+                                       data_info_for<const T> auto src_data,
+                                       uZ                          fft_size,
+                                       tw_data_for<T> auto         tw_data,
+                                       auto                        permuter,
+                                       uZ                          data_size = 0) {
         const auto bucket_size = coherent_size;
         const auto batch_size  = lane_size;
         const auto batch_cnt   = bucket_size / batch_size;
@@ -1884,16 +1884,16 @@ struct transform {
     };
 
     PCX_AINLINE static void perform_tf_rev(cxpack_for<T> auto          dst_pck,
-                                        cxpack_for<T> auto          src_pck,
-                                        meta::ce_of<bool> auto      half_tw,
-                                        meta::ce_of<bool> auto      lowk,
-                                        any_align auto              align,
-                                        data_info_for<T> auto       dst_data,
-                                        data_info_for<const T> auto src_data,
-                                        uZ                          fft_size,
-                                        tw_data_for<T> auto         tw_data,
-                                        auto                        permuter,
-                                        uZ                          data_size = 1) {
+                                           cxpack_for<T> auto          src_pck,
+                                           meta::ce_of<bool> auto      half_tw,
+                                           meta::ce_of<bool> auto      lowk,
+                                           any_align auto              align,
+                                           data_info_for<T> auto       dst_data,
+                                           data_info_for<const T> auto src_data,
+                                           uZ                          fft_size,
+                                           tw_data_for<T> auto         tw_data,
+                                           auto                        permuter,
+                                           uZ                          data_size = 1) {
         const auto bucket_size = coherent_size;
         const auto batch_size  = lane_size;
         const auto batch_cnt   = bucket_size / batch_size;
