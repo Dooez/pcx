@@ -3,7 +3,7 @@ project(pcx
     VERSION 0.5.0
     LANGUAGES CXX
 )
-
+include(GNUInstallDirs)
 # general settings
 
 string(COMPARE EQUAL
@@ -12,7 +12,7 @@ string(COMPARE EQUAL
     is_top_level)
 
 option(PCX_AVX512 "Compile with avx512 support" ON)
-option(PCX_INSTALL "Generate target for installing mylib" ${is_top_level})
+option(PCX_INSTALL "Generate target for installing pcx" ${is_top_level})
 option(PCX_BUILD_TESTS OFF)
 
 if(NOT DEFINED PCX_SIMD_BACKEND)
@@ -23,8 +23,6 @@ endif()
 if(NOT DEFINED PCX_INSTALL_CMAKEDIR )
     set(PCX_INSTALL_CMAKEDIR
         "${CMAKE_INSTALL_LIBDIR}/cmake/pcx"
-        CACHE
-        STRING "Install path for pcx package-related CMake files"
     )
 endif()
 if(DEFINED PCX_SHARED_LIBS)
@@ -50,29 +48,9 @@ add_library(pcx::pcx ALIAS pcx)
 # ---
 # Sources
 # ---
-set(public_headers
-    include/pcx/fft.hpp
-    include/pcx/include/fft/fft_impl.hpp
-    include/pcx/include/fft/permuters.hpp
-    include/pcx/include/fft/util.hpp
-    include/pcx/include/simd/common.hpp
-    include/pcx/include/simd/math.hpp
-    include/pcx/include/simd/traits.hpp
-    include/pcx/include/meta.hpp
-    include/pcx/include/tupi.hpp
-    include/pcx/include/tuple.hpp
-    include/pcx/include/types.hpp
-)
-if(PCX_BACKEND EQUAL "x86_intrinsics")
-    set(public_headers
-        ${public_headers}
-        include/pcx/include/simd/x86/f32-traits.hpp
-        include/pcx/include/simd/x86/f64-traits.hpp
-    )
-endif()
 
 set(sources
-    ${public_headers}
+    include/pcx/fft.hpp
     src/fft.cpp
     src/par_fft.cpp
 )
@@ -87,13 +65,9 @@ target_sources(pcx PRIVATE ${sources})
 target_include_directories(pcx
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        # "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-    # PRIVATE
-    #     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 set_target_properties(pcx PROPERTIES
-    PUBLIC_HEADER "${public_headers}"
     SOVERSION ${PROJECT_VERSION_MAJOR}
     VERSION ${PROJECT_VERSION}
     CXX_STANDARD 23
@@ -107,7 +81,6 @@ endif()
 # ---
 # target config
 # ---
-
 include(CMakePackageConfigHelpers)
 if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
     configure_package_config_file(cmake/pcx-config.cmake.in
@@ -125,6 +98,10 @@ if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
         ARCHIVE COMPONENT pcx-dev
         INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     )
+    install(DIRECTORY include/
+        TYPE INCLUDE
+        COMPONENT pcx-dev)
+
     set(targets_file "pcx-shared-targets.cmake")
     if(NOT BUILD_SHARED_LIBS)
         set(targets_file "pcx-static-targets.cmake")
@@ -144,14 +121,6 @@ if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
         DESTINATION "${PCX_INSTALL_CMAKEDIR}"
     )
 endif()
-
-# add_library(pcx STATIC
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/fft.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/par_fft.cpp
-# )
-# target_include_directories(pcx PUBLIC
-#     ${CMAKE_CURRENT_SOURCE_DIR}/include
-#     )
 
 add_library(pcx_ho INTERFACE)
 target_include_directories(pcx_ho INTERFACE
