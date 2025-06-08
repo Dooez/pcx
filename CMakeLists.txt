@@ -3,8 +3,8 @@ project(pcx
     VERSION 0.5.0
     LANGUAGES CXX
 )
+include(cmake/set_if_undefined.cmake)
 include(GNUInstallDirs)
-# general settings
 
 string(COMPARE EQUAL
     "${CMAKE_SOURCE_DIR}"
@@ -15,16 +15,12 @@ option(PCX_AVX512 "Compile with avx512 support" ON)
 option(PCX_INSTALL "Generate target for installing pcx" ${is_top_level})
 option(PCX_BUILD_TESTS OFF)
 
-if(NOT DEFINED PCX_SIMD_BACKEND)
-    set(PCX_SIMD_BACKEND "x86_instrinsics"
-        CACHE
-        STRING "Backend for pcx SIMD instructions")
-endif()
-if(NOT DEFINED PCX_INSTALL_CMAKEDIR )
-    set(PCX_INSTALL_CMAKEDIR
-        "${CMAKE_INSTALL_LIBDIR}/cmake/pcx"
-    )
-endif()
+set_if_undefined(PCX_SIMD_BACKEND "x86_intrinsics"
+    CACHE
+    STRING "Backend for pcx SIMD instructions")
+set_if_undefined(PCX_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/pcx"
+    CACHE
+    STRING "Install path for pcx package-related CMake files")
 if(DEFINED PCX_SHARED_LIBS)
     set(BUILD_SHARED_LIBS ${PCX_SHARED_LIBS})
 endif()
@@ -33,17 +29,11 @@ if(NOT DEFINED CMAKE_BUILD_TYPE AND NOT DEFINED CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
-if(NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
-    set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-endif()
-if(NOT DEFINED CMAKE_VISIBILITY_INLINES_HIDDEN)
-    set(CMAKE_VISIBILITY_INLINES_HIDDEN  ON)
-endif()
 
 add_library(pcx)
 add_library(pcx::pcx ALIAS pcx)
-# add_library(pcx_header_only)
-# add_library(pcx::pcx_header_only ALIAS pcx_header_only)
+add_library(pcx_header_only INTERFACE)
+add_library(pcx::pcx_header_only ALIAS pcx_header_only)
 
 # ---
 # Sources
@@ -57,7 +47,7 @@ set(sources
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${sources})
 
 # ---
-# target config
+# Targets configuration
 # ---
 include(CMakePackageConfigHelpers)
 
@@ -78,8 +68,24 @@ if(PCX_AVX512)
     target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
 endif()
 
+target_include_directories(pcx_header_only
+    INTERFACE
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+)
+set_target_properties(pcx_header_only PROPERTIES
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    VERSION ${PROJECT_VERSION}
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED True
+)
+target_compile_definitions(pcx_header_only INTERFACE -DPCX_HEADER_ONLY)
+if(PCX_AVX512)
+    target_compile_definitions(pcx_header_only INTERFACE -DPCX_AVX512)
+endif()
+
 # ---
-# target config
+# Installation
 # ---
 include(CMakePackageConfigHelpers)
 if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
@@ -90,7 +96,7 @@ if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
     write_basic_package_version_file(pcx-config-version.cmake
         COMPATIBILITY SameMajorVersion
     )
-    install(TARGETS pcx
+    install(TARGETS pcx pcx_header_only
         EXPORT pcx_export
         RUNTIME COMPONENT pcx
         LIBRARY COMPONENT pcx
@@ -122,14 +128,9 @@ if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
     )
 endif()
 
-add_library(pcx_ho INTERFACE)
-target_include_directories(pcx_ho INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-target_compile_definitions(pcx_ho INTERFACE -DPCX_AVX512)
-
-set_target_properties(pcx_ho PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
-
+# ---
+# Tests
+# ---
 if(${is_top_level} AND ${PCX_BUILD_TESTS})
     set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -204,7 +205,7 @@ if(${is_top_level} AND ${PCX_BUILD_TESTS})
     set_target_properties(asm_explorer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(asm_explorer PRIVATE -save-temps -march=native -ftemplate-backtrace-limit=0)
 
-    target_link_libraries(test_fft PUBLIC pcx_ho)
+    target_link_libraries(test_fft PUBLIC pcx_header_only)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED True)
     target_compile_options(test_fft PRIVATE -march=native -ftemplate-backtrace-limit=0)
 
