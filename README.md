@@ -1,16 +1,15 @@
 # pcx
-`pcx` is a library for performing fft, written in C++23.
-Currently only one-dimensional complex to complex fft is supported.
-Transforms over contiguous or parallel data are supportted.
-Higher dimensional transforms can be perfromed by combining multiple one-dimensional transforms.
-Currently only 32-bit and 64-bit floating point numbers are supported.
-Currently only modern x86 platforms are supported (AVX2 or AVX512).
+`pcx` is a library for performing fft, written in C++23.  
+Currently only one-dimensional complex to complex fft is supported.  
+Transforms over contiguous or parallel data are supportted.  
+Higher dimensional transforms can be perfromed by combining multiple one-dimensional transforms.  
+Currently only 32-bit and 64-bit floating point numbers are supported.  
+Currently only modern x86 platforms are supported (AVX2 or AVX512).  
 
 ## FFT
 There are two classes that perform fft: `pcx::fft_plan` and `pcx::par_fft_plan`.
-`pcx::fft_plan` is for perfroming fft over contiguous complex data.
-`pcx::par_fft_plan` is for perfroming fft over parallel complex data.
-
+`pcx::fft_plan` is for perfroming fft over contiguous complex data.  
+`pcx::par_fft_plan` is for perfroming fft over parallel complex data.  
 
 An example of fast convolution:
 ```c++
