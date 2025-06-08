@@ -209,7 +209,7 @@ public:
             throw std::runtime_error("Destination size not equal to fft size");
 
         auto dst_ptr = reinterpret_cast<T*>(stdr::data(dst));
-        auto src_ptr = reinterpret_cast<T*>(stdr::data(src));
+        auto src_ptr = reinterpret_cast<const T*>(stdr::data(src));
         if (src_ptr == dst_ptr)
             return (this->*ileave_inplace_ptr_)(dst_ptr);
         return (this->*ileave_external_ptr_)(dst_ptr, src_ptr);
@@ -234,7 +234,7 @@ public:
             throw std::runtime_error("Destination size not equal to fft size");
 
         auto dst_ptr = reinterpret_cast<T*>(stdr::data(dst));
-        auto src_ptr = reinterpret_cast<T*>(stdr::data(src));
+        auto src_ptr = reinterpret_cast<const T*>(stdr::data(src));
         if (src_ptr == dst_ptr)
             return (this->*ileave_inplace_r_ptr_)(dst_ptr);
         return (this->*ileave_external_r_ptr_)(dst_ptr, src_ptr);
