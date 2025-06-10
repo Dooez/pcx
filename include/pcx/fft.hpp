@@ -78,16 +78,16 @@ public:
         auto dst_data = detail_::data_info<T, false, R>{.data_ptr = &data};
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = tw_.data()};
 
-        impl_t::perform_tf(dst_pck,
-                           src_pck,
-                           half_tw,
-                           lowk,
-                           dst_data,
-                           detail_::inplace_src,
-                           fft_size_,
-                           tw_data,
-                           permuter_,
-                           data_size);
+        impl_t::perform_auto_size(dst_pck,
+                                  src_pck,
+                                  half_tw,
+                                  lowk,
+                                  dst_data,
+                                  detail_::inplace_src,
+                                  fft_size_,
+                                  tw_data,
+                                  permuter_,
+                                  data_size);
     }
     template<stdr::random_access_range R>
         requires stdr::contiguous_range<stdr::range_value_t<R>>
@@ -108,16 +108,16 @@ public:
         auto dst_data = detail_::data_info<T, false, R>{.data_ptr = &data[0]};
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = &*tw_.end()};
 
-        impl_t::perform_tf_rev(dst_pck,
-                               src_pck,
-                               half_tw,
-                               lowk,
-                               dst_data,
-                               detail_::inplace_src,
-                               fft_size_,
-                               tw_data,
-                               permuter_,
-                               data_size);
+        impl_t::perform_rev_auto_size(dst_pck,
+                                      src_pck,
+                                      half_tw,
+                                      lowk,
+                                      dst_data,
+                                      detail_::inplace_src,
+                                      fft_size_,
+                                      tw_data,
+                                      permuter_,
+                                      data_size);
     }
 
 private:
