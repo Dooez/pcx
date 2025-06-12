@@ -4,6 +4,7 @@ namespace {
 constexpr auto forward     = std::false_type{};
 constexpr auto reverse     = std::true_type{};
 constexpr auto normal_opts = fft_options{.pt = fft_permutation::normal};
+constexpr auto bitrev_opts = fft_options{.pt = fft_permutation::bit_reversed};
 constexpr auto shiftd_opts = fft_options{.pt = fft_permutation::shifted};
 }    // namespace
 
@@ -11,7 +12,7 @@ constexpr auto shiftd_opts = fft_options{.pt = fft_permutation::shifted};
 template<floating_point T, fft_options Opts>
 par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
 : fft_size_(fft_size)
-, permuter_(permuter_t::insert_indexes(idxs_, fft_size)) {
+, permuter_(permuter_t::insert_indexes(idxs_, fft_size, coherent_size)) {
     // constexpr auto lowk = val_ce<true>{};
     if (fft_size > coherent_size / lane_size) {
         using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
@@ -76,7 +77,7 @@ template<floating_point T, fft_options Opts>
 template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
 PCX_AINLINE void par_fft_plan<T, Opts>::impl(detail_::data_info_for<T> auto       dst_data,
                                              detail_::data_info_for<const T> auto src_data,
-                                             uZ                                   data_size) {
+                                             uZ                                   data_size) const {
     using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
     constexpr auto dst_pck = cxpack<DstPck, T>{};
     constexpr auto src_pck = cxpack<SrcPck, T>{};
@@ -114,14 +115,14 @@ PCX_AINLINE void par_fft_plan<T, Opts>::impl(detail_::data_info_for<T> auto     
 }
 template<floating_point T, fft_options Opts>
 template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
-void par_fft_plan<T, Opts>::inplace(T* dst, uZ stride, uZ data_size) {
+void par_fft_plan<T, Opts>::inplace(T* dst, uZ stride, uZ data_size) const {
     auto dst_data = detail_::data_info<T, true>{.data_ptr = dst, .stride = stride, .k_stride = stride};
     auto src_data = detail_::inplace_src;
     impl<DstPck, SrcPck, Align, Reverse>(dst_data, src_data, data_size);
 }
 template<floating_point T, fft_options Opts>
 template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
-void par_fft_plan<T, Opts>::external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) {
+void par_fft_plan<T, Opts>::external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) const {
     auto dst_data =
         detail_::data_info<T, true>{.data_ptr = dst, .stride = dst_stride, .k_stride = dst_stride};
     auto src_data =
@@ -133,7 +134,7 @@ template<floating_point T, fft_options Opts>
 template<bool SingleNode, uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
 PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto       dst_data,
                                                  detail_::data_info_for<const T> auto src_data,
-                                                 uZ                                   data_size) {
+                                                 uZ                                   data_size) const {
     constexpr auto dst_pck = cxpack<DstPck, T>{};
     constexpr auto src_pck = cxpack<SrcPck, T>{};
     constexpr auto align   = detail_::align_param<Align, true>{};
@@ -233,14 +234,15 @@ PCX_AINLINE void par_fft_plan<T, Opts>::coh_impl(detail_::data_info_for<T> auto 
 }
 template<floating_point T, fft_options Opts>
 template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
-void par_fft_plan<T, Opts>::inplace_coh(T* dst, uZ stride, uZ data_size) {
+void par_fft_plan<T, Opts>::inplace_coh(T* dst, uZ stride, uZ data_size) const {
     auto dst_data = detail_::data_info<T, true>{.data_ptr = dst, .stride = stride, .k_stride = stride};
     auto src_data = detail_::inplace_src;
     coh_impl<false, Align, DstPck, SrcPck, Reverse>(dst_data, src_data, data_size);
 };
 template<floating_point T, fft_options Opts>
 template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
-void par_fft_plan<T, Opts>::external_coh(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) {
+void par_fft_plan<T, Opts>::external_coh(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size)
+    const {
     auto dst_data =
         detail_::data_info<T, true>{.data_ptr = dst, .stride = dst_stride, .k_stride = dst_stride};
     auto src_data =
@@ -249,7 +251,7 @@ void par_fft_plan<T, Opts>::external_coh(T* dst, uZ dst_stride, const T* src, uZ
 };
 template<floating_point T, fft_options Opts>
 template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-void par_fft_plan<T, Opts>::inplace_single_node(T* dst, uZ stride, uZ data_size) {
+void par_fft_plan<T, Opts>::inplace_single_node(T* dst, uZ stride, uZ data_size) const {
     auto dst_data = detail_::data_info<T, true>{.data_ptr = dst, .stride = stride, .k_stride = stride};
     auto src_data = detail_::inplace_src;
     coh_impl<true, NodeSize, DstPck, SrcPck, Reverse>(dst_data, src_data, data_size);
@@ -260,7 +262,7 @@ void par_fft_plan<T, Opts>::external_single_node(T*       dst,
                                                  uZ       dst_stride,
                                                  const T* src,
                                                  uZ       src_stride,
-                                                 uZ       data_size) {
+                                                 uZ       data_size) const {
     auto dst_data =
         detail_::data_info<T, true>{.data_ptr = dst, .stride = dst_stride, .k_stride = dst_stride};
     auto src_data =
@@ -268,12 +270,12 @@ void par_fft_plan<T, Opts>::external_single_node(T*       dst,
     coh_impl<true, NodeSize, DstPck, SrcPck, Reverse>(dst_data, src_data, data_size);
 };
 
-template class par_fft_plan<f32>;
-// template class par_fft_plan<f32, normal_opts>;
-// template class par_fft_plan<f32, shiftd_opts>;
+template class par_fft_plan<f32, bitrev_opts>;
+template class par_fft_plan<f32, normal_opts>;
+template class par_fft_plan<f32, shiftd_opts>;
 
-template class par_fft_plan<f64>;
-// template class par_fft_plan<f64, normal_opts>;
-// template class par_fft_plan<f64, shiftd_opts>;
+template class par_fft_plan<f64, bitrev_opts>;
+template class par_fft_plan<f64, normal_opts>;
+template class par_fft_plan<f64, shiftd_opts>;
 
 }    // namespace pcx

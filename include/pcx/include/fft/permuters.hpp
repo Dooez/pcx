@@ -506,7 +506,7 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
     static constexpr auto n_swaps_shifted(uZ fft_size) {
         return fft_size;
     }
-    static auto insert_indexes(auto& r, uZ fft_size) {
+    static auto insert_indexes(auto& r, uZ fft_size, uZ /*coherent_size*/) {
         auto rbo = [=](auto i) {
             auto br = reverse_bit_order(i, log2i(fft_size));
             return (br + fft_size / 2) % fft_size;

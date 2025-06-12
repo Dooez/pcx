@@ -13,7 +13,7 @@ enum class fft_permutation {
     shifted,
 };
 struct fft_options {
-    fft_permutation pt = fft_permutation::bit_reversed;
+    fft_permutation pt = fft_permutation::normal;
 
     uZ coherent_size = 0;
     uZ lane_size     = 0;
@@ -55,7 +55,7 @@ public:
         return fft_size_;
     }
 
-    void fft_raw(std::complex<T>* data_ptr, uZ stride, uZ data_size) {
+    void fft_raw(std::complex<T>* data_ptr, uZ stride, uZ data_size) const {
         (this->*inplace_ptr_)(reinterpret_cast<T*>(data_ptr), stride, data_size);
     };
 
@@ -63,7 +63,7 @@ public:
         requires stdr::contiguous_range<stdr::range_value_t<R>>
                  && std::same_as<std::complex<T>,    //
                                  stdr::range_value_t<stdr::range_value_t<R>>>
-    void fft(R& data) {
+    void fft(R& data) const {
         if (stdr::size(data) != fft_size_)
             throw std::runtime_error("Range size not equal to fft size");
         using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
@@ -93,7 +93,7 @@ public:
         requires stdr::contiguous_range<stdr::range_value_t<R>>
                  && std::same_as<std::complex<T>,    //
                                  stdr::range_value_t<stdr::range_value_t<R>>>
-    void ifft(R& data) {
+    void ifft(R& data) const {
         if (stdr::size(data) != fft_size_)
             throw std::runtime_error("Range size not equal to fft size");
         using impl_t           = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
@@ -121,8 +121,8 @@ public:
     }
 
 private:
-    using inplace_impl_t  = auto (par_fft_plan::*)(T*, uZ, uZ) -> void;
-    using external_impl_t = auto (par_fft_plan::*)(T*, uZ, const T*, uZ, uZ) -> void;
+    using inplace_impl_t  = auto (par_fft_plan::*)(T*, uZ, uZ) const -> void;
+    using external_impl_t = auto (par_fft_plan::*)(T*, uZ, const T*, uZ, uZ) const -> void;
     uZ                                   fft_size_;
     tw_t                                 tw_{};
     [[no_unique_address]] permute_idxs_t idxs_{};
@@ -135,26 +135,26 @@ private:
 
 
     template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
-    void inplace(T* dst, uZ stride, uZ data_size);
+    void inplace(T* dst, uZ stride, uZ data_size) const;
     template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
-    void external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
+    void external(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) const;
     template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
-    void inplace_coh(T* dst, uZ stride, uZ data_size);
+    void inplace_coh(T* dst, uZ stride, uZ data_size) const;
     template<uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
-    void external_coh(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
+    void external_coh(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) const;
     template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-    void inplace_single_node(T* dst, uZ stride, uZ data_size);
+    void inplace_single_node(T* dst, uZ stride, uZ data_size) const;
     template<uZ NodeSize, uZ DstPck, uZ SrcPck, bool Reverse>
-    void external_single_node(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size);
+    void external_single_node(T* dst, uZ dst_stride, const T* src, uZ src_stride, uZ data_size) const;
 
     template<uZ DstPck, uZ SrcPck, uZ Align, bool Reverse>
     PCX_AINLINE void impl(detail_::data_info_for<T> auto       dst_data,
                           detail_::data_info_for<const T> auto src_data,
-                          uZ                                   data_size);
+                          uZ                                   data_size) const;
     template<bool SingleNode, uZ Align, uZ DstPck, uZ SrcPck, bool Reverse>
     PCX_AINLINE void coh_impl(detail_::data_info_for<T> auto       dst_data,
                               detail_::data_info_for<const T> auto src_data,
-                              uZ                                   data_size);
+                              uZ                                   data_size) const;
 };
 /**
  * @brief FFT plan for performing fft over sequential data.
@@ -192,7 +192,7 @@ public:
 
     template<stdr::contiguous_range R>
         requires std::same_as<std::complex<T>, stdr::range_value_t<R>>
-    void fft(R& data) {
+    void fft(R& data) const {
         if (stdr::size(data) != fft_size_)
             throw std::runtime_error("Data size not equal to fft size");
 
@@ -202,7 +202,7 @@ public:
     template<stdr::contiguous_range Dst, stdr::contiguous_range Src>
         requires std::same_as<std::complex<T>, stdr::range_value_t<Dst>>
                  && std::same_as<std::complex<T>, stdr::range_value_t<Src>>
-    void fft(Dst& dst, const Src& src) {
+    void fft(Dst& dst, const Src& src) const {
         if (src.size() != fft_size_)
             throw std::runtime_error("Source size not equal to fft size");
         if (dst.size() != fft_size_)
@@ -217,7 +217,7 @@ public:
 
     template<stdr::contiguous_range R>
         requires std::same_as<std::complex<T>, stdr::range_value_t<R>>
-    void ifft(R& data) {
+    void ifft(R& data) const {
         if (stdr::size(data) != fft_size_)
             throw std::runtime_error("Data size not equal to fft size");
 
@@ -227,7 +227,7 @@ public:
     template<stdr::contiguous_range Dst, stdr::contiguous_range Src>
         requires std::same_as<std::complex<T>, stdr::range_value_t<Dst>>
                  && std::same_as<std::complex<T>, stdr::range_value_t<Src>>
-    void ifft(Dst& dst, const Src& src) {
+    void ifft(Dst& dst, const Src& src) const {
         if (src.size() != fft_size_)
             throw std::runtime_error("Source size not equal to fft size");
         if (dst.size() != fft_size_)
@@ -241,8 +241,8 @@ public:
     }
 
 private:
-    using inplace_impl_t  = auto (fft_plan::*)(T*) -> void;
-    using external_impl_t = auto (fft_plan::*)(T*, const T*) -> void;
+    using inplace_impl_t  = auto (fft_plan::*)(T*) const -> void;
+    using external_impl_t = auto (fft_plan::*)(T*, const T*) const -> void;
     using permute_idxs_t  = std::conditional_t<bit_reversed, decltype([] {}), std::vector<u32>>;
     using permuter_var_t  = decltype([] {
         using namespace detail_;
@@ -268,36 +268,36 @@ private:
     external_impl_t                      ileave_external_ptr_;
     external_impl_t                      ileave_external_r_ptr_;
 
-    void identity_tform(T* dst) {};
+    void identity_tform(T* dst) const {};
 
     template<uZ Width, uZ Align>
-    void tform_inplace_ileave(T* dst);
+    void tform_inplace_ileave(T* dst) const;
     template<uZ Width, uZ Align>
-    void rtform_inplace_ileave(T* dst);
+    void rtform_inplace_ileave(T* dst) const;
     template<uZ Width, uZ PermWidth, uZ Align>
-    void coherent_tform_inplace_ileave(T* dst);
+    void coherent_tform_inplace_ileave(T* dst) const;
     template<uZ Width, uZ PermWidth, uZ Align>
-    void coherent_rtform_inplace_ileave(T* dst);
+    void coherent_rtform_inplace_ileave(T* dst) const;
     template<uZ Width, uZ NodeSize>
-    void single_load_tform_inplace_ileave(T* dst);
+    void single_load_tform_inplace_ileave(T* dst) const;
     template<uZ Width, uZ NodeSize>
-    void single_load_rtform_inplace_ileave(T* dst);
+    void single_load_rtform_inplace_ileave(T* dst) const;
 
     template<uZ Width, uZ Align>
-    void tform_external_ileave(T* dst, const T* src);
+    void tform_external_ileave(T* dst, const T* src) const;
     template<uZ Width, uZ Align>
-    void rtform_external_ileave(T* dst, const T* src);
+    void rtform_external_ileave(T* dst, const T* src) const;
     template<uZ Width, uZ PermWidth, uZ Align>
-    void coherent_tform_external_ileave(T* dst, const T* src);
+    void coherent_tform_external_ileave(T* dst, const T* src) const;
     template<uZ Width, uZ PermWidth, uZ Align>
-    void coherent_rtform_external_ileave(T* dst, const T* src);
+    void coherent_rtform_external_ileave(T* dst, const T* src) const;
     template<uZ Width, uZ NodeSize>
-    void single_load_tform_external_ileave(T* dst, const T* src);
+    void single_load_tform_external_ileave(T* dst, const T* src) const;
     template<uZ Width, uZ NodeSize>
-    void single_load_rtform_external_ileave(T* dst, const T* src);
+    void single_load_rtform_external_ileave(T* dst, const T* src) const;
 
     template<uZ Width, uZ DstPck, uZ SrcPck, uZ Align>
-    void tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
+    void tform_inplace(T* dst, meta::ce_of<bool> auto reverse) const {
         using impl_t             = detail_::transform<Opts.node_size, T, Width, Opts.coherent_size, 0>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
@@ -345,7 +345,7 @@ private:
     }
 
     template<uZ Width, uZ PermWidth, uZ DstPck, uZ SrcPck, uZ Align>
-    void coherent_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
+    void coherent_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) const {
         using impl_t           = detail_::sequential_subtransform<Opts.node_size, T, Width>;
         constexpr auto dst_pck = cxpack<DstPck, T>{};
         constexpr auto src_pck = cxpack<SrcPck, T>{};
@@ -384,7 +384,7 @@ private:
     }
 
     template<uZ Width, uZ NodeSize, uZ DstPck, uZ SrcPck>
-    void single_load_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) {
+    void single_load_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) const {
         using impl_t             = detail_::sequential_subtransform<NodeSize, T, Width>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
@@ -412,7 +412,7 @@ private:
     }
 
     template<uZ Width, uZ DstPck, uZ SrcPck, uZ Align>
-    void tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) {
+    void tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) const {
         using impl_t             = detail_::transform<Opts.node_size, T, Width, Opts.coherent_size, 0>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
@@ -461,7 +461,7 @@ private:
     }
 
     template<uZ Width, uZ PermWidth, uZ DstPck, uZ SrcPck, uZ Align>
-    void coherent_tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) {
+    void coherent_tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) const {
         using impl_t           = detail_::sequential_subtransform<Opts.node_size, T, Width>;
         constexpr auto dst_pck = cxpack<DstPck, T>{};
         constexpr auto src_pck = cxpack<SrcPck, T>{};
@@ -513,7 +513,7 @@ private:
     }
 
     template<uZ Width, uZ NodeSize, uZ DstPck, uZ SrcPck>
-    void single_load_tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) {
+    void single_load_tform_external(T* dst, const T* src, meta::ce_of<bool> auto reverse) const {
         using impl_t             = detail_::sequential_subtransform<NodeSize, T, Width>;
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
