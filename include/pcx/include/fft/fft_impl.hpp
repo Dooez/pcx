@@ -721,8 +721,7 @@ struct sequential_subtransform {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     static constexpr auto w_pck     = cxpack<width, T>{};
 
-    // static constexpr bool skip_lowk_tw          = true;
-    static constexpr bool skip_lowk_single_load = false;
+    static constexpr bool skip_lowk_single_load = true;
     // for debugging
     static constexpr auto skip_single_load = false;
     static constexpr auto skip_sub_width   = false;
