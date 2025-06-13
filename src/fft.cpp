@@ -19,7 +19,7 @@ fft_plan<T, Opts>::fft_plan(uZ fft_size)
     if (fft_size > coherent_size) {
         using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, 0>;
         impl_t::insert_tw_tf(tw_, fft_size, lowk, half_tw, sequential);
-        permuter_        = permuter_t<width>::insert_indexes(idxs_, fft_size);
+        permuter_        = permuter_t<max_perm_width>::insert_indexes(idxs_, fft_size);
         auto align_node  = impl_t::get_align_node_tf_seq(fft_size);
         auto check_align = [&](auto p_align) {
             constexpr auto l_align_node = detail_::powi(2, p_align);
@@ -51,7 +51,7 @@ fft_plan<T, Opts>::fft_plan(uZ fft_size)
             constexpr auto min_perm_width = detail_::powi(2, detail_::log2i(max_single_load) / 2);
 
             auto check_perm = [&](auto p_width) {
-                constexpr auto perm_width = width / detail_::powi(2, p_width);
+                constexpr auto perm_width = max_perm_width / detail_::powi(2, p_width);
                 if (fft_size < perm_width * perm_width)
                     return false;
                 permuter_ = permuter_t<perm_width>::insert_indexes(idxs_, fft_size);
@@ -67,7 +67,7 @@ fft_plan<T, Opts>::fft_plan(uZ fft_size)
             };
             [&]<uZ... Is>(uZ_seq<Is...>) {
                 (void)(check_perm(uZ_ce<Is>{}) || ...);
-            }(make_uZ_seq<detail_::log2i(width / min_perm_width) + 1>{});
+            }(make_uZ_seq<detail_::log2i(max_perm_width / min_perm_width) + 1>{});
             return true;
         };
         [&]<uZ... Is>(uZ_seq<Is...>) {

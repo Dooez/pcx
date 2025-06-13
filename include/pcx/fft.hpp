@@ -168,6 +168,7 @@ class fft_plan {
     static constexpr auto coherent_size =
         uZ_ce<Opts.coherent_size != 0 ? Opts.coherent_size : 8192 / sizeof(T)>{};
     static constexpr auto width = uZ_ce<Opts.simd_width != 0 ? Opts.simd_width : simd::max_width<T>>{};
+    static constexpr auto max_perm_width = std::min(Opts.node_size, width.value);
 
     // The sequential permutation requires that transform size is not less
     // than the square of the SIMD vector width.
@@ -180,12 +181,13 @@ class fft_plan {
     template<uZ AlignNode>
     using align_param = detail_::align_param<AlignNode, true>;
     template<uZ Width>
-    using permuter_t = std::conditional_t<bit_reversed,
-                                          detail_::identity_permuter_t,
-                                          std::conditional_t<Opts.pt == fft_permutation::normal,
-                                                             detail_::br_permuter_sequential<Width, false>,
-                                                             detail_::br_permuter_sequential<Width, true>>>;
-    using tw_t       = std::vector<T>;
+    using permuter_t =
+        std::conditional_t<bit_reversed,
+                           detail_::identity_permuter_t,
+                           std::conditional_t<Opts.pt == fft_permutation::normal,
+                                              detail_::br_permuter_sequential<max_perm_width, false>,
+                                              detail_::br_permuter_sequential<max_perm_width, true>>>;
+    using tw_t = std::vector<T>;
 
 public:
     explicit fft_plan(uZ fft_size);
@@ -255,7 +257,7 @@ private:
                 } else if constexpr (Opts.pt == fft_permutation::shifted) {
                     return std::variant<br_permuter_sequential<powi(2, Ps), true>...>{};
                 }
-            }(make_uZ_seq<log2i(width) + 1>{});
+            }(make_uZ_seq<log2i(max_perm_width) + 1>{});
         }
     }());
 
@@ -303,7 +305,7 @@ private:
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
         constexpr auto align     = detail_::align_param<Align, true>{};
         constexpr auto conj_tw   = std::bool_constant<reverse>{};
-        constexpr auto PermWidth = Width;
+        constexpr auto PermWidth = std::min(Width, max_perm_width);
 
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = reverse ? &*tw_.end() : tw_.data()};
         auto dst_data = detail_::sequential_data_info<T>{.data_ptr = dst, .stride = 1};
@@ -418,7 +420,7 @@ private:
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
         constexpr auto align     = detail_::align_param<Align, true>{};
         constexpr auto conj_tw   = std::bool_constant<reverse>{};
-        constexpr auto PermWidth = Width;
+        constexpr auto PermWidth = std::min(Width, max_perm_width);
 
         auto tw_data  = detail_::tw_data_t<T, false>{.tw_ptr = reverse ? &*tw_.end() : tw_.data()};
         auto dst_data = detail_::sequential_data_info<T>{.data_ptr = dst, .stride = 1};
