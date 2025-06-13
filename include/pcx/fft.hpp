@@ -27,7 +27,7 @@ struct fft_options {
 template<floating_point T, fft_options Opts = {}>
 class par_fft_plan {
     static constexpr auto lowk           = std::true_type{};
-    static constexpr auto half_tw        = std::true_type{};
+    static constexpr auto half_tw        = std::false_type{};
     static constexpr auto bit_reversed   = std::bool_constant<Opts.pt == fft_permutation::bit_reversed>{};
     static constexpr auto not_sequential = std::false_type{};
     static constexpr auto width = uZ_ce<Opts.simd_width != 0 ? Opts.simd_width : simd::max_width<T>>{};
@@ -161,10 +161,10 @@ private:
  */
 template<floating_point T, fft_options Opts = {}>
 class fft_plan {
-    static constexpr auto lowk         = std::true_type{};
-    static constexpr auto half_tw      = std::true_type{};
-    static constexpr auto bit_reversed = std::bool_constant<Opts.pt == fft_permutation::bit_reversed>{};
-    static constexpr auto sequential   = std::true_type{};
+    static constexpr auto lowk         = val_ce<true>{};
+    static constexpr auto half_tw      = val_ce<false>{};
+    static constexpr auto bit_reversed = val_ce<Opts.pt == fft_permutation::bit_reversed>{};
+    static constexpr auto sequential   = val_ce<true>{};
     static constexpr auto coherent_size =
         uZ_ce<Opts.coherent_size != 0 ? Opts.coherent_size : 8192 / sizeof(T)>{};
     static constexpr auto width = uZ_ce<Opts.simd_width != 0 ? Opts.simd_width : simd::max_width<T>>{};

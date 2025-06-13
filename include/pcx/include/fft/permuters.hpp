@@ -55,19 +55,19 @@ struct br_permute_t {
             constexpr auto splinter = [=] {
                 if constexpr (Chunk < width) {
                     return tupi::pass |
-                           [](auto v0, auto v1) {
+                           [] PCX_LAINLINE(auto v0, auto v1) {
                                return tupi::make_tuple(tupi::make_tuple(v0.real_v(), v1.real_v()),
                                                        tupi::make_tuple(v0.imag_v(), v1.imag_v()));
                            }
                            | tupi::group_invoke(tupi::apply | traits::template split_interleave<Chunk>)
                            | tupi::apply    //
-                           | [](auto re, auto im) {
+                           | [] PCX_LAINLINE(auto re, auto im) {
                                  return tupi::make_tuple(cx_vec_t(get<0>(re), get<0>(im)),
                                                          cx_vec_t(get<1>(re), get<1>(im)));
                              };
                 } else {
                     return tupi::pass    //
-                           | [](auto v0, auto v1) {
+                           | [] PCX_LAINLINE(auto v0, auto v1) {
                                  return tupi::make_tuple(cx_vec_t(v0.real(), v1.real()),
                                                          cx_vec_t(v0.imag(), v1.imag()));
                              };
@@ -184,32 +184,32 @@ struct br_permuter_nonseq_base : public br_permuter_base {
         return {};
     }
     using idx_ptr_t = const u32*;
-    static auto perm_impl(auto                   width,
-                          auto                   batch_size,
-                          meta::ce_of<bool> auto reverse,
-                          auto                   dst_pck,
-                          auto                   src_pck,
-                          auto                   dst_data,
-                          auto                   src_data,
-                          idx_ptr_t&             idx_ptr,
-                          auto                   swap_cnt,
-                          auto                   nonswap_cnt,
-                          auto                   swap_grp_size) {
+    PCX_AINLINE static auto perm_impl(auto                   width,
+                                      auto                   batch_size,
+                                      meta::ce_of<bool> auto reverse,
+                                      auto                   dst_pck,
+                                      auto                   src_pck,
+                                      auto                   dst_data,
+                                      auto                   src_data,
+                                      idx_ptr_t&             idx_ptr,
+                                      auto                   swap_cnt,
+                                      auto                   nonswap_cnt,
+                                      auto                   swap_grp_size) {
         const auto sequential = dst_data.sequential();
         static_assert(!sequential);
         const auto inplace = src_data.empty();
         static_assert(src_data.sequential() == sequential || inplace);
-        constexpr auto rotate_groups = [](tupi::tuple_like auto tuple, auto grp_size) {
-            auto make_grp = [&](auto i_grp) {
-                return [&]<uZ... Is>(uZ_seq<Is...>) {
+        constexpr auto rotate_groups = [] PCX_LAINLINE(tupi::tuple_like auto tuple, auto grp_size) {
+            auto make_grp = [&] PCX_LAINLINE(auto i_grp) {
+                return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     return tupi::make_tuple(tupi::get_copy<i_grp * grp_size + (Is + 1) % grp_size>(tuple)...);
                 }(make_uZ_seq<grp_size>{});
             };
-            return [&]<uZ... Is>(uZ_seq<Is...>) {
+            return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 return tupi::make_flat_tuple(tupi::make_tuple(make_grp(uZ_ce<Is>{})...));
             }(make_uZ_seq<tupi::tuple_size_v<decltype(tuple)> / grp_size>{});
         };
-        decltype(auto) l_src = [&] -> decltype(auto) {
+        decltype(auto) l_src = [&] PCX_LAINLINE -> decltype(auto) {
             if constexpr (inplace)
                 return dst_data;
             else
@@ -217,13 +217,13 @@ struct br_permuter_nonseq_base : public br_permuter_base {
         }();
         constexpr auto node_p = uZ_ce<log2i(NodeSize)>{};
 
-        auto check_ns = [&](auto p) {
+        auto check_ns = [&] PCX_LAINLINE(auto p) {
             constexpr auto sort_node_size = uZ_ce<powi(2, node_p - p)>{};
             uZ             sns            = sort_node_size;
             if (swap_cnt % (sort_node_size / 2) != 0)
                 return false;
             for (auto i: stdv::iota(0U, swap_cnt) | stdv::stride(sort_node_size / 2)) {
-                const auto idxs0 = [&]<uZ... Is>(uZ_seq<Is...>) {
+                const auto idxs0 = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     if constexpr (reverse)
                         idx_ptr -= sort_node_size;
                     auto idxs = tupi::make_tuple(*(idx_ptr + Is)...);
@@ -233,11 +233,16 @@ struct br_permuter_nonseq_base : public br_permuter_base {
                 }(make_uZ_seq<sort_node_size>{});
                 const auto idxs1 = rotate_groups(idxs0, swap_grp_size);
 
-                auto src_base = tupi::group_invoke([&](auto i) { return l_src.get_batch_base(i); }, idxs0);
-                auto dst_base = tupi::group_invoke([&](auto i) { return dst_data.get_batch_base(i); }, idxs1);
+                auto src_base =
+                    tupi::group_invoke([&] PCX_LAINLINE(auto i) { return l_src.get_batch_base(i); }, idxs0);
+                auto dst_base =
+                    tupi::group_invoke([&] PCX_LAINLINE(auto i) { return dst_data.get_batch_base(i); },
+                                       idxs1);
                 for (auto ibs: stdv::iota(0U, batch_size) | stdv::stride(width)) {
-                    auto src  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, src_base);
-                    auto dst  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, dst_base);
+                    auto src =
+                        tupi::group_invoke([=] PCX_LAINLINE(auto base) { return base + ibs * 2; }, src_base);
+                    auto dst =
+                        tupi::group_invoke([=] PCX_LAINLINE(auto base) { return base + ibs * 2; }, dst_base);
                     auto data = tupi::group_invoke(simd::cxload<src_pck, width>, src);
                     tupi::group_invoke(simd::cxstore<dst_pck>, dst, data);
                 }
@@ -250,7 +255,7 @@ struct br_permuter_nonseq_base : public br_permuter_base {
             if (nonswap_cnt % sort_node_size != 0)
                 return false;
             for (auto i: stdv::iota(0U, nonswap_cnt) | stdv::stride(sort_node_size)) {
-                const auto idxs = [&]<uZ... Is>(uZ_seq<Is...>) {
+                const auto idxs = [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     if constexpr (reverse)
                         idx_ptr -= sort_node_size;
                     auto idxs = tupi::make_tuple(*(idx_ptr + Is)...);
@@ -259,11 +264,15 @@ struct br_permuter_nonseq_base : public br_permuter_base {
                     return idxs;
                 }(make_uZ_seq<sort_node_size>{});
 
-                auto src_base = tupi::group_invoke([&](auto i) { return l_src.get_batch_base(i); }, idxs);
-                auto dst_base = tupi::group_invoke([&](auto i) { return dst_data.get_batch_base(i); }, idxs);
+                auto src_base =
+                    tupi::group_invoke([&] PCX_LAINLINE(auto i) { return l_src.get_batch_base(i); }, idxs);
+                auto dst_base =
+                    tupi::group_invoke([&] PCX_LAINLINE(auto i) { return dst_data.get_batch_base(i); }, idxs);
                 for (auto ibs: stdv::iota(0U, batch_size) | stdv::stride(width)) {
-                    auto src  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, src_base);
-                    auto dst  = tupi::group_invoke([=](auto base) { return base + ibs * 2; }, dst_base);
+                    auto src =
+                        tupi::group_invoke([=] PCX_LAINLINE(auto base) { return base + ibs * 2; }, src_base);
+                    auto dst =
+                        tupi::group_invoke([=] PCX_LAINLINE(auto base) { return base + ibs * 2; }, dst_base);
                     auto data = tupi::group_invoke(simd::cxload<src_pck, width>, src);
                     tupi::group_invoke(simd::cxstore<dst_pck>, dst, data);
                 }
@@ -274,13 +283,13 @@ struct br_permuter_nonseq_base : public br_permuter_base {
             if constexpr (inplace) {
                 idx_ptr -= nonswap_cnt;
             } else {
-                [=]<uZ... Is>(uZ_seq<Is...>) {
+                [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     (void)(check_nonswap_ns(uZ_ce<Is>{}) || ...);
                 }(make_uZ_seq<node_p + 1>{});
             }
         }
 
-        [=]<uZ... Is>(uZ_seq<Is...>) {
+        [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
             (void)(check_ns(uZ_ce<Is>{}) || ...);
         }(make_uZ_seq<node_p - log2i(swap_grp_size) + 1>{});
 
@@ -288,7 +297,7 @@ struct br_permuter_nonseq_base : public br_permuter_base {
             if constexpr (inplace) {
                 idx_ptr += nonswap_cnt;
             } else {
-                [=]<uZ... Is>(uZ_seq<Is...>) {
+                [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     (void)(check_nonswap_ns(uZ_ce<Is>{}) || ...);
                 }(make_uZ_seq<node_p + 1>{});
             }
@@ -306,13 +315,13 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
     u32        noncoh_swap_cnt;
     u32        noncoh_nonswap_cnt;
 
-    auto permute(auto width,
-                 auto batch_size,
-                 auto reverse,
-                 auto dst_pck,
-                 auto src_pck,
-                 auto dst_data,
-                 auto src_data) {
+    PCX_AINLINE auto permute(auto width,
+                             auto batch_size,
+                             auto reverse,
+                             auto dst_pck,
+                             auto src_pck,
+                             auto dst_data,
+                             auto src_data) {
         base_t::perm_impl(width,
                           batch_size,
                           reverse,
@@ -329,13 +338,13 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
         else
             return inplace_src;
     };
-    auto coherent_permute(auto width,
-                          auto batch_size,
-                          auto reverse,
-                          auto dst_pck,
-                          auto src_pck,
-                          auto dst_data,
-                          auto src_data) {
+    PCX_AINLINE auto coherent_permute(auto width,
+                                      auto batch_size,
+                                      auto reverse,
+                                      auto dst_pck,
+                                      auto src_pck,
+                                      auto dst_data,
+                                      auto src_data) {
         base_t::perm_impl(width,
                           batch_size,
                           reverse,
@@ -349,13 +358,13 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
                           uZ_ce<2>{});
         return inplace_src;
     };
-    auto small_permute(auto width,
-                       auto batch_size,
-                       auto reverse,
-                       auto dst_pck,
-                       auto src_pck,
-                       auto dst_data,
-                       auto src_data) {
+    PCX_AINLINE auto small_permute(auto width,
+                                   auto batch_size,
+                                   auto reverse,
+                                   auto dst_pck,
+                                   auto src_pck,
+                                   auto dst_data,
+                                   auto src_data) {
         base_t::perm_impl(width,
                           batch_size,
                           reverse,
@@ -375,7 +384,7 @@ struct br_permuter : br_permuter_nonseq_base<NodeSize> {
         return fft_size - n_no_swap;
     };
     static auto insert_indexes(auto& r, uZ fft_size, uZ coherent_size) -> br_permuter {
-        auto rbo = [=](auto i) { return reverse_bit_order(i, log2i(fft_size)); };
+        auto rbo = [=] PCX_LAINLINE(auto i) { return reverse_bit_order(i, log2i(fft_size)); };
         u32  coh_swap_cnt{};
         u32  coh_nonswap_cnt{};
         bool coh_nonswap = true;
@@ -459,13 +468,13 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
     const u32* idx_ptr;
     u32        swap_cnt;
 
-    auto permute(auto width,
-                 auto batch_size,
-                 auto reverse,
-                 auto dst_pck,
-                 auto src_pck,
-                 auto dst_data,
-                 auto src_data) {
+    PCX_AINLINE auto permute(auto width,
+                             auto batch_size,
+                             auto reverse,
+                             auto dst_pck,
+                             auto src_pck,
+                             auto dst_data,
+                             auto src_data) {
         base_t::perm_impl(width,
                           batch_size,
                           reverse,
@@ -479,13 +488,13 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
                           uZ_ce<4>{});
         return inplace_src;
     };
-    auto small_permute(auto width,
-                       auto batch_size,
-                       auto reverse,
-                       auto dst_pck,
-                       auto src_pck,
-                       auto dst_data,
-                       auto src_data) {
+    PCX_AINLINE auto small_permute(auto width,
+                                   auto batch_size,
+                                   auto reverse,
+                                   auto dst_pck,
+                                   auto src_pck,
+                                   auto dst_data,
+                                   auto src_data) {
         base_t::perm_impl(width,
                           batch_size,
                           reverse,
@@ -499,7 +508,7 @@ struct br_permuter_shifted : public br_permuter_nonseq_base<NodeSize> {
                           uZ_ce<4>{});
         return inplace_src;
     };
-    auto coherent_permute(auto...) {
+    PCX_AINLINE auto coherent_permute(auto...) {
         return inplace_src;
     }
 
@@ -535,10 +544,10 @@ struct br_permuter_sequential : public br_permuter_base {
     u32        swap_cnt;
     u32        nonswap_cnt;
 
-    auto sequential_permute(auto dst_pck,    //
-                            auto src_pck,
-                            auto dst_data,
-                            auto src_data) {
+    PCX_AINLINE auto sequential_permute(auto dst_pck,    //
+                                        auto src_pck,
+                                        auto dst_data,
+                                        auto src_data) {
         const auto subsize = (swap_cnt * 2 + nonswap_cnt) * width;
         const auto inplace = src_data.empty();
 
@@ -553,7 +562,7 @@ struct br_permuter_sequential : public br_permuter_base {
                 }(make_uZ_seq<width>{});
             };
             if constexpr (Shifted && width == 1) {
-                for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                for (auto i: stdv::iota(0U, lane_cnt)) {
                     auto dst0  = next_ptr_tup();
                     auto dst1  = next_ptr_tup();
                     auto dst2  = next_ptr_tup();
@@ -570,7 +579,7 @@ struct br_permuter_sequential : public br_permuter_base {
             } else {
                 bool swap = true;
                 while (true) {
-                    for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                    for (auto i: stdv::iota(0U, lane_cnt)) {
                         auto dst0       = next_ptr_tup();
                         auto data0      = tupi::group_invoke(simd::cxload<src_pck, width>, dst0);
                         auto data_perm0 = simd::br_permute(data0, shifted);
@@ -597,7 +606,7 @@ struct br_permuter_sequential : public br_permuter_base {
                 return [&]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     auto idx = *idx_ptr;
                     ++idx_ptr;
-                    auto mktup = [=](auto data) {
+                    auto mktup = [=] PCX_LAINLINE(auto data) {
                         return tupi::make_tuple(
                             (data.get_batch_base(0) + idx * width * 2 + Is * subsize * 2)...);
                     };
@@ -605,7 +614,7 @@ struct br_permuter_sequential : public br_permuter_base {
                 }(make_uZ_seq<width>{});
             };
             if constexpr (Shifted && width == 1) {
-                for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                for (auto i: stdv::iota(0U, lane_cnt)) {
                     auto [dst0, src0] = next_ptr_tup();
                     auto [dst1, src1] = next_ptr_tup();
                     auto [dst2, src2] = next_ptr_tup();
@@ -620,7 +629,7 @@ struct br_permuter_sequential : public br_permuter_base {
                     tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data3);
                 }
                 lane_cnt = nonswap_cnt;
-                for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                for (auto i: stdv::iota(0U, lane_cnt)) {
                     auto [dst0, src0] = next_ptr_tup();
                     auto data0        = tupi::group_invoke(simd::cxload<src_pck, width>, src0);
                     tupi::group_invoke(simd::cxstore<dst_pck>, dst0, data0);
@@ -628,7 +637,7 @@ struct br_permuter_sequential : public br_permuter_base {
             } else {
                 bool swap = true;
                 while (true) {
-                    for ([[maybe_unused]] auto i: stdv::iota(0U, lane_cnt)) {
+                    for (auto i: stdv::iota(0U, lane_cnt)) {
                         auto [dst0, src0] = next_ptr_tup();
                         auto data0        = tupi::group_invoke(simd::cxload<src_pck, width>, src0);
                         auto data_perm0   = simd::br_permute(data0, shifted);

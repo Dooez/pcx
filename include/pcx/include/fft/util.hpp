@@ -87,7 +87,7 @@ struct data_info : public data_info_base<T> {
         return new_info;
     }
 
-    constexpr auto offset_k(uZ n) const -> data_info {
+    PCX_AINLINE constexpr auto offset_k(uZ n) const -> data_info {
         auto new_info = *this;
         if constexpr (Contiguous) {
             new_info.data_ptr += k_stride * n * 2;
@@ -96,7 +96,7 @@ struct data_info : public data_info_base<T> {
         }
         return new_info;
     }
-    constexpr auto offset_contents(uZ n) const -> data_info {
+    PCX_AINLINE constexpr auto offset_contents(uZ n) const -> data_info {
         auto new_info = *this;
         if constexpr (Contiguous) {
             new_info.data_ptr += n * 2;
@@ -105,7 +105,7 @@ struct data_info : public data_info_base<T> {
         }
         return new_info;
     }
-    constexpr auto get_batch_base(uZ i) const -> T* {
+    PCX_AINLINE constexpr auto get_batch_base(uZ i) const -> T* {
         if constexpr (Contiguous) {
             return data_ptr + i * stride * 2;
         } else {
@@ -129,28 +129,28 @@ struct sequential_data_info : public data_info_base<T> {
         return {};
     }
 
-    constexpr auto mul_stride(uZ n) const -> sequential_data_info {
+    PCX_AINLINE constexpr auto mul_stride(uZ n) const -> sequential_data_info {
         auto new_info = *this;
         new_info.stride *= n;
         return new_info;
     }
-    constexpr auto div_stride(uZ n) const -> sequential_data_info {
+    PCX_AINLINE constexpr auto div_stride(uZ n) const -> sequential_data_info {
         auto new_info = *this;
         new_info.stride /= n;
         return new_info;
     }
-    constexpr auto reset_stride() const -> sequential_data_info {
+    PCX_AINLINE constexpr auto reset_stride() const -> sequential_data_info {
         auto new_info   = *this;
         new_info.stride = 1;
         return new_info;
     }
-    constexpr auto offset_k(uZ n) const -> sequential_data_info {
+    PCX_AINLINE constexpr auto offset_k(uZ n) const -> sequential_data_info {
         return {{}, data_ptr + n * 2, stride};
     }
-    constexpr auto offset_contents(uZ n) const -> sequential_data_info {
+    PCX_AINLINE constexpr auto offset_contents(uZ n) const -> sequential_data_info {
         return {{}, data_ptr + n * 2, stride};
     }
-    constexpr auto get_batch_base(uZ i) const -> T* {
+    PCX_AINLINE constexpr auto get_batch_base(uZ i) const -> T* {
         return data_ptr + i * stride * 2;
     };
 };

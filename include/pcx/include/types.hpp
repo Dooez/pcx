@@ -8,10 +8,10 @@
 #include <type_traits>
 
 #if defined(__clang__)
-// #define PCX_AINLINE  [[clang::always_inline]] inline
-// #define PCX_LAINLINE [[clang::always_inline]]
-#define PCX_AINLINE inline
-#define PCX_LAINLINE
+#define PCX_AINLINE  [[clang::always_inline]] inline
+#define PCX_LAINLINE [[clang::always_inline]]
+// #define PCX_AINLINE  inline
+// #define PCX_LAINLINE
 #elif defined(__GNUC__) || defined(__GNUG__)
 // #define PCX_AINLINE  [[gnu::always_inline]] inline
 // #define PCX_LAINLINE [[gnu::always_inline]]

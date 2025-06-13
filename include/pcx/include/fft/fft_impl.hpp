@@ -721,7 +721,7 @@ struct sequential_subtransform {
     static constexpr auto node_size = uZ_ce<NodeSize>{};
     static constexpr auto w_pck     = cxpack<width, T>{};
 
-    static constexpr bool skip_lowk_single_load = true;
+    static constexpr auto single_load_ignore_lowk = val_ce<true>{};
     // for debugging
     static constexpr auto skip_single_load = false;
     static constexpr auto skip_sub_width   = false;
@@ -836,7 +836,7 @@ struct sequential_subtransform {
                 tw.start_k *= final_k_count * 2;
             }
             auto data_ptr = dst_data.get_batch_base(0);
-            if constexpr (lowk && !skip_lowk_single_load)
+            if constexpr (lowk && !single_load_ignore_lowk)
                 l_single_load(dst_pck, w_pck, lowk, data_ptr, data_ptr);
             constexpr auto start = lowk ? 1UZ : 0UZ;
             for (auto k: stdv::iota(start, final_k_count * 2)) {
@@ -863,14 +863,14 @@ struct sequential_subtransform {
                         return src_data.get_batch_base(0);
                 }();
 
-                auto k_start = lowk && !skip_lowk_single_load ? 1UZ : 0UZ;
+                auto k_start = lowk && !single_load_ignore_lowk ? 1UZ : 0UZ;
                 auto k_range = stdv::iota(0U, final_k_count * 2) | stdv::drop(k_start) | stdv::reverse;
                 for (auto k: k_range) {
                     auto src = src_ptr + k * single_load_size * 2;
                     auto dst = dst_ptr + k * single_load_size * 2;
                     l_single_load(w_pck, src_pck, not_lowk, dst, src);
                 }
-                if constexpr (lowk && !skip_lowk_single_load)
+                if constexpr (lowk && !single_load_ignore_lowk)
                     l_single_load(w_pck, src_pck, lowk, dst_ptr, src_ptr);
             }
             multi_load(dst_pck, w_pck, inplace_src);
@@ -889,9 +889,9 @@ struct sequential_subtransform {
         fnode::insert_tw_subtf(r, align, lowk, final_k_count, tw_data);
         if constexpr (skip_single_load)
             return;
-        if (lowk && !skip_lowk_single_load)
+        if (lowk && !single_load_ignore_lowk)
             insert_tw_single_load(r, tw_data, lowk, half_tw);
-        auto k_start = lowk && !skip_lowk_single_load ? 1UZ : 0UZ;
+        auto k_start = lowk && !single_load_ignore_lowk ? 1UZ : 0UZ;
         for (auto k: stdv::iota(k_start, final_k_count * 2))
             insert_tw_single_load(r, tw_data, not_lowk, half_tw);
     }
@@ -1059,14 +1059,14 @@ struct sequential_subtransform {
             return;
         }
 
-        auto regroup_tw_fact = [&]<uZ TwCount>(uZ_ce<TwCount>) {
-            return [=]<uZ KGroup>(uZ_ce<KGroup>) {
+        auto regroup_tw_fact = [&]<uZ TwCount> PCX_LAINLINE(uZ_ce<TwCount>) {
+            return [=]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
                 auto fft_size = tw_data.start_fft_size * NodeSize * TwCount;
                 auto k        = tw_data.start_k * NodeSize * TwCount / 2 + KGroup * TwCount;
 
                 constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
 
-                auto tw_arr = [=]<uZ... Is>(uZ_seq<Is...>) {
+                auto tw_arr = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                     if constexpr (half_tw) {
                         return std::array{wnk_br<T>(fft_size, k + Is * 2)...};
                     } else {
@@ -1081,7 +1081,7 @@ struct sequential_subtransform {
             };
         };
 
-        auto insert_regroup_tw = [](auto insert_tw, auto half_tw) {
+        auto insert_regroup_tw = [] PCX_LAINLINE(auto insert_tw, auto half_tw) {
             constexpr uZ raw_tw_count = half_tw && node_size > 2 ? node_size / 4 : node_size / 2;
             [=]<uZ... Is>(uZ_seq<Is...>) {
                 (insert_tw(uZ_ce<half_tw ? Is * 2 : Is>{}), ...);
@@ -1149,14 +1149,14 @@ struct sequential_subtransform {
     template<uZ Count>
     static constexpr auto load_tw =
         tupi::pass    
-        | []<uZ KGroup>(auto&& get_tw, uZ_ce<KGroup> k) {
+        | []<uZ KGroup>PCX_LAINLINE (auto&& get_tw, uZ_ce<KGroup> k) {
             return get_tw(k);
           }
-        | tupi::group_invoke([](auto v){
+        | tupi::group_invoke([]PCX_LAINLINE(auto v){
                 return vec_traits::upsample(v.value);
           })    
         | tupi::apply                                                  
-        | [](auto re, auto im) { return simd::cx_vec<T, false, false, width>{re, im}; };
+        | []PCX_LAINLINE (auto re, auto im) { return simd::cx_vec<T, false, false, width>{re, im}; };
 
 
     /**
@@ -1166,7 +1166,7 @@ struct sequential_subtransform {
     template<uZ GroupTo, uZ GroupFrom>
     static constexpr auto regroup = 
         tupi::pass 
-        | []<simd::any_cx_vec V>(V a, V b) 
+        | []<simd::any_cx_vec V>PCX_LAINLINE (V a, V b) 
             requires(GroupTo <= V::width()) && (GroupFrom <= V::width()) 
           {
             auto re = tupi::make_tuple(a.real_v(), b.real_v());
@@ -1177,7 +1177,7 @@ struct sequential_subtransform {
                          tupi::apply | vec_traits::template repack<GroupTo, GroupFrom>,
                          tupi::pass)
         | tupi::apply
-        | []<typename V>(auto re, auto im, meta::types<V>){
+        | []<typename V>PCX_LAINLINE (auto re, auto im, meta::types<V>){
             return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    
                                     V{.m_real = get<1>(re), .m_imag = get<1>(im)});
           };
@@ -1199,7 +1199,7 @@ struct sequential_subtransform {
     template<uZ ChunkSize>
     static constexpr auto split_regroup = 
         tupi::pass 
-        | []<simd::eval_cx_vec V>(V a, V b) 
+        | []<simd::eval_cx_vec V>PCX_LAINLINE (V a, V b) 
             requires(ChunkSize <= V::width())
           {
             auto re = tupi::make_tuple(a.real_v(), b.real_v());
@@ -1210,7 +1210,7 @@ struct sequential_subtransform {
                          tupi::apply | vec_traits::template split_interleave<ChunkSize>,
                          tupi::pass)
         | tupi::apply
-        | []<typename V>(auto re, auto im, meta::types<V>){
+        | []<typename V>PCX_LAINLINE (auto re, auto im, meta::types<V>){
             return tupi::make_tuple(V{.m_real = get<0>(re), .m_imag = get<0>(im)},    
                                     V{.m_real = get<1>(re), .m_imag = get<1>(im)});
           };
@@ -1226,11 +1226,13 @@ struct sequential_subtransform {
     struct regroup_btfly_t {
         static constexpr auto make_j_tuple = [] {
             if constexpr (node_size > 2) {
-                return tupi::pass |
-                       [](simd::any_cx_vec auto tw) { return tupi::make_tuple(tw, mul_by_j<-1>(tw)); };
+                return tupi::pass | [] PCX_LAINLINE(simd::any_cx_vec auto tw) {
+                    return tupi::make_tuple(tw, mul_by_j<-1>(tw));
+                };
             } else {
-                return tupi::pass    //
-                       | [](simd::any_cx_vec auto tw) { return tupi::make_tuple(tw, mul_by_j<-1>(tw)); }
+                return tupi::pass                                     //
+                       | [] PCX_LAINLINE(simd::any_cx_vec auto tw)    //
+                { return tupi::make_tuple(tw, mul_by_j<-1>(tw)); }
                        | tupi::pipeline(tupi::pass, simd::evaluate)    //
                        | tupi::apply                                   //
                        | split_regroup<width / NGroups>                //
@@ -1244,13 +1246,13 @@ struct sequential_subtransform {
                                            auto&&                 get_tw,
                                            meta::ce_of<bool> auto half_tw) {
             constexpr uZ   raw_tw_count = half_tw && node_size > 2 ? node_size / 4 : node_size / 2;
-            constexpr auto tw_idx_tup   = [=]<uZ... Is>(uZ_seq<Is...>) {
+            constexpr auto tw_idx_tup   = [=]<uZ... Is> PCX_LAINLINE(uZ_seq<Is...>) {
                 return tupi::make_tuple(uZ_ce<half_tw ? Is * 2 : Is>{}...);
             }(make_uZ_seq<raw_tw_count>{});
 
             auto get_tw_tup = tupi::make_broadcast_tuple<raw_tw_count>(get_tw);
 
-            constexpr auto ltw = [=] {
+            constexpr auto ltw = [=] PCX_LAINLINE {
                 if constexpr (half_tw) {
                     return tupi::apply                                              //
                            | tupi::group_invoke(load_tw<NGroups> | make_j_tuple)    //
@@ -1293,7 +1295,7 @@ struct sequential_subtransform {
             auto get_tw_tup = tupi::make_broadcast_tuple<raw_tw_count>(get_tw);
 
             if constexpr (!reverse) {
-                constexpr auto ltw = [=] {
+                constexpr auto ltw = [=] PCX_LAINLINE {
                     if constexpr (half_tw) {
                         return tupi::apply                                              //
                                | tupi::group_invoke(load_tw<NGroups> | make_j_tuple)    //
@@ -1321,7 +1323,7 @@ struct sequential_subtransform {
                 auto new_hi = tupi::group_invoke(tupi::get_copy<1>, res);
                 return tupi::make_tuple(new_lo, new_hi);
             } else {
-                constexpr auto ltw = [=] {
+                constexpr auto ltw = [=] PCX_LAINLINE {
                     if constexpr (half_tw) {
                         return tupi::group_invoke(load_tw<NGroups> | make_j_tuple)    //
                                | tupi::make_flat_tuple;
