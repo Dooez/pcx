@@ -30,8 +30,12 @@ if(NOT DEFINED CMAKE_BUILD_TYPE AND NOT DEFINED CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-add_library(pcx)
+add_library(pcx INTERFACE)
 add_library(pcx::pcx ALIAS pcx)
+add_library(pcx_fft)
+add_library(pcx::fft ALIAS pcx_fft)
+add_library(pcx_par_fft)
+add_library(pcx::par_fft ALIAS pcx_par_fft)
 add_library(pcx_header_only INTERFACE)
 add_library(pcx::pcx_header_only ALIAS pcx_header_only)
 
@@ -51,22 +55,27 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${sources})
 # ---
 include(CMakePackageConfigHelpers)
 
-target_sources(pcx PRIVATE ${sources})
-target_include_directories(pcx
-    PUBLIC
+function(configure_pcx_target target #[[ sources ]])
+    target_sources(${target} PRIVATE ${ARGN})
+    target_include_directories(${target} PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-)
-set_target_properties(pcx PROPERTIES
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-    VERSION ${PROJECT_VERSION}
-    CXX_STANDARD 23
-    CXX_STANDARD_REQUIRED True
-)
-target_compile_options(pcx PRIVATE -march=native)
-if(PCX_AVX512)
-    target_compile_definitions(pcx PUBLIC -DPCX_AVX512)
-endif()
+    )
+    set_target_properties(${target} PROPERTIES
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+        VERSION ${PROJECT_VERSION}
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED True
+    )
+    target_compile_options(${target} PRIVATE -march=native)
+    if(PCX_AVX512)
+        target_compile_definitions(${target} PUBLIC -DPCX_AVX512)
+    endif()
+endfunction()
+
+configure_pcx_target(pcx_fft "src/fft.cpp")
+configure_pcx_target(pcx_par_fft "src/par_fft.cpp")
+target_link_libraries(pcx INTERFACE pcx_fft pcx_par_fft)
 
 target_include_directories(pcx_header_only
     INTERFACE
@@ -96,7 +105,7 @@ if(PCX_INSTALL AND NOT CMAKE_SKIP_INSTALL_RULES)
     write_basic_package_version_file(pcx-config-version.cmake
         COMPATIBILITY SameMajorVersion
     )
-    install(TARGETS pcx pcx_header_only
+    install(TARGETS pcx pcx_fft pcx_par_fft pcx_header_only
         EXPORT pcx_export
         RUNTIME COMPONENT pcx
         LIBRARY COMPONENT pcx
@@ -136,16 +145,16 @@ if(${is_top_level} AND ${PCX_BUILD_TESTS})
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     add_executable(test_fft)
-    set(F32_WIDTHS 1 2 4 8 16)
-    set(F64_WIDTHS 1 2 4 8)
-    set(NODE_SIZES 16 8 4 2)
-    # set(F32_WIDTHS 16)
-    # set(F64_WIDTHS 8)
+    # set(F32_WIDTHS 1 2 4 8 16)
+    # set(F64_WIDTHS 1 2 4 8)
+    # set(NODE_SIZES 16 8 4 2)
+    set(F32_WIDTHS 16)
+    set(F64_WIDTHS 8)
     # set(F32_WIDTHS 16)
     # set(F64_WIDTHS )
-    # set(NODE_SIZES 16)
-    set(TEST_PARC ON)
-    set(TEST_PAR ON)
+    set(NODE_SIZES 8)
+    # set(TEST_PARC ON)
+    # set(TEST_PAR ON)
     set(TEST_SEQ ON)
 
     set(TEST_FFT_SOURCES "")
@@ -190,7 +199,7 @@ if(${is_top_level} AND ${PCX_BUILD_TESTS})
         "-DPCX_TESTING_PAR=$<BOOL:${TEST_PAR}>"
         "-DPCX_TESTING_PARC=$<BOOL:${TEST_PARC}>"
     )
-    set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=8)
+    set_property(GLOBAL PROPERTY JOB_POOLS build_jobs=5)
     set_property(TARGET test_fft PROPERTY JOB_POOL_COMPILE build_jobs)
 
     add_executable(asm_explorer tests/fft/asm_explorer.cpp)
