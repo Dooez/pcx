@@ -38,4 +38,6 @@ The goal is to adapt the library to all common platforms with simd.
 The end goal is to provide a number of utilities for processing of complex data with main application being processing of 
 radio data.
 
-
+##  
+- implement radix-4 based nodes
+- implement better size-alignment policy
