@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "pcx/fft.hpp"
+#include "pcx/par_fft.hpp"
 
 #include <generator>
 #include <print>

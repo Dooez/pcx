@@ -838,7 +838,7 @@ struct sequential_subtransform {
             auto data_ptr = dst_data.get_batch_base(0);
             if constexpr (lowk && !single_load_ignore_lowk)
                 l_single_load(dst_pck, w_pck, lowk, data_ptr, data_ptr);
-            constexpr auto start = lowk ? 1UZ : 0UZ;
+            constexpr auto start = lowk && !single_load_ignore_lowk ? 1UZ : 0UZ;
             for (auto k: stdv::iota(start, final_k_count * 2)) {
                 auto dest = data_ptr + k * single_load_size * 2;
                 l_single_load(dst_pck, w_pck, not_lowk, dest, dest);

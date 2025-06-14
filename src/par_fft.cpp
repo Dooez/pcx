@@ -1,4 +1,4 @@
-#include "pcx/fft.hpp"
+#include "pcx/par_fft.hpp"
 namespace pcx {
 namespace {
 constexpr auto forward     = std::false_type{};
