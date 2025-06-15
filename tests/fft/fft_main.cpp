@@ -206,8 +206,8 @@ bool test_par(pcx::uZ_seq<Ws...>,
 template<uZ... Ws, uZ... NodeSize, typename fX>
 bool test_seq(pcx::uZ_seq<Ws...>, pcx::uZ_seq<NodeSize...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) {
     bool local_check = true;
-    bool fwd         = true;
-    bool rev         = false;
+    bool fwd         = false;
+    bool rev         = true;
     bool inplace     = true;
     bool external    = true;
 

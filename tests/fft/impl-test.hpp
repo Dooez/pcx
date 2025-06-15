@@ -532,7 +532,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
     auto tw_rev = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
-            return tw_t{fft_size, 0};
+            return tw_t{fft_size, fft_size};
         } else {
             return tw_t{&(*twvec.end())};
         }
@@ -693,7 +693,7 @@ bool seq_test_proto(meta::ce_of<permute_t> auto          perm_type,
     auto tw_coh_rev = [&] {
         using tw_t = detail_::tw_data_t<fX, LocalTw>;
         if constexpr (LocalTw) {
-            return tw_t{fft_size, 0};
+            return tw_t{fft_size, fft_size};
         } else {
             return tw_t{&(*twvec.end())};
         }

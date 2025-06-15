@@ -55,6 +55,15 @@ struct tw_data_t<T, true> {
     static constexpr auto is_local() -> std::true_type {
         return {};
     };
+    constexpr void reinit_k(uZ k, uZ k_end = 0) {
+        assert(k <= start_fft_size);
+        k_begin = k;
+        if (k_end == 0)
+            this->k_end = k + 1;
+        else
+            this->k_end = k_end;
+        this->k = k;
+    }
 
     uZ start_fft_size = 1;
     uZ k              = 0;
@@ -413,12 +422,12 @@ struct btfly_node_dit {
             }
             assert(k_count <= (tw.k - tw.k_begin));
             tw.k -= k_count;
-            if (tw.k == tw.k_begin) {
-                tw.start_fft_size /= node_size;
-                tw.k_end /= node_size;
-                tw.k_begin /= node_size;
-                tw.k = tw.k_end;
-            }
+            // if (tw.k == tw.k_begin) {
+            //     tw.start_fft_size /= node_size;
+            //     tw.k_end /= node_size;
+            //     tw.k_begin /= node_size;
+            //     tw.k = tw.k_end;
+            // }
         }
     };
 };
@@ -889,10 +898,6 @@ struct sequential_subtransform {
                 }
                 return;
             }
-            // if constexpr (local_tw) {
-            //     tw.start_fft_size *= final_k_count * 2;
-            //     tw.k *= final_k_count * 2;
-            // }
             auto data_ptr = dst_data.get_batch_base(0);
             if constexpr (lowk && !single_load_ignore_lowk)
                 l_single_load(dst_pck, w_pck, lowk, data_ptr, data_ptr);
@@ -910,8 +915,11 @@ struct sequential_subtransform {
                 }
             } else {
                 if constexpr (local_tw) {
-                    tw.start_fft_size /= single_load_size;
-                    tw.k /= single_load_size;
+                    auto sl = width * node_size;
+                    tw.start_fft_size /= sl;
+                    tw.k_begin /= sl;
+                    tw.k_end /= sl;
+                    tw.k /= sl;
                 }
                 auto dst_ptr = dst_data.get_batch_base(0);
                 auto src_ptr = [=] PCX_LAINLINE {
@@ -970,8 +978,9 @@ struct sequential_subtransform {
             if constexpr (LocalTw) {
                 return [=]<uZ TwCount> PCX_LAINLINE(uZ_ce<TwCount>) {
                     return [=]<uZ KGroup> PCX_LAINLINE(uZ_ce<KGroup>) {
+                        auto rk       = tw_data.k - (reverse ? 1 : 0);
                         auto fft_size = tw_data.start_fft_size * node_size * TwCount;
-                        auto k        = tw_data.k * node_size * TwCount / 2 + KGroup * TwCount;
+                        auto k        = rk * node_size * TwCount / 2 + KGroup * TwCount;
 
                         constexpr auto adj_tw_count = half_tw && node_size == 2 ? TwCount / 2 : TwCount;
 
@@ -1827,13 +1836,7 @@ struct transform {
                                                     auto  k_cnt,
                                                     auto  src,
                                                     auto& permuter) {
-                auto l_tw_data = tw_data;
-                if constexpr (local_tw) {
-                    tw_data.k_begin = 0;
-                    tw_data.k_end   = 1;
-                    tw_data.k       = 0;
-                }
-
+                auto l_tw_data  = tw_data;
                 auto l_permuter = permuter;
                 for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                     l_tw_data       = tw_data;
@@ -1847,11 +1850,8 @@ struct transform {
                     tw_data = l_tw_data;
                 permuter = l_permuter;
                 for (uZ i_bg: stdv::iota(1U, bucket_grp_cnt)) {
-                    if constexpr (local_tw) {
-                        tw_data.k_begin = i_bg;
-                        tw_data.k_end   = i_bg + 1;
-                        tw_data.k       = i_bg;
-                    }
+                    if constexpr (local_tw)
+                        tw_data.reinit_k(i_bg);
                     auto bg_offset    = i_bg * bucket_cnt * bucket_tfsize;
                     auto bg_dst_start = dst.offset_k(bg_offset);
                     auto bg_src_start = src.offset_k(bg_offset);
@@ -1871,15 +1871,9 @@ struct transform {
                 bucket_grp_cnt *= k_cnt * 2;
                 dst = dst.div_stride(k_cnt * 2);
                 if constexpr (local_tw) {
-                    tw_data         = l_tw_data;
-                    tw_data.k_begin = 0;
-                    tw_data.k_end   = 1;
-                    tw_data.k       = 0;
+                    tw_data = l_tw_data;
+                    tw_data.reinit_k(0);
                 }
-                // if constexpr (local_tw) {
-                //     tw_data.k = 0;
-                //     tw_data.start_fft_size *= k_cnt * 2;
-                // }
             };
             constexpr auto pass_align_node = subtf_t::get_align_node_subtf(pass_k_cnt * 2);
             constexpr auto pass_align      = align_param<pass_align_node, true>{};
@@ -1929,13 +1923,8 @@ struct transform {
                     seq(lowk, 0);
                 constexpr uZ sequential_start = lowk ? 1U : 0U;
                 for (uZ i_bg: stdv::iota(sequential_start, bucket_grp_cnt)) {
-                    if constexpr (local_tw) {
-                        tw_data.k_begin = i_bg;
-                        tw_data.k_end   = i_bg + 1;
-                        tw_data.k       = i_bg;
-                    }
                     if constexpr (local_tw)
-                        tw_data.k = i_bg;
+                        tw_data.reinit_k(i_bg);
                     auto bucket_offset = i_bg * bucket_tfsize;
                     seq(not_lowk, bucket_offset);
                 }
@@ -2061,9 +2050,14 @@ struct transform {
                     auto l_tw_data  = tw_data;
                     auto l_permuter = permuter;
                     for (uZ i_bg: stdv::iota(0U, bucket_group_cnt) | stdv::drop(1) | stdv::reverse) {
-                        if constexpr (local_tw)
-                            tw_data.k = i_bg * k_cnt * 2;
-                        if (i_bg == bucket_group_cnt / (k_cnt * 2) - 1)
+                        if constexpr (local_tw) {
+                            tw_data.k_begin = i_bg * k_cnt * 2;
+                            tw_data.k_end   = (i_bg + 1) * k_cnt * 2;
+                            tw_data.k       = (i_bg + 1) * k_cnt * 2;
+                            // tw_data.reinit_k(i_bg * k_cnt * 2, i_bg * k_cnt * 2);
+                            // tw_data.k = i_bg * k_cnt * 2;
+                        }
+                        if (i_bg == bucket_group_cnt / (k_cnt * 2) - 1 && !local_tw)
                             tw_data_bak = tw_data;
                         auto bg_offset    = i_bg * bucket_cnt * bucket_tfsize;
                         auto bg_dst_start = dst.offset_k(bg_offset);
@@ -2079,8 +2073,12 @@ struct transform {
                         tw_data  = l_tw_data;
                         permuter = l_permuter;
                     }
-                    if constexpr (local_tw)
-                        tw_data.k = 0;
+                    if constexpr (local_tw) {
+                        tw_data.k_begin = 0;
+                        tw_data.k_end   = k_cnt * 2;
+                        tw_data.k       = k_cnt * 2;
+                        // tw_data.k = 0;
+                    }
                     for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
                         l_tw_data       = tw_data;
                         l_permuter      = permuter;
@@ -2089,9 +2087,13 @@ struct transform {
                         auto s_src      = coherent_perm(l_permuter, dst_pck, bucket_dst, bucket_src);
                         subtf(dst_pck, src_pck, align, lowk, bucket_dst, s_src, k_cnt, l_tw_data);
                     }
-                    if constexpr (local_tw)
-                        tw_data.start_fft_size /= k_cnt * 2;
-                    else
+                    if constexpr (local_tw) {
+                        tw_data = l_tw_data;
+                        // tw_data
+                        // tw_data.reinit_k(0);
+                        // tw_data.start_fft_size /= k_cnt * 2;
+
+                    } else
                         tw_data = l_tw_data;
                     permuter = l_permuter;
                 };
@@ -2137,25 +2139,37 @@ struct transform {
                 }
                 if constexpr (local_tw) {
                     tw_data.start_fft_size /= bucket_tfsize;
-                    tw_data.k = 0;
+                    // tw_data.reinit_k(0, 0);
+                    // tw_data.k = 0;
                 }
             } else {
                 uZ   bucket_group_cnt = fft_size / bucket_tfsize;
                 auto bg_range         = stdv::iota(lowk ? 1U : 0U, bucket_group_cnt) | stdv::reverse;
                 for (uZ i_bg: bg_range) {
                     if constexpr (local_tw) {
-                        tw_data   = tw_data_bak;
-                        tw_data.k = bucket_tfsize + i_bg * bucket_tfsize;
+                        tw_data         = tw_data_bak;
+                        tw_data.k_begin = i_bg * bucket_tfsize;
+                        tw_data.k_end   = bucket_tfsize + i_bg * bucket_tfsize;
+                        tw_data.k       = bucket_tfsize + i_bg * bucket_tfsize;
                     }
                     auto bucket_offset = i_bg * bucket_tfsize;
                     seq(not_lowk, bucket_offset);
                 }
                 if constexpr (local_tw) {
-                    tw_data   = tw_data_bak;
-                    tw_data.k = bucket_tfsize;
+                    tw_data         = tw_data_bak;
+                    tw_data.k_begin = 0;
+                    tw_data.k_end   = bucket_tfsize;
+                    tw_data.k       = bucket_tfsize;
                 }
                 if constexpr (lowk)
                     seq(lowk, 0);
+
+                if (local_tw) {
+                    tw_data.start_fft_size /= bucket_tfsize;
+                    tw_data.k_begin = 0;
+                    tw_data.k_end   = tw_data.start_fft_size;
+                    tw_data.k       = tw_data.k_end;
+                }
             }
             dst_data = dst_data.mul_stride(batch_size / width);
             o_src    = o_src.mul_stride(batch_size / width);
