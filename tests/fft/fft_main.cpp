@@ -205,9 +205,9 @@ bool test_par(pcx::uZ_seq<Ws...>,
 }
 template<uZ... Ws, uZ... NodeSize, typename fX>
 bool test_seq(pcx::uZ_seq<Ws...>, pcx::uZ_seq<NodeSize...>, pcx::meta::t_id<fX>, uZ fft_size, f64 freq_n) {
-    bool local_check = false;
+    bool local_check = true;
     bool fwd         = true;
-    bool rev         = true;
+    bool rev         = false;
     bool inplace     = true;
     bool external    = true;
 
@@ -247,7 +247,7 @@ bool test_seq(pcx::uZ_seq<Ws...>, pcx::uZ_seq<NodeSize...>, pcx::meta::t_id<fX>,
 int main() {
     // uZ fft_size = 2048 * 256;
     // uZ fft_size = 32768;
-    uZ fft_size = 256;
+    uZ fft_size = 4096;
     // uZ fft_size = 256;
     // uZ fft_size = 128 * 128 * 2;
     // uZ fft_size = 2048;
