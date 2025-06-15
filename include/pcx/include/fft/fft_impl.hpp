@@ -2053,7 +2053,7 @@ struct transform {
                         if constexpr (local_tw) {
                             tw_data.k_begin = i_bg * k_cnt * 2;
                             tw_data.k_end   = (i_bg + 1) * k_cnt * 2;
-                            tw_data.k       = (i_bg + 1) * k_cnt * 2;
+                            tw_data.k       = (i_bg)*k_cnt * 2;
                             // tw_data.reinit_k(i_bg * k_cnt * 2, i_bg * k_cnt * 2);
                             // tw_data.k = i_bg * k_cnt * 2;
                         }
@@ -2070,13 +2070,14 @@ struct transform {
                             auto s_src      = coherent_perm(l_permuter, dst_pck, bucket_dst, bucket_src);
                             subtf(dst_pck, src_pck, align, not_lowk, bucket_dst, s_src, k_cnt, l_tw_data);
                         }
-                        tw_data  = l_tw_data;
+                        if constexpr (!local_tw)
+                            tw_data = l_tw_data;
                         permuter = l_permuter;
                     }
                     if constexpr (local_tw) {
                         tw_data.k_begin = 0;
                         tw_data.k_end   = k_cnt * 2;
-                        tw_data.k       = k_cnt * 2;
+                        tw_data.k       = 0;
                         // tw_data.k = 0;
                     }
                     for (uZ i_b: stdv::iota(0U, bucket_cnt)) {
