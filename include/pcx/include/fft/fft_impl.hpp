@@ -2165,7 +2165,7 @@ struct transform {
                 if constexpr (lowk)
                     seq(lowk, 0);
 
-                if (local_tw) {
+                if constexpr (local_tw) {
                     tw_data.start_fft_size /= bucket_tfsize;
                     tw_data.k_begin = 0;
                     tw_data.k_end   = tw_data.start_fft_size;
