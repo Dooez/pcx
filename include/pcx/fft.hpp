@@ -242,7 +242,8 @@ private:
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
         constexpr auto conj_tw   = std::bool_constant<reverse>{};
-        constexpr auto PermWidth = detail_::powi(2, detail_::log2i(Width * NodeSize) / 2);
+        constexpr auto PermWidth = std::min(max_perm_width,    //
+                                            detail_::powi(2, detail_::log2i(Width * NodeSize) / 2));
 
         auto permuter = [&] {
             if constexpr (bit_reversed) {
@@ -371,7 +372,8 @@ private:
         constexpr auto dst_pck   = cxpack<DstPck, T>{};
         constexpr auto src_pck   = cxpack<SrcPck, T>{};
         constexpr auto conj_tw   = std::bool_constant<reverse>{};
-        constexpr auto PermWidth = detail_::powi(2, detail_::log2i(Width * NodeSize) / 2);
+        constexpr auto PermWidth = std::min(max_perm_width,    //
+                                            detail_::powi(2, detail_::log2i(Width * NodeSize) / 2));
 
         auto permuter = [&] {
             if constexpr (bit_reversed) {

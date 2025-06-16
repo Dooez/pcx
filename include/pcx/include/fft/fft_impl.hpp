@@ -1519,7 +1519,68 @@ struct transform {
             } else {
                 auto batch_size = bucket_tfsize / fft_size * lane_size;
                 auto batch_cnt  = fft_size;
-                auto tform      = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
+                if (fft_size <= node_size) {
+                    auto check_w = [&] PCX_LAINLINE(meta::ce_of<uZ> auto ns) {
+                        if (fft_size != ns)
+                            return false;
+                        auto tform = [=](auto width, auto batch_size, auto dst, auto src, auto tw) {
+                            using subtf_t = detail_::fft_iteration_t<T, width>;
+                            auto k_count  = 1UZ;
+                            auto l_tw     = tw;
+                            subtf_t::fft_iteration(ns,
+                                                   dst_pck,
+                                                   src_pck,
+                                                   lowk,
+                                                   reverse,
+                                                   conj_tw,
+                                                   batch_cnt,
+                                                   batch_size,
+                                                   dst,
+                                                   src,
+                                                   k_count,
+                                                   l_tw);
+                            auto{permuter}.small_permute(width,
+                                                         batch_size,
+                                                         reverse,
+                                                         dst_pck,
+                                                         dst_pck,
+                                                         dst,
+                                                         detail_::inplace_src);
+                        };
+                        while (true) {
+                            if (data_size < batch_size) {
+                                if (batch_size <= lane_size)
+                                    break;
+                                batch_size /= 2;
+                                continue;
+                            }
+                            tform(width, batch_size, dst_data, src_data, tw_data);
+                            data_size -= batch_size;
+                            dst_data = dst_data.offset_contents(batch_size);
+                            src_data = src_data.offset_contents(batch_size);
+                        }
+                        [&]<uZ... Batch> PCX_LAINLINE(uZ_seq<Batch...>) {
+                            auto small_tform = [&](auto small_batch) {
+                                if (data_size >= small_batch) {
+                                    constexpr auto lwidth = uZ_ce<std::min(width.value, small_batch.value)>{};
+                                    tform(lwidth, small_batch, dst_data, src_data, tw_data);
+                                    data_size -= small_batch;
+                                    dst_data = dst_data.offset_contents(small_batch);
+                                    src_data = src_data.offset_contents(small_batch);
+                                }
+                                return data_size != 0;
+                            };
+                            (void)(small_tform(uZ_ce<Batch>{}) && ...);
+                        }(batch_align_seq);
+
+                        return true;
+                    };
+                    [&]<uZ... Ps>(uZ_seq<Ps...>) {
+                        (void)(check_w(uZ_ce<powi(2, Ps + 1)>{}) || ...);
+                    }(make_uZ_seq<log2i(node_size)>{});
+                    return;
+                }
+                auto tform = [=](auto width, auto align, auto batch_size, auto dst, auto src, auto tw) {
                     using subtf_t = subtransform<node_size, T, width>;
                     subtf_t::perform_subtf(dst_pck,
                                            src_pck,

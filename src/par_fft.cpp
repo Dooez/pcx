@@ -12,8 +12,9 @@ constexpr auto shiftd_opts = fft_options{.pt = fft_permutation::shifted};
 template<floating_point T, fft_options Opts>
 par_fft_plan<T, Opts>::par_fft_plan(uZ fft_size)
 : fft_size_(fft_size)
-, permuter_(permuter_t::insert_indexes(idxs_, fft_size, coherent_size)) {
-    // constexpr auto lowk = val_ce<true>{};
+, permuter_(permuter_t::insert_indexes(idxs_, fft_size, coherent_size / lane_size)) {
+    if constexpr (!bit_reversed)
+        permuter_.idx_ptr = idxs_.data();
     if (fft_size > coherent_size / lane_size) {
         using impl_t = detail_::transform<Opts.node_size, T, width, coherent_size, lane_size>;
         impl_t::insert_tw_tf(tw_, fft_size, lowk, half_tw, not_sequential);

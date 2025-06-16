@@ -30,7 +30,7 @@ inline constexpr auto low_k   = meta::val_seq<true>{};
 //                                                  permute_t::shifted>{};
 inline constexpr auto perm_types = meta::val_seq<permute_t::bit_reversed>{};
 
-inline constexpr auto local_tw = meta::val_seq<true>{};
+inline constexpr auto local_tw = meta::val_seq<false>{};
 
 
 }    // namespace pcx::testing
