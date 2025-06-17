@@ -126,7 +126,7 @@ struct cxstore_t {
     PCX_AINLINE void operator()(std::complex<typename V::real_type>* dest, V data) const {
         auto* dest_ptr = reinterpret_cast<typename V::real_type*>(dest);
         store(dest_ptr, data.real());
-        store(dest_ptr + 1, data.imag());
+        store(dest_ptr + V::width(), data.imag());
     }
 };
 }    // namespace detail_
