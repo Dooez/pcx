@@ -118,7 +118,7 @@ inline constexpr struct {
 namespace detail_ {
 inline constexpr struct {
     template<typename T, uZ Width>
-    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
+    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const {
         return tupi::make_tuple(detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value));
     }
     template<iZ Lrot, iZ Rrot>
@@ -194,6 +194,10 @@ inline constexpr auto mul = tupi::pass | detail_::mul_stage_0 | tupi::apply | de
 
 namespace detail_ {
 inline constexpr struct {
+    template<typename T, uZ Width>
+    PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const {
+        return tupi::make_tuple(detail_::vec_traits<T, Width>::div(lhs.value, rhs.value));
+    }
     template<iZ Lrot, iZ Rrot>
     PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) {
         return tupi::make_tuple(imag_unit_t<(Lrot - Rrot) % 4>{});
