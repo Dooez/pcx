@@ -30,7 +30,7 @@ PCX_AINLINE auto sqrt(vec<T, Width> a) -> vec<T, Width> {
 inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
-        return detail_::vec_traits<T, Width>::add(lhs.value, rhs.value);
+        return vec<T, Width>{detail_::vec_traits<T, Width>::add(lhs.value, rhs.value)};
     }
     template<typename T, uZ Width, uZ PackSize>
     PCX_AINLINE auto operator()(cx_vec<T, false, false, Width, PackSize> lhs,
@@ -76,7 +76,7 @@ inline constexpr struct {
 inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const -> vec<T, Width> {
-        return detail_::vec_traits<T, Width>::sub(lhs.value, rhs.value);
+        return vec<T, Width>{detail_::vec_traits<T, Width>::sub(lhs.value, rhs.value)};
     }
     template<typename T, uZ Width, uZ PackSize>
     PCX_AINLINE auto operator()(cx_vec<T, false, false, Width, PackSize> lhs,
@@ -124,7 +124,7 @@ namespace detail_ {
 inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const {
-        return tupi::make_tuple(detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value));
+        return tupi::make_tuple(vec<T, Width>{detail_::vec_traits<T, Width>::mul(lhs.value, rhs.value)});
     }
     template<iZ Lrot, iZ Rrot>
     PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) const {
@@ -157,8 +157,8 @@ inline constexpr struct {
     }
 } mul_stage_0;
 constexpr inline struct {
-    PCX_AINLINE auto operator()(auto&& v) const {
-        return std::forward<decltype(v)>(v);
+    PCX_AINLINE auto operator()(auto v) const {
+        return v;
     }
     template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(Res res0, Lhs lhs, Rhs rhs) const {
@@ -201,7 +201,7 @@ namespace detail_ {
 inline constexpr struct {
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> lhs, vec<T, Width> rhs) const {
-        return tupi::make_tuple(detail_::vec_traits<T, Width>::div(lhs.value, rhs.value));
+        return tupi::make_tuple(vec<T, Width>{detail_::vec_traits<T, Width>::div(lhs.value, rhs.value)});
     }
     template<iZ Lrot, iZ Rrot>
     PCX_AINLINE auto operator()(imag_unit_t<Lrot>, imag_unit_t<Rrot>) const {
@@ -235,8 +235,8 @@ inline constexpr struct {
     };
 } div_stage_0;
 inline constexpr struct {
-    PCX_AINLINE auto operator()(auto&& v) -> decltype(auto) {
-        return std::forward_as_tuple(std::forward<decltype(v)>(v));
+    PCX_AINLINE auto operator()(auto v) const {
+        return std::make_tuple(v);
     }
     template<tight_cx_vec Res0, tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(Res0 res0, typename Res0::vec_t rhs_re_sq, Lhs lhs, Rhs rhs) const {
@@ -278,8 +278,8 @@ inline constexpr struct {
     };
 } div_stage_1;
 inline constexpr struct {
-    PCX_AINLINE auto operator()(auto&& v) -> decltype(auto) {
-        return std::forward<decltype(v)>(v);
+    PCX_AINLINE auto operator()(auto v) -> decltype(auto) {
+        return v;
     }
     template<tight_cx_vec Res1>
     PCX_AINLINE auto operator()(Res1 cx_vec, typename Res1::vec_t rhs_abs) const {
@@ -300,8 +300,8 @@ inline constexpr auto div = tupi::pass                //
 namespace detail_ {
 inline constexpr struct {
     template<typename T, uZ Width>
-    PCX_AINLINE auto operator()(vec<T, Width> vec) const {
-        return tupi::make_tuple(detail_::vec_traits<T, Width>::mul(vec.value, vec.value));
+    PCX_AINLINE auto operator()(vec<T, Width> v) const {
+        return tupi::make_tuple(vec<T, Width>{detail_::vec_traits<T, Width>::mul(v.value, v.value)});
     }
     template<iZ Rot>
     PCX_AINLINE auto operator()(imag_unit_t<Rot>) const {
@@ -330,8 +330,8 @@ inline constexpr struct {
 
 inline constexpr struct {
     template<typename T, uZ Width>
-    PCX_AINLINE auto operator()(vec<T, Width> vec) const {
-        return tupi::make_tuple(detail_::vec_traits<T, Width>::abs(vec.value));
+    PCX_AINLINE auto operator()(vec<T, Width> v) const {
+        return tupi::make_tuple(vec<T, Width>{detail_::vec_traits<T, Width>::abs(v.value)});
     }
     template<iZ Rot>
     PCX_AINLINE auto operator()(imag_unit_t<Rot>) const {
