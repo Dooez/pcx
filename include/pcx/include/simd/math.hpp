@@ -314,8 +314,8 @@ inline constexpr struct {
 
         auto real = cxvec.real();
         auto imag = cxvec.imag();
-        return tupi::make_tuple(detail_::vec_traits<T, width>::mul(real, real),
-                                detail_::vec_traits<T, width>::mul(real, real));
+        return tupi::make_tuple(vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)},
+                                vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)});
     }
 } sq_abs_stage_0;
 inline constexpr struct {
@@ -324,7 +324,7 @@ inline constexpr struct {
     }
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> re, vec<T, Width> im) const {
-        return detail_::vec_traits<T, Width>::add(re.value, im.value);
+        return vec<T, Width>{detail_::vec_traits<T, Width>::add(re.value, im.value)};
     }
 } sq_abs_stage_1;
 
@@ -344,8 +344,8 @@ inline constexpr struct {
 
         auto real = cxvec.real();
         auto imag = cxvec.imag();
-        return tupi::make_tuple(detail_::vec_traits<T, width>::mul(real, real),
-                                detail_::vec_traits<T, width>::mul(real, real));
+        return tupi::make_tuple(vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)},
+                                vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)});
     }
 } abs_stage_0;
 inline constexpr struct {
@@ -354,7 +354,8 @@ inline constexpr struct {
     }
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> re, vec<T, Width> im) const {
-        return tupi::make_tuple(detail_::vec_traits<T, Width>::add(re.value, im.value), std::true_type{});
+        return tupi::make_tuple(vec<T, Width>{detail_::vec_traits<T, Width>::add(re.value, im.value)},
+                                std::true_type{});
     }
 } abs_stage_1;
 inline constexpr struct {
@@ -363,7 +364,7 @@ inline constexpr struct {
     }
     template<typename T, uZ Width>
     PCX_AINLINE auto operator()(vec<T, Width> sq_abs, std::true_type) const {
-        return detail_::vec_traits<T, Width>::sqrt(sq_abs.value);
+        return vec<T, Width>{detail_::vec_traits<T, Width>::sqrt(sq_abs.value)};
     }
 } abs_stage_2;
 }    // namespace detail_
