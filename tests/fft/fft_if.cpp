@@ -12,9 +12,37 @@ using pcx::f64;
 using pcx::uZ;
 namespace pcxt = pcx::testing;
 
-template<typename fX>
-bool check_par_normal(uZ fft_size, uZ data_size, f64 freq_n) {
-    constexpr auto ops = pcx::fft_options{.pt = pcx::fft_permutation::normal};
+namespace {
+// constexpr auto permutation  = pcx::meta::val_seq<pcx::fft_permutation::normal>{};
+constexpr auto permutations = pcx::meta::val_seq<pcx::fft_permutation::normal,
+                                                 pcx::fft_permutation::bit_reversed,
+                                                 pcx::fft_permutation::shifted>{};
+template<auto Perm>
+void naive_permute(auto& check) {
+    using enum pcx::fft_permutation;
+    if constexpr (Perm == bit_reversed) {
+        return;
+    } else if constexpr (Perm == normal) {
+        pcxt::bit_reverse(check);
+    } else if constexpr (Perm == shifted) {
+        pcxt::shifted_bit_reverse(check);
+    }
+}
+template<auto Perm>
+void print_perm() {
+    using enum pcx::fft_permutation;
+    if constexpr (Perm == bit_reversed) {
+        std::print("[BitRev]");
+    } else if constexpr (Perm == normal) {
+        std::print("[Normal]");
+    } else if constexpr (Perm == shifted) {
+        std::print("[Shiftd]");
+    }
+}
+
+template<typename fX, auto Perm>
+bool check_par_perm(uZ fft_size, uZ data_size, f64 freq_n) {
+    constexpr auto ops = pcx::fft_options{.pt = Perm};
     auto           fft = pcx::par_fft_plan<fX, ops>(fft_size);
 
     auto signal_raw = std::vector<std::complex<fX>>(fft_size * data_size);
@@ -38,20 +66,32 @@ bool check_par_normal(uZ fft_size, uZ data_size, f64 freq_n) {
     }
 
     pcxt::naive_fft(check, 8, 8);
-    pcxt::bit_reverse(check);
+    naive_permute<Perm>(check);
     auto data_range = signal() | stdv::take(fft_size) | stdr::to<std::vector<std::span<std::complex<fX>>>>();
     fft.fft(data_range);
 
+    print_perm<Perm>();
+    std::print("[Par ][Fwd]");
     for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal(), check)) {
         if (!pcxt::par_check_correctness(check_v, sv, fft_size, i, ops.simd_width, ops.node_size, false))
             return false;
     }
-    std::println("[Success][Par ] size: {}", fft_size);
+    std::println("[Success] {}×{}×{}, width {}, node size {}.",
+                 pcx::meta::types<fX>{},
+                 fft_size,
+                 data_size,
+                 ops.simd_width,
+                 ops.node_size);
     return true;
 }
-template<typename fX>
-bool check_parc_br(uZ fft_size, uZ data_size, f64 freq_n) {
-    constexpr auto ops = pcx::fft_options{.pt = pcx::fft_permutation::bit_reversed};
+template<typename fX, auto... Perms>
+bool check_par(uZ fft_size, uZ data_size, f64 freq_n, pcx::meta::val_seq<Perms...>) {
+    return (check_par_perm<fX, Perms>(fft_size, data_size, freq_n) && ...);
+}
+
+template<typename fX, auto Perm>
+bool check_parc_perm(uZ fft_size, uZ data_size, f64 freq_n) {
+    constexpr auto ops = pcx::fft_options{.pt = Perm};
     auto           fft = pcx::par_fft_plan<fX, ops>(fft_size);
 
     auto signal_raw = std::vector<std::complex<fX>>(fft_size * data_size);
@@ -75,20 +115,31 @@ bool check_parc_br(uZ fft_size, uZ data_size, f64 freq_n) {
     }
 
     pcxt::naive_fft(check, 8, 8);
+    naive_permute<Perm>(check);
     fft.fft_raw(signal_raw.data(), data_size, data_size);
 
+    print_perm<Perm>();
+    std::print("[Parc][Fwd]");
     for (auto [i, sv, check_v]: stdv::zip(stdv::iota(0U), signal(), check)) {
         if (!pcxt::par_check_correctness(check_v, sv, fft_size, i, ops.simd_width, ops.node_size, false))
             return false;
     }
-    std::println("[Success][Parc] size: {}", fft_size);
+    std::println("[Success] {}×{}×{}, width {}, node size {}.",
+                 pcx::meta::types<fX>{},
+                 fft_size,
+                 data_size,
+                 ops.simd_width,
+                 ops.node_size);
     return true;
 }
+template<typename fX, auto... Perms>
+bool check_parc(uZ fft_size, uZ data_size, f64 freq_n, pcx::meta::val_seq<Perms...>) {
+    return (check_parc_perm<fX, Perms>(fft_size, data_size, freq_n) && ...);
+}
 
-
-template<typename fX>
-bool check_br(uZ fft_size) {
-    constexpr auto ops = pcx::fft_options{.pt = pcx::fft_permutation::bit_reversed};
+template<typename fX, auto Perm>
+bool check_seq_perm(uZ fft_size) {
+    constexpr auto ops = pcx::fft_options{.pt = Perm};
     auto           fft = pcx::fft_plan<fX, ops>(fft_size);
 
     auto data = std::vector<std::complex<fX>>(fft_size);
@@ -99,103 +150,50 @@ bool check_br(uZ fft_size) {
                      / static_cast<fX>(2.));
     }
 
-    auto data_c = data;
+    auto check = data;
     fft.fft(data);
-    pcxt::naive_fft(data_c, 16, 8);
-    std::print("[BitRev][Fwd]");
-    if (!pcxt::check_correctness(data_c, data, 16, 8, true, true, true))
+    pcxt::naive_fft(check, 16, 8);
+    naive_permute<Perm>(check);
+    print_perm<Perm>();
+    std::print("[Seq ][Fwd]");
+    if (!pcxt::check_correctness(check, data, 16, 8, true, true, true))
         return false;
-    pcxt::naive_reverse(data_c, 16, 8);
+
+    naive_permute<Perm>(check);
+    pcxt::naive_reverse(check, 16, 8);
     fft.ifft(data);
-    std::print("[BitRev][rev]");
-    if (!pcxt::check_correctness(data_c, data, 16, 8, true, true, true))
+    print_perm<Perm>();
+    std::print("[Seq ][Rev]");
+    if (!pcxt::check_correctness(check, data, 16, 8, true, true, true))
         return false;
+    //
     return true;
 }
-
-template<typename fX>
-bool check_normal(uZ fft_size) {
-    constexpr auto ops = pcx::fft_options{.pt = pcx::fft_permutation::normal};
-    auto           fft = pcx::fft_plan<fX, ops>(fft_size);
-
-    auto data = std::vector<std::complex<fX>>(fft_size);
-    for (auto [i, v]: stdv::enumerate(data)) {
-        v = std::exp(std::complex<fX>{0, static_cast<fX>(i)}    //
-                     * static_cast<fX>(2.)                      //
-                     * std::numbers::pi_v<fX>                   //
-                     / static_cast<fX>(2.));
-    }
-
-    auto data_c = data;
-    fft.fft(data);
-    pcxt::naive_fft(data_c, 16, 8);
-    pcxt::bit_reverse(data_c);
-    std::print("[Normal][Fwd]");
-    if (!pcxt::check_correctness(data_c, data, 16, 8, true, true, true))
-        return false;
-    pcxt::bit_reverse(data_c);
-    pcxt::naive_reverse(data_c, 16, 8);
-    fft.ifft(data);
-    std::print("[Normal][Rev]");
-    if (!pcxt::check_correctness(data_c, data, 16, 8, true, true, true))
-        return false;
-    return true;
+template<typename fX, auto... Perms>
+bool check_seq(uZ fft_size, pcx::meta::val_seq<Perms...>) {
+    return (check_seq_perm<fX, Perms>(fft_size) && ...);
 }
-
-template<typename fX>
-bool check_shiftd(uZ fft_size) {
-    constexpr auto ops = pcx::fft_options{.pt = pcx::fft_permutation::shifted};
-    auto           fft = pcx::fft_plan<fX, ops>(fft_size);
-
-    auto data = std::vector<std::complex<fX>>(fft_size);
-    for (auto [i, v]: stdv::enumerate(data)) {
-        v = std::exp(std::complex<fX>{0, static_cast<fX>(i)}    //
-                     * static_cast<fX>(2.)                      //
-                     * std::numbers::pi_v<fX>                   //
-                     / static_cast<fX>(2.));
-    }
-
-    auto data_c = data;
-    fft.fft(data);
-    pcxt::naive_fft(data_c, 16, 8);
-    pcxt::shifted_bit_reverse(data_c);
-    std::print("[Shiftd][Fwd]");
-    if (!pcxt::check_correctness(data_c, data, 16, 8, true, true, true))
-        return false;
-    pcxt::shifted_bit_reverse(data_c);
-    pcxt::naive_reverse(data_c, 16, 8);
-    fft.ifft(data);
-    std::print("[Shiftd][Rev]");
-    if (!pcxt::check_correctness(data_c, data, 16, 8, true, true, true))
-        return false;
-    return true;
-}
+}    // namespace
 
 int main() {
     size_t fft_size = 2;
     while (fft_size < 2048 * 256) {
-        if (!check_par_normal<f32>(fft_size, 31, 13.001))
+        if (!check_par<f32>(fft_size, 31, 13.001, permutations))
             return -1;
-        // if (!check_parc_br<f32>(fft_size, 31, 13.001))
-        //     return -1;
-        // if (!check_br<f32>(fft_size))
-        //     return -1;
-        // if (!check_normal<f32>(fft_size))
-        //     return -1;
-        // if (!check_shiftd<f32>(fft_size))
-        //     return -1;
+        if (!check_parc<f32>(fft_size, 31, 13.001, permutations))
+            return -1;
+        if (!check_seq<f32>(fft_size, permutations))
+            return -1;
         fft_size *= 2;
     }
     fft_size = 4;
     while (fft_size < 2048 * 128) {
-        if (!check_parc_br<f32>(fft_size, 31, 13.001))
+        if (!check_par<f64>(fft_size, 31, 13.001, permutations))
             return -1;
-        // if (!check_br<f64>(fft_size))
-        //     return -1;
-        // if (!check_normal<f64>(fft_size))
-        //     return -1;
-        // if (!check_shiftd<f64>(fft_size))
-        //     return -1;
+        if (!check_parc<f64>(fft_size, 31, 13.001, permutations))
+            return -1;
+        if (!check_seq<f64>(fft_size, permutations))
+            return -1;
         fft_size *= 2;
     }
 

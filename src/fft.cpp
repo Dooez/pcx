@@ -79,7 +79,7 @@ fft_plan<T, Opts>::fft_plan(uZ fft_size)
         using impl_t = detail_::sequential_subtransform<Opts.node_size, T, width>;
         impl_t::insert_tw_single_load(tw_, tw_data, lowk, half_tw);
 
-        constexpr auto perm_width = detail_::powi(2, detail_::log2i(max_single_load) / 2);
+        constexpr auto perm_width = calc_perm_width(width, Opts.node_size);
         permuter_                 = permuter_t<perm_width>::insert_indexes(idxs_, fft_size);
         ileave_inplace_ptr_       = &fft_plan::single_load_tform_inplace_ileave<width, Opts.node_size>;
         ileave_inplace_r_ptr_     = &fft_plan::single_load_rtform_inplace_ileave<width, Opts.node_size>;
@@ -96,9 +96,8 @@ fft_plan<T, Opts>::fft_plan(uZ fft_size)
             if (fft_size == single_load) {
                 using impl_t = detail_::sequential_subtransform<l_node_size, T, l_width>;
                 impl_t::insert_tw_single_load(tw_, tw_data, lowk, half_tw);
-                constexpr auto perm_width = detail_::powi(2, detail_::log2i(single_load) / 2);
-                using perm_t              = permuter_t<perm_width>;
-                permuter_                 = perm_t::insert_indexes(idxs_, fft_size);
+                constexpr auto perm_width = calc_perm_width(l_width, l_node_size);
+                permuter_                 = permuter_t<perm_width>::insert_indexes(idxs_, fft_size);
                 ileave_inplace_ptr_       = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
                 ileave_inplace_r_ptr_  = &fft_plan::single_load_rtform_inplace_ileave<l_width, l_node_size>;
                 ileave_external_ptr_   = &fft_plan::single_load_tform_external_ileave<l_width, l_node_size>;
@@ -119,9 +118,8 @@ fft_plan<T, Opts>::fft_plan(uZ fft_size)
             if (fft_size == l_node_size) {
                 using impl_t = detail_::sequential_subtransform<l_node_size, T, l_width>;
                 impl_t::insert_tw_single_load(tw_, tw_data, lowk, half_tw);
-                constexpr auto perm_width = detail_::powi(2, detail_::log2i(l_node_size) / 2);
-                using perm_t              = permuter_t<perm_width>;
-                permuter_                 = perm_t::insert_indexes(idxs_, fft_size);
+                constexpr auto perm_width = calc_perm_width(l_width, l_node_size);
+                permuter_                 = permuter_t<perm_width>::insert_indexes(idxs_, fft_size);
                 ileave_inplace_ptr_       = &fft_plan::single_load_tform_inplace_ileave<l_width, l_node_size>;
                 ileave_inplace_r_ptr_  = &fft_plan::single_load_rtform_inplace_ileave<l_width, l_node_size>;
                 ileave_external_ptr_   = &fft_plan::single_load_tform_external_ileave<l_width, l_node_size>;

@@ -32,13 +32,12 @@ class fft_plan {
     template<uZ AlignNode>
     using align_param = detail_::align_param<AlignNode, true>;
     template<uZ Width>
-    using permuter_t =
-        std::conditional_t<bit_reversed,
-                           detail_::identity_permuter_t,
-                           std::conditional_t<Opts.pt == fft_permutation::normal,
-                                              detail_::br_permuter_sequential<max_perm_width, false>,
-                                              detail_::br_permuter_sequential<max_perm_width, true>>>;
-    using tw_t = std::vector<T>;
+    using permuter_t = std::conditional_t<bit_reversed,
+                                          detail_::identity_permuter_t,
+                                          std::conditional_t<Opts.pt == fft_permutation::normal,
+                                                             detail_::br_permuter_sequential<Width, false>,
+                                                             detail_::br_permuter_sequential<Width, true>>>;
+    using tw_t       = std::vector<T>;
 
 public:
     explicit fft_plan(uZ fft_size);
@@ -149,6 +148,10 @@ private:
     template<uZ Width, uZ NodeSize>
     void single_load_rtform_external_ileave(T* dst, const T* src) const;
 
+    static consteval auto calc_perm_width(uZ width, uZ node_size) {
+        return std::min(max_perm_width, detail_::powi(2, detail_::log2i(width * node_size) / 2));
+    }
+
     template<uZ Width, uZ DstPck, uZ SrcPck, uZ Align>
     void tform_inplace(T* dst, meta::ce_of<bool> auto reverse) const {
         using impl_t             = detail_::transform<Opts.node_size, T, Width, Opts.coherent_size, 0>;
@@ -238,12 +241,11 @@ private:
 
     template<uZ Width, uZ NodeSize, uZ DstPck, uZ SrcPck>
     void single_load_tform_inplace(T* dst, meta::ce_of<bool> auto reverse) const {
-        using impl_t             = detail_::sequential_subtransform<NodeSize, T, Width>;
-        constexpr auto dst_pck   = cxpack<DstPck, T>{};
-        constexpr auto src_pck   = cxpack<SrcPck, T>{};
-        constexpr auto conj_tw   = std::bool_constant<reverse>{};
-        constexpr auto PermWidth = std::min(max_perm_width,    //
-                                            detail_::powi(2, detail_::log2i(Width * NodeSize) / 2));
+        using impl_t           = detail_::sequential_subtransform<NodeSize, T, Width>;
+        constexpr auto dst_pck = cxpack<DstPck, T>{};
+        constexpr auto src_pck = cxpack<SrcPck, T>{};
+        constexpr auto conj_tw = std::bool_constant<reverse>{};
+        constexpr auto PermWidth = calc_perm_width(Width, NodeSize);
 
         auto permuter = [&] {
             if constexpr (bit_reversed) {
