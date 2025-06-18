@@ -314,8 +314,8 @@ inline constexpr struct {
 
         auto real = cxvec.real();
         auto imag = cxvec.imag();
-        return tupi::make_tuple(vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)},
-                                vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)});
+        return tupi::make_tuple(vec<T, width>{detail_::vec_traits<T, width>::mul(real.value, real.value)},
+                                vec<T, width>{detail_::vec_traits<T, width>::mul(imag.value, imag.value)});
     }
 } sq_abs_stage_0;
 inline constexpr struct {
@@ -344,8 +344,8 @@ inline constexpr struct {
 
         auto real = cxvec.real();
         auto imag = cxvec.imag();
-        return tupi::make_tuple(vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)},
-                                vec<T, width>{detail_::vec_traits<T, width>::mul(real, real)});
+        return tupi::make_tuple(vec<T, width>{detail_::vec_traits<T, width>::mul(real.value, real.value)},
+                                vec<T, width>{detail_::vec_traits<T, width>::mul(imag.value, imag.value)});
     }
 } abs_stage_0;
 inline constexpr struct {
