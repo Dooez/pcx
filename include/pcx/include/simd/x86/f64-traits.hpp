@@ -1,6 +1,7 @@
 #pragma once
 #include "pcx/include/tupi.hpp"
 
+#include <cmath>
 #include <immintrin.h>
 
 namespace pcx {
@@ -45,6 +46,12 @@ struct vec_traits<f64, 1> {
     PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
 
+    PCX_AINLINE static auto sqrt(impl_vec a) -> impl_vec {
+        return std::sqrt(a);
+    }
+    PCX_AINLINE static auto abs(impl_vec a) -> impl_vec {
+        return std::abs(a);
+    }
     constexpr static struct {
         static auto operator()(impl_vec v) -> impl_vec {
             return v;
@@ -115,6 +122,13 @@ struct vec_traits<f64, 2> {
     }
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm_fnmsub_pd(a, b, c);
+    }
+    PCX_AINLINE static auto sqrt(impl_vec a) {
+        return _mm_sqrt_pd(a);
+    }
+    static constexpr auto   minus_nan = std::bit_cast<f64>(0x7fffffffffffffff);
+    PCX_AINLINE static auto abs(impl_vec a) {
+        return _mm_and_pd(a, _mm_set1_pd(minus_nan));
     }
 
     constexpr static struct {
@@ -253,6 +267,14 @@ struct vec_traits<f64, 4> {
         return _mm256_fnmsub_pd(a, b, c);
     }
 
+    PCX_AINLINE static auto sqrt(impl_vec a) {
+        return _mm256_sqrt_pd(a);
+    }
+    static constexpr auto   minus_nan = std::bit_cast<f64>(0x7fffffffffffffff);
+    PCX_AINLINE static auto abs(impl_vec a) {
+        return _mm256_and_pd(a, _mm256_broadcast_sd(&minus_nan));
+    }
+
     static constexpr struct {
         PCX_AINLINE static auto operator()(vec_traits<f64, 1>::impl_vec x) -> impl_vec {
             return set1(x);
@@ -388,6 +410,12 @@ struct vec_traits<f64, 8> {
     }
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm512_fnmsub_pd(a, b, c);
+    }
+    PCX_AINLINE static auto sqrt(impl_vec a) {
+        return _mm512_sqrt_ps(a);
+    }
+    PCX_AINLINE static auto abs(impl_vec a) {
+        return _mm512_abs_ps(a);
     }
 
     static constexpr struct upsample_t {

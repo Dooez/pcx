@@ -2,6 +2,7 @@
 #include "pcx/include/tupi.hpp"
 
 #include <array>
+#include <cmath>
 #include <immintrin.h>
 
 namespace pcx {
@@ -51,6 +52,13 @@ struct vec_traits<f32, 1> {
     PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+
+    PCX_AINLINE static auto sqrt(impl_vec a) -> impl_vec {
+        return std::sqrt(a);
+    }
+    PCX_AINLINE static auto abs(impl_vec a) -> impl_vec {
+        return std::abs(a);
+    }
 
     constexpr static struct {
         static auto operator()(impl_vec v) -> impl_vec {
@@ -118,6 +126,13 @@ struct vec_traits<f32, 2> {
     PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+
+    PCX_AINLINE static auto sqrt(impl_vec a) -> impl_vec {
+        return {std::sqrt(a[0]), std::sqrt(a[1])};
+    }
+    PCX_AINLINE static auto abs(impl_vec a) -> impl_vec {
+        return {std::abs(a[0]), std::abs(a[1])};
+    }
 
     constexpr static struct {
         PCX_AINLINE auto operator()(vec_traits<f32, 1>::impl_vec vec) const -> impl_vec {
@@ -215,6 +230,13 @@ struct vec_traits<f32, 4> {
     }
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm_fnmsub_ps(a, b, c);
+    }
+    PCX_AINLINE static auto sqrt(impl_vec a) {
+        return _mm_sqrt_ps(a);
+    }
+    static constexpr auto   minus_nan = std::bit_cast<f32>(0x7fffffff);
+    PCX_AINLINE static auto abs(impl_vec a) {
+        return _mm_and_ps(a, _mm_broadcast_ss(&minus_nan));
     }
 
     static constexpr struct {
@@ -443,6 +465,13 @@ struct vec_traits<f32, 8> {
     }
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm256_fnmsub_ps(a, b, c);
+    }
+    PCX_AINLINE static auto sqrt(impl_vec a) {
+        return _mm256_sqrt_ps(a);
+    }
+    static constexpr auto   minus_nan = std::bit_cast<f32>(0x7fffffff);
+    PCX_AINLINE static auto abs(impl_vec a) {
+        return _mm256_and_ps(a, _mm256_broadcast_ss(&minus_nan));
     }
 
     static constexpr struct up_stage0_t {
@@ -679,6 +708,12 @@ struct vec_traits<f32, 16> {
     }
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm512_fnmsub_ps(a, b, c);
+    }
+    PCX_AINLINE static auto sqrt(impl_vec a) {
+        return _mm512_sqrt_ps(a);
+    }
+    PCX_AINLINE static auto abs(impl_vec a) {
+        return _mm512_abs_ps(a);
     }
 
     static constexpr struct upsample_t {
