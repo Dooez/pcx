@@ -13,6 +13,27 @@ using f32 = float;
 // NOLINTBEGIN(*portability*, *magic-number*)
 
 namespace pcx::simd::detail_ {
+#if defined(PCX_AVX512)
+template<>
+struct max_vec_width<f32> {
+    static constexpr uZ value = 16;
+};
+#elif defined(PCX_AVX2)
+template<>
+struct max_vec_width<f32> {
+    static constexpr uZ value = 8;
+};
+#elif defined(PCX_SSE41)
+template<>
+struct max_vec_width<f32> {
+    static constexpr uZ value = 4;
+};
+#else
+template<>
+struct max_vec_width<f32> {
+    static constexpr uZ value = 1;
+};
+#endif
 
 template<typename T>
 struct max_vec_width;
@@ -90,7 +111,7 @@ struct vec_traits<f32, 1> {
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
 };
-
+#ifdef PCX_SSE41
 template<>
 struct vec_traits<f32, 2> {
     using impl_vec            = std::array<f32, 2>;
@@ -424,7 +445,9 @@ PCX_AINLINE auto vec_traits<f32, 2>::fnmsub(impl_vec a, impl_vec b, impl_vec c) 
     auto res = proxy_traits::fnmsub(x, y, z);
     return {res[0], res[2]};
 }
+#endif
 
+#ifdef PCX_AVX2
 template<>
 struct vec_traits<f32, 8> {
     using impl_vec            = __m256;
@@ -661,13 +684,9 @@ struct vec_traits<f32, 8>::split_interleave_t<8> {
         return tupi::make_tuple(a, b);
     }
 };
+#endif
 
 #ifdef PCX_AVX512
-template<>
-struct max_vec_width<f32> {
-    static constexpr uZ value = 16;
-};
-
 template<>
 struct vec_traits<f32, 16> {
     using impl_vec            = __m512;
@@ -986,11 +1005,6 @@ struct vec_traits<f32, 16>::split_interleave_t<16> {
     }
 };
 // clang-format on
-#else
-template<>
-struct max_vec_width<f32> {
-    static constexpr uZ value = 8;
-};
 #endif
 }    // namespace pcx::simd::detail_
 // NOLINTEND(*portability*, *magic-number*)

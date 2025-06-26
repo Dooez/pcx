@@ -11,13 +11,14 @@ string(COMPARE EQUAL
     "${CMAKE_CURRENT_SOURCE_DIR}"
     is_top_level)
 
-option(PCX_AVX512 "Compile with avx512 support" ON)
 option(PCX_INSTALL "Generate target for installing pcx" ${is_top_level})
 option(PCX_BUILD_TESTS OFF)
-
-set_if_undefined(PCX_SIMD_BACKEND "x86_intrinsics"
+set_if_undefined(PCX_ARCH "avx2"
     CACHE
-    STRING "Backend for pcx SIMD instructions")
+    STRING "One of sse41 avx2 avx512") # sse41 / avx2 / avx512
+# set_if_undefined(PCX_SIMD_BACKEND "x86_intrinsics"
+#     CACHE
+#     STRING "Backend for pcx SIMD instructions")
 set_if_undefined(PCX_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/pcx"
     CACHE
     STRING "Install path for pcx package-related CMake files")
@@ -67,9 +68,15 @@ function(configure_pcx_target target #[[ sources ]])
         CXX_STANDARD 23
         CXX_STANDARD_REQUIRED True
     )
-    target_compile_options(${target} PRIVATE -march=native)
-    if(PCX_AVX512)
-        target_compile_definitions(${target} PUBLIC -DPCX_AVX512)
+    if(PCX_ARCH STREQUAL "avx512")
+        target_compile_options(${target} PUBLIC -mavx512)
+        target_compile_definitions(${target} PUBLIC -DPCX_AVX512 -DPCX_AVX2 -DPCX_SSE41 -DPCX_FMA)
+    elseif(PCX_ARCH STREQUAL "avx2")
+        target_compile_options(${target} PUBLIC -mavx2)
+        target_compile_definitions(${target} PUBLIC -DPCX_AVX2 -DPCX_SSE41 -DPCX_FMA)
+    elseif(PCX_ARCH STREQUAL "sse41")
+        target_compile_options(${target} PUBLIC -msse4.1)
+        target_compile_definitions(${target} PUBLIC -DPCX_SSE41)
     endif()
 endfunction()
 
@@ -88,9 +95,17 @@ set_target_properties(pcx_header_only PROPERTIES
     CXX_STANDARD 23
     CXX_STANDARD_REQUIRED True
 )
+
 target_compile_definitions(pcx_header_only INTERFACE -DPCX_HEADER_ONLY)
-if(PCX_AVX512)
-    target_compile_definitions(pcx_header_only INTERFACE -DPCX_AVX512)
+if(PCX_ARCH STREQUAL "avx512")
+    target_compile_options(pcx_header_only INTERFACE -mavx512)
+    target_compile_definitions(pcx_header_only INTERFACE -DPCX_AVX512 -DPCX_AVX2 -DPCX_SSE41 -DPCX_FMA)
+elseif(PCX_ARCH STREQUAL "avx2")
+    target_compile_options(pcx_header_only INTERFACE -mavx2)
+    target_compile_definitions(pcx_header_only INTERFACE -DPCX_AVX2 -DPCX_SSE41 -DPCX_FMA)
+elseif(PCX_ARCH STREQUAL "sse41")
+    target_compile_options(pcx_header_only INTERFACE -msse4.1)
+    target_compile_definitions(pcx_header_only INTERFACE -DPCX_SSE41)
 endif()
 
 # ---
