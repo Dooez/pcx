@@ -412,10 +412,10 @@ struct vec_traits<f64, 8> {
         return _mm512_fnmsub_pd(a, b, c);
     }
     PCX_AINLINE static auto sqrt(impl_vec a) {
-        return _mm512_sqrt_ps(a);
+        return _mm512_sqrt_pd(a);
     }
     PCX_AINLINE static auto abs(impl_vec a) {
-        return _mm512_abs_ps(a);
+        return _mm512_abs_pd(a);
     }
 
     static constexpr struct upsample_t {
