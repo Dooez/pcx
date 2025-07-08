@@ -12,6 +12,28 @@ using f64 = double;
 // NOLINTBEGIN(*portability*, *magic-number*)
 namespace pcx::simd::detail_ {
 
+#if defined(PCX_AVX512)
+template<>
+struct max_vec_width<f64> {
+    static constexpr uZ value = 8;
+};
+#elif defined(PCX_AVX2)
+template<>
+struct max_vec_width<f64> {
+    static constexpr uZ value = 4;
+};
+#elif defined(PCX_SSE41)
+template<>
+struct max_vec_width<f64> {
+    static constexpr uZ value = 2;
+};
+#else
+template<>
+struct max_vec_width<f64> {
+    static constexpr uZ value = 1;
+};
+#endif
+
 template<>
 struct vec_traits<f64, 1> {
     using impl_vec            = f64;
@@ -41,10 +63,13 @@ struct vec_traits<f64, 1> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) -> impl_vec {
         return lhs / rhs;
     }
+
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+#endif
 
     PCX_AINLINE static auto sqrt(impl_vec a) -> impl_vec {
         return std::sqrt(a);
@@ -82,6 +107,7 @@ struct vec_traits<f64, 1> {
         requires(To <= width && From <= width)
     static constexpr auto repack = repack_t<To, From>{};
 };
+#ifdef PCX_SSE41
 template<>
 struct vec_traits<f64, 2> {
     using impl_vec            = __m128d;
@@ -111,6 +137,7 @@ struct vec_traits<f64, 2> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) {
         return _mm_div_pd(lhs, rhs);
     }
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) {
         return _mm_fmadd_pd(a, b, c);
     }
@@ -123,6 +150,7 @@ struct vec_traits<f64, 2> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm_fnmsub_pd(a, b, c);
     }
+#endif
     PCX_AINLINE static auto sqrt(impl_vec a) {
         return _mm_sqrt_pd(a);
     }
@@ -188,6 +216,9 @@ struct vec_traits<f64, 2>::split_interleave_t<2> {
         return tupi::make_tuple(a, b);
     }
 };
+#endif
+
+#ifdef PCX_FMA
 PCX_AINLINE auto vec_traits<f64, 1>::fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
     using proxy_traits = vec_traits<f64, 2>;
 
@@ -224,7 +255,9 @@ PCX_AINLINE auto vec_traits<f64, 1>::fnmsub(impl_vec a, impl_vec b, impl_vec c) 
     auto res = proxy_traits::fnmsub(x, y, z);
     return res[0];
 }
+#endif
 
+#ifdef PCX_AVX2
 template<>
 struct vec_traits<f64, 4> {
     using impl_vec            = __m256d;
@@ -254,6 +287,8 @@ struct vec_traits<f64, 4> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) {
         return _mm256_div_pd(lhs, rhs);
     }
+
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) {
         return _mm256_fmadd_pd(a, b, c);
     }
@@ -266,6 +301,7 @@ struct vec_traits<f64, 4> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm256_fnmsub_pd(a, b, c);
     }
+#endif
 
     PCX_AINLINE static auto sqrt(impl_vec a) {
         return _mm256_sqrt_pd(a);
@@ -365,12 +401,9 @@ struct vec_traits<f64, 4>::split_interleave_t<4> {
         return tupi::make_tuple(a, b);
     }
 };
+#endif
 
 #ifdef PCX_AVX512
-template<>
-struct max_vec_width<f64> {
-    static constexpr uZ value = 8;
-};
 template<>
 struct vec_traits<f64, 8> {
     using impl_vec                = __m512d;
@@ -399,6 +432,8 @@ struct vec_traits<f64, 8> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) {
         return _mm512_div_pd(lhs, rhs);
     }
+
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) {
         return _mm512_fmadd_pd(a, b, c);
     }
@@ -411,6 +446,8 @@ struct vec_traits<f64, 8> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm512_fnmsub_pd(a, b, c);
     }
+#endif
+
     PCX_AINLINE static auto sqrt(impl_vec a) {
         return _mm512_sqrt_ps(a);
     }
@@ -603,11 +640,6 @@ struct vec_traits<f64, 8>::split_interleave_t<8> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
         return tupi::make_tuple(a, b);
     }
-};
-#else
-template<>
-struct max_vec_width<f64> {
-    static constexpr uZ value = 4;
 };
 #endif
 

@@ -69,10 +69,12 @@ struct vec_traits<f32, 1> {
         return lhs / rhs;
     }
 
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+#endif
 
     PCX_AINLINE static auto sqrt(impl_vec a) -> impl_vec {
         return std::sqrt(a);
@@ -143,10 +145,12 @@ struct vec_traits<f32, 2> {
         return {lhs[0] / rhs[0], lhs[1] / rhs[1]};
     }
 
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) -> impl_vec;
+#endif
 
     PCX_AINLINE static auto sqrt(impl_vec a) -> impl_vec {
         return {std::sqrt(a[0]), std::sqrt(a[1])};
@@ -240,6 +244,8 @@ struct vec_traits<f32, 4> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) {
         return _mm_div_ps(lhs, rhs);
     }
+
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) {
         return _mm_fmadd_ps(a, b, c);
     }
@@ -252,6 +258,8 @@ struct vec_traits<f32, 4> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm_fnmsub_ps(a, b, c);
     }
+#endif
+
     PCX_AINLINE static auto sqrt(impl_vec a) {
         return _mm_sqrt_ps(a);
     }
@@ -348,8 +356,8 @@ struct vec_traits<f32, 4>::repack_t<2, 4> {
 template<>
 struct vec_traits<f32, 4>::repack_t<1, 2> {
     PCX_AINLINE auto operator()(impl_vec a, impl_vec b) const {
-        a = _mm_permute_ps(a, 0b11011000);
-        b = _mm_permute_ps(b, 0b11011000);
+        a = _mm_shuffle_ps(a, a, 0b11011000);
+        b = _mm_shuffle_ps(b, b, 0b11011000);
         return tupi::make_tuple(a, b);
     };
 };
@@ -373,6 +381,7 @@ struct vec_traits<f32, 4>::repack_t<4, 1>
                   | tupi::apply         //
                   | repack_t<4, 2>{}) {};
 
+#ifdef PCX_FMA
 PCX_AINLINE auto vec_traits<f32, 1>::fmadd(impl_vec a, impl_vec b, impl_vec c) -> impl_vec {
     using proxy_traits = vec_traits<f32, 4>;
 
@@ -446,6 +455,7 @@ PCX_AINLINE auto vec_traits<f32, 2>::fnmsub(impl_vec a, impl_vec b, impl_vec c) 
     return {res[0], res[2]};
 }
 #endif
+#endif
 
 #ifdef PCX_AVX2
 template<>
@@ -477,6 +487,8 @@ struct vec_traits<f32, 8> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) {
         return _mm256_div_ps(lhs, rhs);
     }
+
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) {
         return _mm256_fmadd_ps(a, b, c);
     }
@@ -489,6 +501,8 @@ struct vec_traits<f32, 8> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm256_fnmsub_ps(a, b, c);
     }
+#endif
+
     PCX_AINLINE static auto sqrt(impl_vec a) {
         return _mm256_sqrt_ps(a);
     }
@@ -716,6 +730,8 @@ struct vec_traits<f32, 16> {
     PCX_AINLINE static auto div(impl_vec lhs, impl_vec rhs) {
         return _mm512_div_ps(lhs, rhs);
     }
+
+#ifdef PCX_FMA
     PCX_AINLINE static auto fmadd(impl_vec a, impl_vec b, impl_vec c) {
         return _mm512_fmadd_ps(a, b, c);
     }
@@ -728,6 +744,8 @@ struct vec_traits<f32, 16> {
     PCX_AINLINE static auto fnmsub(impl_vec a, impl_vec b, impl_vec c) {
         return _mm512_fnmsub_ps(a, b, c);
     }
+#endif
+
     PCX_AINLINE static auto sqrt(impl_vec a) {
         return _mm512_sqrt_ps(a);
     }
