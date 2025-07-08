@@ -8,19 +8,41 @@ namespace pcx::simd {
 
 template<typename T, uZ Width>
 PCX_AINLINE auto fmadd(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+#ifdef PCX_FMA
     return detail_::vec_traits<T, Width>::fmadd(a.value, b.value, c.value);
+#else
+    auto ab = detail_::vec_traits<T, Width>::mul(a.value, b.value);
+    return detail_::vec_traits<T, Width>::add(ab, c);
+#endif
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto fnmadd(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+#ifdef PCX_FMA
     return detail_::vec_traits<T, Width>::fnmadd(a.value, b.value, c.value);
+#else
+    auto ab = detail_::vec_traits<T, Width>::mul(a.value, b.value);
+    return detail_::vec_traits<T, Width>::sub(c, ab);
+
+#endif
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto fmsub(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+#ifdef PCX_FMA
     return detail_::vec_traits<T, Width>::fmsub(a.value, b.value, c.value);
+#else
+    auto ab = detail_::vec_traits<T, Width>::mul(a.value, b.value);
+    return detail_::vec_traits<T, Width>::sub(ab, c);
+#endif
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto fnmsub(vec<T, Width> a, vec<T, Width> b, vec<T, Width> c) -> vec<T, Width> {
+#ifdef PCX_FMA
     return detail_::vec_traits<T, Width>::fnmsub(a.value, b.value, c.value);
+#else
+    auto ab  = detail_::vec_traits<T, Width>::mul(a.value, b.value);
+    auto abc = detail_::vec_traits<T, Width>::add(ab, c);
+    return detail_::vec_traits<T, Width>::sub(detail_::vec_traits<T, Width>::set1(0), abc);
+#endif
 }
 template<typename T, uZ Width>
 PCX_AINLINE auto sqrt(vec<T, Width> a) -> vec<T, Width> {
@@ -139,7 +161,9 @@ inline constexpr struct {
         return tupi::make_tuple(mul_by_j<Rot>(Lhs));
     }
 
+#ifdef PCX_FMA
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
         using vec            = Lhs::vec_t;
@@ -155,11 +179,36 @@ inline constexpr struct {
                                 lhs,
                                 rhs);
     }
+#else
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        constexpr auto width = Lhs::width();
+        using vec            = Lhs::vec_t;
+        using traits         = vec::traits;
+        vec real0            = traits::mul(lhs.real_v(), rhs.real_v());
+        vec imag0            = traits::mul(lhs.real_v(), rhs.imag_v());
+        vec real1            = traits::mul(lhs.imag_v(), rhs.imag_v());
+        vec imag1            = traits::mul(lhs.imag_v(), rhs.real_v());
+
+        constexpr bool neg_real0 = Lhs::neg_real() != Rhs::neg_real();
+        constexpr bool neg_imag0 = Lhs::neg_real() != Rhs::neg_imag();
+
+        constexpr bool neg_real1 = Lhs::neg_imag() == Rhs::neg_imag();
+        constexpr bool neg_imag1 = Lhs::neg_imag() != Rhs::neg_real();
+
+        using new_cx_vec0 = cx_vec<typename vec::value_type, neg_real0, neg_imag0, width, Lhs::pack_size()>;
+        using new_cx_vec1 = cx_vec<typename vec::value_type, neg_real1, neg_imag1, width, Lhs::pack_size()>;
+        return tupi::make_tuple(new_cx_vec0{.m_real = real0, .m_imag = imag0},    //
+                                new_cx_vec1{.m_real = real1, .m_imag = imag1});
+    }
+#endif
 } mul_stage_0;
 constexpr inline struct {
     PCX_AINLINE auto operator()(auto v) const {
         return v;
     }
+#ifdef PCX_FMA
     template<tight_cx_vec Res, tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(Res res0, Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
@@ -193,6 +242,38 @@ constexpr inline struct {
         using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
         return new_cx_vec{.m_real = real, .m_imag = imag};
     }
+#else
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        constexpr auto width = Lhs::width();
+        using vec            = Lhs::vec_t;
+        using traits         = vec::traits;
+        vec real;
+        vec imag;
+
+        if constexpr (Lhs::neg_real() == Rhs::neg_real()) {
+            real = traits::add(lhs.real_v(), rhs.real_v());
+        } else if constexpr (Lhs::neg_real()) {
+            real = traits::sub(rhs.real_v(), lhs.real_v());
+        } else {
+            real = traits::sub(lhs.real_v(), rhs.real_v());
+        }
+
+        if constexpr (Lhs::neg_imag() == Rhs::neg_imag()) {
+            imag = traits::add(lhs.imag_v(), rhs.imag_v());
+        } else if constexpr (Lhs::neg_imag()) {
+            imag = traits::sub(rhs.imag_v(), lhs.imag_v());
+        } else {
+            imag = traits::sub(lhs.imag_v(), rhs.imag_v());
+        }
+
+        constexpr bool neg_real = Lhs::neg_real() && Rhs::neg_real();
+        constexpr bool neg_imag = Lhs::neg_imag() && Rhs::neg_imag();
+
+        using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Lhs::pack_size()>;
+        return new_cx_vec{.m_real = real, .m_imag = imag};
+    }
+#endif
 } mul_stage_1;
 }    // namespace detail_
 inline constexpr auto mul = tupi::pass | detail_::mul_stage_0 | tupi::apply | detail_::mul_stage_1;
@@ -215,7 +296,9 @@ inline constexpr struct {
     PCX_AINLINE auto operator()(tight_cx_vec auto Lhs, imag_unit_t<Rot>) const {
         return tupi::make_tuple(mul_by_j<-Rot>(Lhs));
     }
+#ifdef PCX_FMA
     template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
     PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
         using vec            = Lhs::vec_t;
@@ -233,11 +316,42 @@ inline constexpr struct {
             cx_vec<typename vec::value_type, neg_real, neg_imag, Lhs::width(), Lhs::pack_size()>;
         return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_re_sq, lhs, rhs);
     };
+#else
+    template<tight_cx_vec Lhs, tight_cx_vec Rhs>
+        requires compatible_cx_vec<Lhs, Rhs>
+    PCX_AINLINE auto operator()(Lhs lhs, Rhs rhs) const {
+        constexpr auto width = Lhs::width();
+        using vec            = Lhs::vec_t;
+        using traits         = vec::traits;
+
+        vec real0 = traits::mul(lhs.real_v(), rhs.real_v());
+        vec imag0 = traits::mul(lhs.real_v(), rhs.imag_v());
+        vec real1 = traits::mul(lhs.imag_v(), rhs.imag_v());
+        vec imag1 = traits::mul(lhs.imag_v(), rhs.real_v());
+
+        vec rhs_re_sq = traits::mul(rhs.real_v(), rhs.real_v());
+        vec rhs_im_sq = traits::mul(rhs.imag_v(), rhs.imag_v());
+
+        constexpr bool neg_real0 = Lhs::neg_real() != Rhs::neg_real();
+        constexpr bool neg_imag0 = Lhs::neg_real() != Rhs::neg_imag();
+
+        constexpr bool neg_real1 = Lhs::neg_imag() == Rhs::neg_imag();
+        constexpr bool neg_imag1 = Lhs::neg_imag() != Rhs::neg_real();
+
+        using new_cx_vec0 = cx_vec<typename vec::value_type, neg_real0, neg_imag0, width, Lhs::pack_size()>;
+        using new_cx_vec1 = cx_vec<typename vec::value_type, neg_real1, neg_imag1, width, Lhs::pack_size()>;
+        return tupi::make_tuple(new_cx_vec0{.m_real = real0, .m_imag = imag0},    //
+                                new_cx_vec1{.m_real = real1, .m_imag = imag1},
+                                rhs_re_sq,
+                                rhs_im_sq);
+    }
+#endif
 } div_stage_0;
 inline constexpr struct {
     PCX_AINLINE auto operator()(auto v) const {
         return std::make_tuple(v);
     }
+#ifdef PCX_FMA
     template<tight_cx_vec Res0, tight_cx_vec Lhs, tight_cx_vec Rhs>
     PCX_AINLINE auto operator()(Res0 res0, typename Res0::vec_t rhs_re_sq, Lhs lhs, Rhs rhs) const {
         constexpr auto width = Lhs::width();
@@ -276,6 +390,42 @@ inline constexpr struct {
         return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag},    //
                                 rhs_abs);
     };
+#else
+    template<tight_cx_vec Res00, tight_cx_vec Res01>
+    PCX_AINLINE auto operator()(Res00                 r0,    //
+                                Res01                 r1,
+                                typename Res00::vec_t rhs_re_sq,
+                                typename Res00::vec_t rhs_im_sq) const {
+        constexpr auto width = Res00::width();
+        using vec            = Res00::vec_t;
+        using traits         = vec::traits;
+        vec real;
+        vec imag;
+
+        if constexpr (Res00::neg_real() == Res01::neg_real()) {
+            real = traits::add(r0.real_v(), r1.real_v());
+        } else if constexpr (Res00::neg_real()) {
+            real = traits::sub(r1.real_v(), r0.real_v());
+        } else {
+            real = traits::sub(r0.real_v(), r1.real_v());
+        }
+
+        if constexpr (Res00::neg_imag() == Res01::neg_imag()) {
+            imag = traits::add(r0.imag_v(), r1.imag_v());
+        } else if constexpr (Res00::neg_imag()) {
+            imag = traits::sub(r1.imag_v(), r0.imag_v());
+        } else {
+            imag = traits::sub(r0.imag_v(), r1.imag_v());
+        }
+        auto rhs_abs = traits::add(rhs_re_sq + rhs_im_sq);
+
+        constexpr bool neg_real = Res00::neg_real() && Res01::neg_real();
+        constexpr bool neg_imag = Res00::neg_imag() && Res01::neg_imag();
+
+        using new_cx_vec = cx_vec<typename vec::value_type, neg_real, neg_imag, width, Res00::pack_size()>;
+        return tupi::make_tuple(new_cx_vec{.m_real = real, .m_imag = imag}, rhs_abs);
+    }
+#endif
 } div_stage_1;
 inline constexpr struct {
     PCX_AINLINE auto operator()(auto v) -> decltype(auto) {
