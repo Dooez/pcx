@@ -69,7 +69,7 @@ function(configure_pcx_target target #[[ sources ]])
         CXX_STANDARD_REQUIRED True
     )
     if(PCX_ARCH STREQUAL "avx512")
-        target_compile_options(${target} PUBLIC -mavx512)
+        target_compile_options(${target} PUBLIC -mavx512f)
         target_compile_definitions(${target} PUBLIC -DPCX_AVX512 -DPCX_AVX2 -DPCX_SSE41 -DPCX_FMA)
     elseif(PCX_ARCH STREQUAL "avx2")
         target_compile_options(${target} PUBLIC -mavx2 -mfma)
@@ -98,7 +98,7 @@ set_target_properties(pcx_header_only PROPERTIES
 
 target_compile_definitions(pcx_header_only INTERFACE -DPCX_HEADER_ONLY)
 if(PCX_ARCH STREQUAL "avx512")
-    target_compile_options(pcx_header_only INTERFACE -mavx512)
+    target_compile_options(pcx_header_only INTERFACE -mavx512f)
     target_compile_definitions(pcx_header_only INTERFACE -DPCX_AVX512 -DPCX_AVX2 -DPCX_SSE41 -DPCX_FMA)
 elseif(PCX_ARCH STREQUAL "avx2")
     target_compile_options(pcx_header_only INTERFACE -mavx2 -mfma)
