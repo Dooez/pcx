@@ -4,7 +4,15 @@ Currently only one-dimensional complex to complex fft is supported.
 Transforms over contiguous or parallel data are supportted.  
 Higher dimensional transforms can be perfromed by combining multiple one-dimensional transforms.  
 Currently only 32-bit and 64-bit floating point numbers are supported.  
-Currently only modern x86 platforms are supported (AVX2 or AVX512).  
+Currently only modern x86 platforms are supported (SSE4.1, AVX2, AVX512).  
+
+## Usage
+The simplest way to use is with `FetchContent_MakeAvailable` or `add_subdirectory`.
+Since the implementation is very abstracted the performance in unoptimized e.g. `Debug` modes is poor.
+Installing locally using CMake `ExternalProject_Add` or otherwise can be beneficial.
+
+The target architecture is selected using `PCX_ARCH` option. 
+Currently `see41`, `avx2`, `avx512` values are supported.
 
 ## FFT
 There are two classes that perform fft: `pcx::fft_plan` and `pcx::par_fft_plan`.
@@ -38,6 +46,8 @@ The goal is to adapt the library to all common platforms with simd.
 The end goal is to provide a number of utilities for processing of complex data with main application being processing of 
 radio data.
 
-##  
+## Future ideas
 - implement radix-4 based nodes
 - implement better size-alignment policy
+- implement permuted pack policy for faster interleaved-interleaved operations
+
