@@ -3,6 +3,7 @@
 #include "pcx/include/tupi.hpp"
 #include "pcx/include/types.hpp"
 
+#include <cassert>
 #include <complex>
 #include <numbers>
 
@@ -228,6 +229,45 @@ constexpr auto next_pow_2(u64 v) {
     v++;
     return v;
 }
+
+template<floating_point T, bool LocalTw>
+struct tw_data_t;
+template<floating_point T>
+struct tw_data_t<T, false> {
+    static constexpr auto is_local() -> std::false_type {
+        return {};
+    };
+
+    const T* tw_ptr;
+};
+
+template<floating_point T>
+struct tw_data_t<T, true> {
+    static constexpr auto is_local() -> std::true_type {
+        return {};
+    };
+    constexpr void reinit_k(uZ k, uZ k_end = 0) {
+        assert(k <= start_fft_size);
+        k_begin = k;
+        if (k_end == 0)
+            this->k_end = k + 1;
+        else
+            this->k_end = k_end;
+        this->k = k;
+    }
+
+    uZ start_fft_size = 1;
+    uZ k              = 0;
+    uZ k_begin        = 0;
+    uZ k_end          = start_fft_size;
+};
+
+template<typename T, floating_point fX>
+struct is_tw_data_of : std::false_type {};
+template<floating_point fX, bool LocalTw>
+struct is_tw_data_of<tw_data_t<fX, LocalTw>, fX> : std::true_type {};
+template<typename T, typename fX>
+concept tw_data_for = is_tw_data_of<T, fX>::value;
 
 
 }    // namespace pcx::detail_

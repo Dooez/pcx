@@ -531,5 +531,11 @@ inline constexpr auto abs = tupi::pass                //
                             | tupi::apply             //
                             | detail_::abs_stage_2;
 
+
+constexpr struct {
+    PCX_AINLINE static auto operator()(any_cx_vec auto a, any_cx_vec auto b) {
+        return std::make_tuple(add(a, b), sub(a, b));
+    }
+} btfly{};
 }    // namespace pcx::simd
 #endif
